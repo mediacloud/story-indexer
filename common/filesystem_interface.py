@@ -52,6 +52,10 @@ class BatchState(Enum):
     ERROR = -1
 
 class pipeline_filesystem_interface(object):
+    """
+    An API which manages access to a filesystem data store, and also manages
+    pipeline state as it pertains to the filesystem
+    """
     
     def __init__(self, date):
         
@@ -105,8 +109,10 @@ class pipeline_filesystem_interface(object):
     def save_batch_status(self, batch_index):
         self.batchfile_status_path(batch_index).write_text(self.batch_status[batch_index].name)
         
-        
     def init_rss(self, source_rss):
+        """
+        Save source rss to disk, and mark state
+        """
         rss_path = Path(self.root_path_str+"/"+ SOURCE_RSS)
         with rss_path.open("w") as f:
             header = source_rss[0].keys()
@@ -120,6 +126,9 @@ class pipeline_filesystem_interface(object):
         
     
     def init_batches(self, batches, batchmap, omitted=None):
+        """
+        Save batches and batchmap to disk, and mark state. 
+        """
         #Save the batches, the batchmap, and set the status to ready
         for batch_index, batch in enumerate(batches):
             batchpath = self.batchfile_path(batch_index)
@@ -147,6 +156,9 @@ class pipeline_filesystem_interface(object):
 
     
     def get_batch(self, batch_id):
+        """
+        Return a list of urls for a given batch id, and set the work state and batch state to FETCHING
+        """
         self.status = WorkState.BATCHES_FETCHING
         self.save_status()
         
@@ -162,6 +174,10 @@ class pipeline_filesystem_interface(object):
         return batch
     
     def link_hash(self, link, reverse=False):
+        """
+        Return a file-URI safe string for a given url. 
+        Also implements the inverse operation.
+        """
         if not reverse:
             return link.replace("/", "\\")
         else:
@@ -176,8 +192,6 @@ class pipeline_filesystem_interface(object):
     
     def put_fetched(self, link, html_content, http_meta):
         path = self.link_path_str(link)
-        print("putting content")
-        print(path)
         html_out = Path(path+"%-raw.html")
         html_out.write_bytes(html_content)
         

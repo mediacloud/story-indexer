@@ -1,2 +1,4 @@
 data/*
 supervisord.log
+notebooks/.ipynb_checkpoints/*
+
