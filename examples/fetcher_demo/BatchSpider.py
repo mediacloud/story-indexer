@@ -1,5 +1,7 @@
 import scrapy
 from scrapy.crawler import CrawlerProcess
+from scrapy.spidermiddlewares.httperror import HttpError
+
 import datetime
 
 from pathlib import Path
@@ -48,39 +50,38 @@ class BatchSpider(scrapy.Spider):
             yield scrapy.Request(url=entry["link"], 
                                  callback=self.parse, 
                                  errback=self.on_error,
-                                 cb_kwargs={"entry":entry})
+                                 cb_kwargs={"rss_entry":entry})
             
-    def parse(self, response, entry=None):
+    def parse(self, response, rss_entry=None):
         if response.status < 400:
             raw_html = response.body
             
-            original_link = entry["link"]
+            original_link = rss_entry["link"]
             
             meta = {
                 "response_status":response.status,
                 "fetch_timestamp":datetime.datetime.now().timestamp(),
-                "rss_entry":entry, 
+                "rss_entry":rss_entry, 
                 "fetch_batch":self.batch_index
             }
-            print(f"Fetched: {meta}")
             
             #Store HTML and http meta in filesystem
             self.fs.put_fetched(original_link, raw_html, meta) 
             
             #Then put the http meta in the queue 
-            self.send_items(self.chan, meta)
+            self.send_items(self.chan, [original_link])
         
     def on_error(self, failure):
         
         if failure.check(HttpError):
-            rss_entry = failure.request.cb_kwargs["entry"]
+            rss_entry = failure.request.cb_kwargs["rss_entry"]
             meta = {
                     "response_status":failure.value.response.status,
                     "fetch_timestamp":datetime.datetime.now().timestamp(),
-                    "rss_entry":entry, 
+                    "rss_entry":rss_entry, 
                     "fetch_batch":self.batch_index
             }
             original_link = rss_entry["link"]
 
-            fs.put_fetch_error(original_link, meta)
+            self.fs.put_fetch_error(original_link, meta)
         

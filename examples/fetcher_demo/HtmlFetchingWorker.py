@@ -54,13 +54,9 @@ class HtmlFetchingWorker(Worker):
         if self.args.batch_index == 0:
             #grab rss content, and generate batches
             fs = pipeline_filesystem_interface(self.args.date)
-
             source_rss = sample_backup_rss(self.args.date, sample_size=self.args.sample_size)
-
             fs.init_rss(source_rss)
-
             batches, batch_map = rss_batcher(source_rss, self.args.num_batches)
-
             fs.init_batches(batches, batch_map)
 
 

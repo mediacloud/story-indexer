@@ -52,8 +52,8 @@ class pipeline_filesystem_interface(object):
         self.month = date.month
         self.day = date.day
         self.root_path_str = f"{DATAROOT}/{self.year}/{self.month}/{self.day}/"
-        self.content_path_str = self.root_path_str+CONTENT
-        self.error_path_str = self.root_path_str+ERROR
+        self.content_path_str = self.root_path_str+CONTENT+'/'
+        self.error_path_str = self.root_path_str+ERROR+'/'
         
         
         self.status_file = Path(self.root_path_str+WORKSTATUS)
@@ -68,6 +68,9 @@ class pipeline_filesystem_interface(object):
         if not content_path.exists():
             content_path.mkdir(parents=True)
         
+        error_path = Path(self.error_path_str)
+        if not error_path.exists():
+            error_path.mkdir(parents=True)
         
         #setup global work state manager
         if not self.status_file.exists():
