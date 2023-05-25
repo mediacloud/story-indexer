@@ -22,7 +22,7 @@ class BatchSpider(scrapy.Spider):
         'RETRY_HTTP_CODES':[502, 503, 504, 522, 524, 408, 429] #donut bother with retrying on 500s
     }
     
-    def __init__(self, date, batch_index, limit=None, send_items=None, chan=None *args, **kwargs):
+    def __init__(self, date, batch_index, limit=None, send_items=None, chan=None, *args, **kwargs):
         super(BatchSpider, self).__init__(*args, **kwargs)
         self.fs = pipeline_filesystem_interface(date)
         self.batch_index = batch_index
@@ -47,7 +47,7 @@ class BatchSpider(scrapy.Spider):
             i += 1
             yield scrapy.Request(url=entry["link"], 
                                  callback=self.parse, 
-                                 errback=self.on_error
+                                 errback=self.on_error,
                                  cb_kwargs={"entry":entry})
             
     def parse(self, response, entry=None):
@@ -56,7 +56,7 @@ class BatchSpider(scrapy.Spider):
             
             original_link = entry["link"]
             
-             meta = {
+            meta = {
                 "response_status":response.status,
                 "fetch_timestamp":datetime.datetime.now().timestamp(),
                 "rss_entry":entry, 
@@ -71,14 +71,16 @@ class BatchSpider(scrapy.Spider):
             self.send_items(self.chan, meta)
         
     def on_error(self, failure):
-        rss_entry = failure.request.cb_kwargs["entry"]
-        meta = {
-                "response_status":response.status,
-                "fetch_timestamp":datetime.datetime.now().timestamp(),
-                "rss_entry":entry, 
-                "fetch_batch":self.batch_index
-        }
-        original_link = rss_entry["link"]
         
-        fs.put_fetch_error(original_link, meta)
+        if failure.check(HttpError):
+            rss_entry = failure.request.cb_kwargs["entry"]
+            meta = {
+                    "response_status":failure.value.response.status,
+                    "fetch_timestamp":datetime.datetime.now().timestamp(),
+                    "rss_entry":entry, 
+                    "fetch_batch":self.batch_index
+            }
+            original_link = rss_entry["link"]
+
+            fs.put_fetch_error(original_link, meta)
         
