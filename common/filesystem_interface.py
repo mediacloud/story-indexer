@@ -29,27 +29,15 @@ from enum import Enum
 import csv
 import json
 
+from .state import WorkState, BatchState
+
 DATAROOT = "data"
 CONTENT = "content"
+ERROR = "errors"
 SOURCE_RSS = "source_rss.csv"
 WORKSTATUS = "work_status.txt"
 BATCHMAP = "batch_map.csv"
 
-
-class WorkState(Enum):
-    ERROR = -1
-    INIT = 0
-    RSS_READY = 1
-    BATCHES_READY = 2
-    BATCHES_FETCHING = 3
-    BATCHES_FINISHED = 4
-    DONE = 100
-    
-class BatchState(Enum):
-    READY = 0
-    FETCHING = 1
-    FINISHED = 2
-    ERROR = -1
 
 class pipeline_filesystem_interface(object):
     """
@@ -63,10 +51,12 @@ class pipeline_filesystem_interface(object):
         self.year = date.year
         self.month = date.month
         self.day = date.day
-        self.root_path_str = f"{DATAROOT}/{self.year}/{self.month}/{self.day}"
-        self.content_path_str = self.root_path_str+"/"+CONTENT
+        self.root_path_str = f"{DATAROOT}/{self.year}/{self.month}/{self.day}/"
+        self.content_path_str = self.root_path_str+CONTENT
+        self.error_path_str = self.root_path_str+ERROR
         
-        self.status_file = Path(self.root_path_str+"/"+WORKSTATUS)
+        
+        self.status_file = Path(self.root_path_str+WORKSTATUS)
         self.batch_status = {}
         
         
@@ -95,11 +85,11 @@ class pipeline_filesystem_interface(object):
         self.status_file.write_text(self.status.name)
 
     def batchfile_path(self, batch_index):
-        pathstr = self.root_path_str+f"/batchfile_{batch_index}.csv"
+        pathstr = self.root_path_str+f"batchfile_{batch_index}.csv"
         return Path(pathstr)
         
     def batchfile_status_path(self, batch_index):    
-        pathstr = self.root_path_str+f"/batchfile_{batch_index}_status.txt"
+        pathstr = self.root_path_str+f"batchfile_{batch_index}_status.txt"
         return Path(pathstr)
     
     
@@ -113,7 +103,7 @@ class pipeline_filesystem_interface(object):
         """
         Save source rss to disk, and mark state
         """
-        rss_path = Path(self.root_path_str+"/"+ SOURCE_RSS)
+        rss_path = Path(self.root_path_str+SOURCE_RSS)
         with rss_path.open("w") as f:
             header = source_rss[0].keys()
             writer = csv.DictWriter(f, fieldnames = header)
@@ -183,8 +173,11 @@ class pipeline_filesystem_interface(object):
         else:
             return link.replace("\\", "/")
     
-    def link_path_str(self, link):
-        return self.content_path_str+"/"+self.link_hash(link)
+    def link_path_str(self, link, error=False):
+        if error:
+            return self.error_path_str+self.link_hash(link)
+        else:
+            return self.content_path_str+self.link_hash(link)
     
     def link_status(self, link):
         #We can test this on the fly by reading what exists in the content dir. 
@@ -192,6 +185,8 @@ class pipeline_filesystem_interface(object):
     
     def put_fetched(self, link, html_content, http_meta):
         path = self.link_path_str(link)
+        
+        
         html_out = Path(path+"%-raw.html")
         html_out.write_bytes(html_content)
         
@@ -199,6 +194,12 @@ class pipeline_filesystem_interface(object):
         with http_out.open("w") as out:
             json.dump(http_meta, out)
         
+    
+    def put_fetch_error(self, link, http_meta):
+        path = self.link_path_str(link, error=True)
+        http_out = Path(path+"%-fetch_error.json")
+        with http_out.open("w") as out:
+            json.dump(http_meta, out)
     
     def get_fetched(self, link):
         pass

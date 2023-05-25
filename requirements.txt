@@ -1,0 +1,7 @@
+boto3
+mediacloud-metadata
+pika
+rabbitmq-admin
+supervisor
+scrapy
+

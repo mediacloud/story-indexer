@@ -1,7 +1,8 @@
-from fetcher_demo import fetcher_demo
+from HtmlFetchingWorker import HtmlFetchingWorker
+from datetime import datetime
+from pipeline.worker import run
 
 import argparse
-from datetime import datetime
 
 parser = argparse.ArgumentParser(description="test parser with supervisor")
 parser.add_argument("--num_batches", type=int, help="The number of batches being executed", required=True)
@@ -14,4 +15,10 @@ args = parser.parse_args()
 date = datetime.strptime(args.date, "%Y-%m-%d") 
 
 if __name__ == "__main__":
-    fetcher_demo.main(date, args.num_batches, args.batch_index, args.sample_size)
+    run(HtmlFetchingWorker, 
+        "demo-fetcher",
+        "Demo HTML-fetching pipeline worker"
+        date = date, 
+        batch_index=args.batch_index, 
+        num_batches=args.num_batches, 
+        sample_size=args.sample_size)
