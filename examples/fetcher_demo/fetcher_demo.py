@@ -1,4 +1,4 @@
-from HtmlFetchingWorker import HtmlFetchingWorker
+from examples.fetcher_demo.HtmlFetchingWorker import HtmlFetchingWorker
 from datetime import datetime
 from pipeline.worker import run
 
@@ -14,11 +14,12 @@ args = parser.parse_args()
 
 date = datetime.strptime(args.date, "%Y-%m-%d") 
 
-if __name__ == "__main__":
-    run(HtmlFetchingWorker, 
-        "demo-fetcher",
-        "Demo HTML-fetching pipeline worker"
-        date = date, 
-        batch_index=args.batch_index, 
-        num_batches=args.num_batches, 
-        sample_size=args.sample_size)
+print("in fetcher demo")
+print(__name__)
+run(HtmlFetchingWorker, 
+    "demo-fetcher",
+    "Demo HTML-fetching pipeline worker",
+    date = date, 
+    batch_index=args.batch_index, 
+    num_batches=args.num_batches, 
+    sample_size=args.sample_size)
