@@ -6,6 +6,7 @@ import sys
 
 from pipeline.worker import ListConsumerWorker, run
 
+
 class Out(ListConsumerWorker):
     """
     takes lists of ints and prints them.
@@ -14,7 +15,7 @@ class Out(ListConsumerWorker):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.items = []
+        self.items: list = []
 
     def process_item(self, item):
         self.items.append(item)
@@ -24,5 +25,6 @@ class Out(ListConsumerWorker):
         self.items = []
         sys.stdout.flush()
         return None
+
 
 run(Out, "simple-out", "output worker for simple pipeline")

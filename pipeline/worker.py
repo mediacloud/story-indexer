@@ -17,8 +17,10 @@ LEVEL_DEST = 'log_level'        # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
 LOGGER_LEVEL_SEP = ':'
 
+
 class PipelineException(Exception):
     """base class for pipeline exceptions"""
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 MIME_TYPE_PICKLE = 'application/python-pickle'
 
 DEFAULT_ROUTING_KEY = 'default'
+
 
 class Worker:
     """
@@ -72,7 +75,8 @@ class Worker:
                         dest='list_loggers',
                         help="list all logger names and exit")
         ap.add_argument('--log-level', '-l', action='store', choices=LEVELS,
-                        dest=LEVEL_DEST, default=os.getenv('LOG_LEVEL', 'INFO'),
+                        dest=LEVEL_DEST, default=os.getenv(
+                            'LOG_LEVEL', 'INFO'),
                         help="set default logging level to LEVEL")
 
         # set specific logger verbosity:
@@ -87,7 +91,7 @@ class Worker:
         self.define_options(ap)
         self.args = ap.parse_args()
 
-        ################ handle logging args FIRST!
+        # handle logging args FIRST!
         if self.args.list_loggers:
             for name in sorted(logging.root.manager.loggerDict):
                 print(name)
@@ -108,7 +112,7 @@ class Worker:
                 # XXX check level.upper() in LEVELS?
                 logging.getLogger(logger_name).setLevel(level.upper())
 
-        ################ logging now enabled
+        # logging now enabled
 
         if not self.args.amqp_url:
             logger.fatal('need RabbitMQ URL')
@@ -131,7 +135,7 @@ class Worker:
         return (MIME_TYPE_PICKLE, 'none', encoded)
 
     def send_message(self, chan, data, exchange=None,
-                     routing_key : str = DEFAULT_ROUTING_KEY):
+                     routing_key: str = DEFAULT_ROUTING_KEY):
         # XXX wrap, and include message history?
         content_type, content_encoding, encoded = self.encode_message(data)
         chan.basic_publish(
@@ -157,13 +161,13 @@ class ConsumerWorker(Worker):
     # override this to allow enable input batching
     INPUT_BATCH_MSGS = 1
 
-    # if INPUT_BATCH_MSGS > 1, wait no longer than INPUT_BATCH_SECS after 
+    # if INPUT_BATCH_MSGS > 1, wait no longer than INPUT_BATCH_SECS after
     # first message, then process messages on hand:
     INPUT_BATCH_SECS = 120
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.input_msgs = []
+        self.input_msgs: list = []
         self.input_timer = None
 
     def main_loop(self, conn: pika.BlockingConnection, chan):
@@ -194,14 +198,14 @@ class ConsumerWorker(Worker):
 
         logger.debug(f"on_message {method.delivery_tag}")
 
-        self.input_msgs.append( (method, properties, body) )
+        self.input_msgs.append((method, properties, body))
 
         if len(self.input_msgs) < self.INPUT_BATCH_MSGS:
             # here only when batching multiple msgs
             if self.input_timer is None and self.INPUT_BATCH_SECS:
                 self.input_timer = \
                     self.connection.call_later(self.INPUT_BATCH_SECS,
-                                               lambda : self._process_messages(chan))
+                                               lambda: self._process_messages(chan))
             return
 
         # here with full batch: start processing
@@ -228,7 +232,7 @@ class ConsumerWorker(Worker):
 
         # ack last message only:
         multiple = len(self.input_msgs) > 1
-        tag = self.input_msgs[-1][0].delivery_tag # tag from last message
+        tag = self.input_msgs[-1][0].delivery_tag  # tag from last message
         logger.debug("ack {tag} {multiple}")
         chan.basic_ack(delivery_tag=tag, multiple=multiple)
         self.input_msgs = []
@@ -250,16 +254,17 @@ class ConsumerWorker(Worker):
     def end_of_batch(self, chan):
         """hook for batch processors (ie; write to database)"""
 
+
 class ListConsumerWorker(ConsumerWorker):
     """Pipeline worker that handles list of work items"""
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.output_items = []
+        self.output_items: list = []
 
     def process_message(self, chan, method, properties, decoded):
         results = []
-        logger.info(f"process_message {len(decoded)} items") # make debug?
+        logger.info(f"process_message {len(decoded)} items")  # make debug?
         t0 = time.time()
         items = 0
         for item in decoded:
@@ -283,6 +288,7 @@ class ListConsumerWorker(ConsumerWorker):
     def process_item(self, item):
         raise PipelineException(
             "ListConsumerWorker.process_item not overridden")
+
 
 def run(klass, *args, **kw):
     """

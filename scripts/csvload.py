@@ -19,6 +19,7 @@ from typing import Optional
 # local:
 from pipeline.worker import Worker, run
 
+
 class CSVLoad(Worker):
     def define_options(self, ap: argparse.ArgumentParser):
         ap.add_argument('csv', help="csv file with downloads_id, url")
@@ -47,6 +48,7 @@ class CSVLoad(Worker):
                 items = []
         if items:
             self.send_items(chan, items)
+
 
 if __name__ == '__main__':
     run(CSVLoad, "csvload", "load stories from CSV")

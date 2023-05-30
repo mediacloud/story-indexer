@@ -36,13 +36,16 @@ import boto3
 
 BUCKET = 'mediacloud-downloads-backup'
 
+
 def epoch_b(date: str) -> bool:
     """expects date in format 'YYYY-MM-DD .....'"""
     return date >= '2021-09-15' and date < '2021-11-21'
 
+
 def epoch_d(date: str) -> bool:
     """expects date in format 'YYYY-MM-DD .....'"""
     return date >= '2021-12-26' and date < '2022-01-26'
+
 
 def find_object_version(bucket, date, s3path) -> Optional[str]:
     """
@@ -69,6 +72,7 @@ def find_object_version(bucket, date, s3path) -> Optional[str]:
     found = " ".join([str(meta['LastModified']) for meta in saved])
     print(f"could not find version for {s3path} {date} found {found}")
     return None
+
 
 def main() -> None:
     if len(sys.argv) < 3:
@@ -109,7 +113,9 @@ def main() -> None:
         bucket.download_file(s3path, output, extra)
         downloaded += 1
 
-    print(f"found {found} no_version {no_version} downloaded {downloaded} in {time.time() - t0}")
+    print(
+        f"found {found} no_version {no_version} downloaded {downloaded} in {time.time() - t0}")
+
 
 if __name__ == '__main__':
     main()

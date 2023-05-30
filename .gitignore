@@ -1,4 +1,5 @@
 data/*
 supervisord.log
-notebooks/.ipynb_checkpoints/*
-
+.ipynb_checkpoints
+venv/*
+__pycache__

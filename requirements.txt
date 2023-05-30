@@ -4,4 +4,6 @@ pika
 rabbitmq-admin
 supervisor
 scrapy
-
+pre-commit
+types-requests
+mypy

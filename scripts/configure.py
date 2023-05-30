@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 # using Queue, Exchange, Binding classes to represent desired configuration
 # to allow better type checking
+
+
 class Queue:
     def __init__(self, name: str):
         self.name = name
@@ -38,16 +40,18 @@ class Queue:
     def __repr__(self):
         return f"<Queue: {self.name}>"
 
+
 class EType:
     DIRECT = 'direct'
     FANOUT = 'fanout'
+
 
 class Exchange:
     def __init__(self, name: str, type):
         logger.debug(f"create {type} exchange {name}")
         self.name = name
         self.type = type
-        self.bindings = []      # list of dest queue names
+        self.bindings: list = []      # list of dest queue names
 
     def __repr__(self):
         return f"<Exchange: {self.type} {self.name}>"
@@ -58,9 +62,11 @@ class Exchange:
         # XXX modify dest.source(s)??
         self.bindings.append(dest)
 
+
 class BDType:                   # binding dest type
     QUEUE = 'queue'
     EXCH = 'exchange'
+
 
 class Binding:
     def __init__(self, dest: str, source: str, dtype: BDType = BDType.QUEUE):
@@ -75,13 +81,15 @@ class Binding:
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 def fatal(message):
     logger.fatal(message)
     sys.exit(1)
 
+
 class Plumbing:
     def __init__(self, filename):
-        
+
         self.queues = {}
         self.exchanges = {}
         self.processes = []     # was originally set, but want ordering
@@ -131,9 +139,10 @@ class Plumbing:
             if saw_fanout:
                 fatal(f"fanout must be last element in pipeline, saw: {elt}")
 
-            if isinstance(elt, list): # list of sub-pipes
+            if isinstance(elt, list):  # list of sub-pipes
                 if not prev_name:
-                    fatal(f"fanout must not be first element in pipeline: {elt}")
+                    fatal(
+                        f"fanout must not be first element in pipeline: {elt}")
                 saw_fanout = True
 
                 # create fanout output exchange for prev process:
@@ -154,7 +163,7 @@ class Plumbing:
                     inq_name = elt + '-in'
                     q = self.add_queue(inq_name)
                     prev_exch.add_binding(q)
-                    self.bindings.append( Binding(inq_name, prev_exch.name) )
+                    self.bindings.append(Binding(inq_name, prev_exch.name))
             else:
                 fatal(f"expected name or list: {elt}")
 
@@ -168,13 +177,18 @@ def get_definitions(par: pika.connection.URLParameters) -> Dict[str, Any]:
     """
     creds = par.credentials
     port = 15672                # par.port + 10000???
-    api = AdminAPI(url=f'http://{par.host}:{port}', auth=(creds.username, creds.password))
+    api = AdminAPI(url=f'http://{par.host}:{port}',
+                   auth=(creds.username, creds.password))
     return api.get_definitions()
+
 
 def listify(l):
     return ", ".join(l)
 
+
 COMMANDS = ['configure', 'delete', 'dump', 'show', 'trim']
+
+
 def main():
     # XXX use rss-fetcher logargparse???
     ap = argparse.ArgumentParser("configure", "configure RabbitMQ queues")
@@ -230,9 +244,9 @@ def main():
         sys.exit(0)
 
     # blindly configure for now:
-    logging.getLogger("pika").setLevel(logging.WARNING) # reduce blather
+    logging.getLogger("pika").setLevel(logging.WARNING)  # reduce blather
 
-    # use AMQP to (de)configure: 
+    # use AMQP to (de)configure:
     with pika.BlockingConnection(par) as conn:
         chan = conn.channel()
 
@@ -269,6 +283,7 @@ def main():
         else:
             print(f"unknown command {command}")
             sys.exit(1)
+
 
 if __name__ == '__main__':
     main()
