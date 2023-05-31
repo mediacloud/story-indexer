@@ -167,7 +167,7 @@ class ConsumerWorker(Worker):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.input_msgs: list = []
+        self.input_msgs = []
         self.input_timer = None
 
     def main_loop(self, conn: pika.BlockingConnection, chan):
@@ -260,7 +260,7 @@ class ListConsumerWorker(ConsumerWorker):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.output_items: list = []
+        self.output_items = []
 
     def process_message(self, chan, method, properties, decoded):
         results = []

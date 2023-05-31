@@ -51,7 +51,7 @@ class Exchange:
         logger.debug(f"create {type} exchange {name}")
         self.name = name
         self.type = type
-        self.bindings: list = []      # list of dest queue names
+        self.bindings = []      # list of dest queue names
 
     def __repr__(self):
         return f"<Exchange: {self.type} {self.name}>"
