@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  elasticsearch:
+    build:
+      context: elasticsearch/
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION:-7.10.1}
+    volumes:
+      - type: bind
+        source: ./elasticsearch/config/elasticsearch.yml
+        target: /usr/share/elasticsearch/config/elasticsearch.yml
+        read_only: true
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+    environment:
+      - node.name=elasticsearch
+      - discovery.type=single-node
+    networks:
+      - mc_elastic_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+ 
+  rabbitmq:
+    image: rabbitmq:3.11-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - mc_elastic_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  
+  es_pipeline:
+    build:
+      context: es_pipeline
+      dockerfile: Dockerfile
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - ELASTIC_URL=http://elasticsearch:9200/
+    volumes:
+      - ./es_pipeline/logs:/tmp/consumer_worker
+      - ./data:/app/data
+    networks:
+      - mc_elastic_network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    command: ["./run.sh"]
+  
+  fetcher_pipeline:
+    build:
+      context: fetcher_pipeline
+      dockerfile: Dockerfile 
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./fetcher_pipeline/logs:/tmp/fetcher_demo
+      - ./data:/app/data
+    networks:
+      - mc_elastic_network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    command: ["./run.sh"]
+    
+
+
+networks:
+  mc_elastic_network:
+    driver: bridge
+
+volumes:
+  elasticsearch_data:

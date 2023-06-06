@@ -7,8 +7,8 @@ import datetime
 from pathlib import Path
 
 import json
-from common.filesystem.filesystem_interface import pipeline_filesystem_interface
-from common.filesystem.state import BatchState, WorkState
+from filesystem.filesystem_interface import pipeline_filesystem_interface
+from filesystem.state import BatchState, WorkState
 
 
 class BatchSpider(scrapy.Spider):

@@ -21,7 +21,6 @@ from typing import Any, Dict
 
 # PyPI
 import pika
-from typing import List
 from rabbitmq_admin import AdminAPI
 
 # local:
@@ -29,10 +28,9 @@ from pipeline.worker import DEFAULT_ROUTING_KEY
 
 logger = logging.getLogger(__name__)
 
+
 # using Queue, Exchange, Binding classes to represent desired configuration
 # to allow better type checking
-
-
 class Queue:
     def __init__(self, name: str):
         self.name = name
@@ -43,8 +41,8 @@ class Queue:
 
 
 class EType:
-    DIRECT = 'direct'
-    FANOUT = 'fanout'
+    DIRECT = "direct"
+    FANOUT = "fanout"
 
 
 class Exchange:
@@ -52,7 +50,7 @@ class Exchange:
         logger.debug(f"create {type} exchange {name}")
         self.name = name
         self.type = type
-        self.bindings: List[Queue] = []      # list of dest queue names
+        self.bindings = []  # list of dest queue names
 
     def __repr__(self):
         return f"<Exchange: {self.type} {self.name}>"
@@ -64,16 +62,16 @@ class Exchange:
         self.bindings.append(dest)
 
 
-class BDType:                   # binding dest type
-    QUEUE = 'queue'
-    EXCH = 'exchange'
+class BDType:  # binding dest type
+    QUEUE = "queue"
+    EXCH = "exchange"
 
 
 class Binding:
     def __init__(self, dest: str, source: str, dtype: BDType = BDType.QUEUE):
-        self.dest = dest        # ie; queue name
-        self.source = source    # exchange name
-        self.dtype = dtype      # dest type
+        self.dest = dest  # ie; queue name
+        self.source = source  # exchange name
+        self.dtype = dtype  # dest type
 
     def __repr__(self):
         return f"<Binding: {self.source} -> {self.dtype} {self.dest}>"
@@ -90,12 +88,10 @@ def fatal(message):
 
 class Plumbing:
     def __init__(self, filename):
-
         self.queues = {}
         self.exchanges = {}
-        self.processes = []     # was originally set, but want ordering
-        # list of (queuename, exchangename)
-        self.bindings: List[Queue] = []
+        self.processes = []  # was originally set, but want ordering
+        self.bindings = []  # list of (queuename, exchangename)
 
         with open(filename) as f:
             j = json.load(f)
@@ -143,12 +139,11 @@ class Plumbing:
 
             if isinstance(elt, list):  # list of sub-pipes
                 if not prev_name:
-                    fatal(
-                        f"fanout must not be first element in pipeline: {elt}")
+                    fatal(f"fanout must not be first element in pipeline: {elt}")
                 saw_fanout = True
 
                 # create fanout output exchange for prev process:
-                exch = self.add_exchange(prev_name + '-out', EType.FANOUT)
+                exch = self.add_exchange(prev_name + "-out", EType.FANOUT)
                 for sub_pipe in elt:
                     self.process_json(exch, sub_pipe)
             elif isinstance(elt, str):
@@ -157,12 +152,12 @@ class Plumbing:
 
                 if prev_name:
                     # create direct output exchange for previous process:
-                    prev_out = prev_name + '-out'
+                    prev_out = prev_name + "-out"
                     prev_exch = self.add_exchange(prev_out, EType.DIRECT)
 
                 if prev_exch:
                     # bind current process input queue:
-                    inq_name = elt + '-in'
+                    inq_name = elt + "-in"
                     q = self.add_queue(inq_name)
                     prev_exch.add_binding(q)
                     self.bindings.append(Binding(inq_name, prev_exch.name))
@@ -178,9 +173,10 @@ def get_definitions(par: pika.connection.URLParameters) -> Dict[str, Any]:
     takes pika (AMQP) parsed URL for connection params
     """
     creds = par.credentials
-    port = 15672                # par.port + 10000???
-    api = AdminAPI(url=f'http://{par.host}:{port}',
-                   auth=(creds.username, creds.password))
+    port = 15672  # par.port + 10000???
+    api = AdminAPI(
+        url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
+    )
     return api.get_definitions()
 
 
@@ -188,38 +184,50 @@ def listify(l):
     return ", ".join(l)
 
 
-COMMANDS = ['configure', 'delete', 'dump', 'show', 'trim']
+COMMANDS = ["configure", "delete", "dump", "show", "trim"]
 
 
 def main():
     # XXX use rss-fetcher logargparse???
     ap = argparse.ArgumentParser("configure", "configure RabbitMQ queues")
 
-    # amqp_url = os.environ.get('RABBITMQ_URL')
-    amqp_url = "amqp://localhost:5672"
-    ap.add_argument('--rabbitmq-url', '-U', dest='amqp_url',
-                    default=amqp_url,
-                    help="set RabbitMQ URL (default {amqp_url}")
+    amqp_url = os.environ.get("RABBITMQ_URL")
 
-    def_file = 'plumbing.json'
-    ap.add_argument('--plumbing-file', '-f', dest='plumbing_file',
-                    default=def_file,
-                    help="JSON plumbing file (default {def_file})")
+    ap.add_argument(
+        "--rabbitmq-url",
+        "-U",
+        dest="amqp_url",
+        default=amqp_url,
+        help="set RabbitMQ URL (default {amqp_url}",
+    )
 
-    ap.add_argument('command', nargs=1, type=str,
-                    choices=COMMANDS,
-                    help='Command, one of: {listify(COMMANDS).')
+    def_file = "plumbing.json"
+    ap.add_argument(
+        "--plumbing-file",
+        "-f",
+        dest="plumbing_file",
+        default=def_file,
+        help="JSON plumbing file (default {def_file})",
+    )
+
+    ap.add_argument(
+        "command",
+        nargs=1,
+        type=str,
+        choices=COMMANDS,
+        help="Command, one of: {listify(COMMANDS).",
+    )
 
     # parse command line:
     args = ap.parse_args()
 
     command = args.command[0]
-    if command != 'show':
+    if command != "show":
         p = Plumbing(args.plumbing_file)  # parse plumbing file
     else:
         p = None
 
-    if command == 'dump':
+    if command == "dump":
         print(f"{args.plumbing_file}:")
         print("    processes", listify(p.processes))
         print("    queues", listify(p.queues.keys()))
@@ -231,19 +239,19 @@ def main():
 
     # use RabbitMQ admin API to get current config
     # (not available via AMQP):
-    if command != 'configure':
+    if command != "configure":
         defns = get_definitions(par)
     else:
         defns = {}
 
-    if command == 'show':
-        curr_queues = [q['name'] for q in defns['queues']]
-        curr_exchanges = [(e['name'], e['type']) for e in defns['exchanges']]
-        curr_bindings = []      # XXX
+    if command == "show":
+        curr_queues = [q["name"] for q in defns["queues"]]
+        curr_exchanges = [(e["name"], e["type"]) for e in defns["exchanges"]]
+        curr_bindings = []  # XXX
         print("RabbitMQ current:")
         print("    queues", curr_queues)
         print("    exchanges", curr_exchanges)
-        print("    bindings", defns['bindings'])
+        print("    bindings", defns["bindings"])
         sys.exit(0)
 
     # blindly configure for now:
@@ -253,8 +261,7 @@ def main():
     with pika.BlockingConnection(par) as conn:
         chan = conn.channel()
 
-        if command == 'configure':
-
+        if command == "configure":
             for qname in p.queues.keys():
                 # durable == messages stored on disk
                 chan.queue_declare(qname, durable=True)
@@ -264,10 +271,9 @@ def main():
 
             for b in p.bindings:
                 # XXX check b.dtype!!
-                chan.queue_bind(b.dest, b.source,
-                                routing_key=DEFAULT_ROUTING_KEY)
+                chan.queue_bind(b.dest, b.source, routing_key=DEFAULT_ROUTING_KEY)
 
-        elif command == 'delete':
+        elif command == "delete":
             print("deleting...")
 
             for qname in p.queues.keys():
@@ -277,9 +283,10 @@ def main():
                 chan.exchange_delete(exch.name)
 
             for b in p.bindings:
-                chan.queue_unbind(b.dest, exchange=b.source,
-                                  routing_key=DEFAULT_ROUTING_KEY)
-        elif command == 'trim':
+                chan.queue_unbind(
+                    b.dest, exchange=b.source, routing_key=DEFAULT_ROUTING_KEY
+                )
+        elif command == "trim":
             print("trim not yet implemented")
             # iterate over items in defns, and remove those not in config
             sys.exit(1)
@@ -288,5 +295,5 @@ def main():
             sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

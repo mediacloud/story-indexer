@@ -7,13 +7,13 @@ from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 from scrapy.signalmanager import dispatcher
 
-from common.filesystem.filesystem_interface import pipeline_filesystem_interface
-from common.filesystem.state import WorkState
+from filesystem.filesystem_interface import pipeline_filesystem_interface
+from filesystem.state import WorkState
 
 from pipeline.worker import Worker, run
 
-from .batcher import sample_backup_rss, rss_batcher
-from .BatchSpider import BatchSpider
+from batcher import sample_backup_rss, rss_batcher
+from BatchSpider import BatchSpider
 
 
 class HtmlFetchingWorker(Worker):
@@ -52,11 +52,12 @@ class HtmlFetchingWorker(Worker):
                         help="For testing, how much of the rss to sample before batching. 0 means all",
                         default=0)
 
-    def spider_closed(self, spider, reason):
+    def spider_closed(self,chan,spider,reason):
         fs = pipeline_filesystem_interface(self.args.date)
         dir_path = fs.content_path_str
-        print(
-            f"Spider {spider} finished with reason: {reason}, dir path: {dir_path}")
+        worker = Worker("elastic-gen", "publish folder to ES Queue")
+        worker.send_items(chan, dir_path)
+        print(f"Spider {spider} finished with reason: {reason}, dir path: {dir_path}")
 
     def main_loop(self, conn, chan):
         # Only the first job will actually generate the batches
@@ -81,14 +82,13 @@ class HtmlFetchingWorker(Worker):
         process = CrawlerProcess()
         spider = BatchSpider
 
-        dispatcher.connect(self.spider_closed,
-                           signal=signals.spider_closed, weak=False)
+        dispatcher.connect(self.spider_closed(chan=chan, spider=spider,reason=None), signal=signals.spider_closed, weak=False)
         # For now, just send the send_items method into the scrapy worker. There might be a better way down the line
-
+        
         # spider = BatchSpider(date=self.args.date,batch_index=self.args.batch_index, send_items=self.send_items, chan=chan)
         process.crawl(BatchSpider, date=self.args.date,
                       batch_index=self.args.batch_index, send_items=self.send_items, chan=chan)
-
+       
         # process.crawl(spider)
         process.start()
 

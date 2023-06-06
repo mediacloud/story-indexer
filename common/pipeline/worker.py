@@ -11,12 +11,11 @@ import time
 
 # PyPI
 import pika
-from typing import List
 
-FORMAT = '%(asctime)s | %(levelname)s | %(name)s | %(message)s'
-LEVEL_DEST = 'log_level'        # args entry name!
+FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
-LOGGER_LEVEL_SEP = ':'
+LOGGER_LEVEL_SEP = ":"
 
 
 class PipelineException(Exception):
@@ -26,9 +25,9 @@ class PipelineException(Exception):
 logger = logging.getLogger(__name__)
 
 # content types:
-MIME_TYPE_PICKLE = 'application/python-pickle'
+MIME_TYPE_PICKLE = "application/python-pickle"
 
-DEFAULT_ROUTING_KEY = 'default'
+DEFAULT_ROUTING_KEY = "default"
 
 
 class Worker:
@@ -41,7 +40,7 @@ class Worker:
     def __init__(self, process_name: str, descr: str):
         self.process_name = process_name
         self.descr = descr
-        self.args = None        # set by main
+        self.args = None  # set by main
 
         # ~sigh~ wanted to avoid this, but "call_later" requires it
         self.connection = None
@@ -57,43 +56,71 @@ class Worker:
         subclass methods _SHOULD_ call super() method!!
         """
         # environment variable automagically set in Dokku:
-        default_url = os.environ.get('RABBITMQ_URL')  # set by Dokku
 
+        default_url = os.environ.get("RABBITMQ_URL") # set by Dokku
         # XXX give env var name instead of value?
-        ap.add_argument('--rabbitmq-url', '-U', dest='amqp_url',
-                        default=default_url,
-                        help="set RabbitMQ URL (default {default_url}")
+        ap.add_argument(
+            "--rabbitmq-url",
+            "-U",
+            dest="amqp_url",
+            default=default_url,
+            help="set RabbitMQ URL (default {default_url}",
+        )
 
         # logging, a subset from rss-fetcher fetcher.logargparse:
-        ap.add_argument('--debug', '-d', action='store_const',
-                        const='DEBUG', dest=LEVEL_DEST,
-                        help="set default logging level to 'DEBUG'")
-        ap.add_argument('--quiet', '-q', action='store_const',
-                        const='WARNING', dest=LEVEL_DEST,
-                        help="set default logging level to 'WARNING'")
+        ap.add_argument(
+            "--debug",
+            "-d",
+            action="store_const",
+            const="DEBUG",
+            dest=LEVEL_DEST,
+            help="set default logging level to 'DEBUG'",
+        )
+        ap.add_argument(
+            "--quiet",
+            "-q",
+            action="store_const",
+            const="WARNING",
+            dest=LEVEL_DEST,
+            help="set default logging level to 'WARNING'",
+        )
 
         # UGH! requires positional args! Implement as an Action class?
-        ap.add_argument('--list-loggers', action='store_true',
-                        dest='list_loggers',
-                        help="list all logger names and exit")
-        ap.add_argument('--log-level', '-l', action='store', choices=LEVELS,
-                        dest=LEVEL_DEST, default=os.getenv(
-                            'LOG_LEVEL', 'INFO'),
-                        help="set default logging level to LEVEL")
+        ap.add_argument(
+            "--list-loggers",
+            action="store_true",
+            dest="list_loggers",
+            help="list all logger names and exit",
+        )
+        ap.add_argument(
+            "--log-level",
+            "-l",
+            action="store",
+            choices=LEVELS,
+            dest=LEVEL_DEST,
+            default=os.getenv("LOG_LEVEL", "INFO"),
+            help="set default logging level to LEVEL",
+        )
 
         # set specific logger verbosity:
-        ap.add_argument('--logger-level', '-L', action='append',
-                        dest='logger_level',
-                        help=('set LOGGER (see --list-loggers) '
-                              'verbosity to LEVEL (see --log-level)'),
-                        metavar=f"LOGGER{LOGGER_LEVEL_SEP}LEVEL")
+        ap.add_argument(
+            "--logger-level",
+            "-L",
+            action="append",
+            dest="logger_level",
+            help=(
+                "set LOGGER (see --list-loggers) "
+                "verbosity to LEVEL (see --log-level)"
+            ),
+            metavar=f"LOGGER{LOGGER_LEVEL_SEP}LEVEL",
+        )
 
     def main(self):
         ap = argparse.ArgumentParser(self.process_name, self.descr)
         self.define_options(ap)
         self.args = ap.parse_args()
 
-        # handle logging args FIRST!
+        ################ handle logging args FIRST!
         if self.args.list_loggers:
             for name in sorted(logging.root.manager.loggerDict):
                 print(name)
@@ -101,7 +128,7 @@ class Worker:
 
         level = getattr(self.args, LEVEL_DEST)
         if level is None:
-            level = 'INFO'
+            level = "INFO"
         else:
             level = level.upper()
 
@@ -114,10 +141,10 @@ class Worker:
                 # XXX check level.upper() in LEVELS?
                 logging.getLogger(logger_name).setLevel(level.upper())
 
-        # logging now enabled
+        ################ logging now enabled
 
         if not self.args.amqp_url:
-            logger.fatal('need RabbitMQ URL')
+            logger.fatal("need RabbitMQ URL")
             ap.exit(1)
         parameters = pika.connection.URLParameters(self.args.amqp_url)
 
@@ -127,24 +154,26 @@ class Worker:
         self.main_loop(self.connection, chan)
 
     def main_loop(self, conn: pika.BlockingConnection, chan):
-        raise PipelineException('must override main_loop!')
+        raise PipelineException("must override main_loop!")
 
     def encode_message(self, data):
         # XXX allow control over encoding?
         # see ConsumerWorker decode_message!!!
         encoded = pickle.dumps(data)
         # return (content-type, content-encoding, body)
-        return (MIME_TYPE_PICKLE, 'none', encoded)
+        return (MIME_TYPE_PICKLE, "none", encoded)
 
-    def send_message(self, chan, data, exchange=None,
-                     routing_key: str = DEFAULT_ROUTING_KEY):
+    def send_message(
+        self, chan, data, exchange=None, routing_key: str = DEFAULT_ROUTING_KEY
+    ):
         # XXX wrap, and include message history?
         content_type, content_encoding, encoded = self.encode_message(data)
         chan.basic_publish(
             exchange or self.output_exchange_name,
             routing_key,
-            encoded,            # body
-            pika.BasicProperties(content_type=content_type))
+            encoded,  # body
+            pika.BasicProperties(content_type=content_type),
+        )
 
     # for generators:
     def send_items(self, chan, items):
@@ -169,7 +198,7 @@ class ConsumerWorker(Worker):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.input_msgs: List[str] = []
+        self.input_msgs = []
         self.input_timer = None
 
     def main_loop(self, conn: pika.BlockingConnection, chan):
@@ -177,9 +206,9 @@ class ConsumerWorker(Worker):
         basic main_loop for a consumer.
         override for a producer!
         """
-        chan.tx_select()        # enter transaction mode
+        chan.tx_select()  # enter transaction mode
         # set "prefetch" limit so messages get distributed among workers:
-        chan.basic_qos(prefetch_count=self.INPUT_BATCH_MSGS*2)
+        chan.basic_qos(prefetch_count=self.INPUT_BATCH_MSGS * 2)
 
         arguments = {}
         # if batching multiple input messages,
@@ -187,9 +216,8 @@ class ConsumerWorker(Worker):
         if self.INPUT_BATCH_MSGS > 1 and self.INPUT_BATCH_SECS:
             # add a small grace period, convert to milliseconds
             ms = (self.INPUT_BATCH_SECS + 10) * 1000
-            arguments['x-consumer-timeout'] = ms
-        chan.basic_consume(self.input_queue_name, self.on_message,
-                           arguments=arguments)
+            arguments["x-consumer-timeout"] = ms
+        chan.basic_consume(self.input_queue_name, self.on_message, arguments=arguments)
 
         chan.start_consuming()
 
@@ -205,9 +233,9 @@ class ConsumerWorker(Worker):
         if len(self.input_msgs) < self.INPUT_BATCH_MSGS:
             # here only when batching multiple msgs
             if self.input_timer is None and self.INPUT_BATCH_SECS:
-                self.input_timer = \
-                    self.connection.call_later(self.INPUT_BATCH_SECS,
-                                               lambda: self._process_messages(chan))
+                self.input_timer = self.connection.call_later(
+                    self.INPUT_BATCH_SECS, lambda: self._process_messages(chan)
+                )
             return
 
         # here with full batch: start processing
@@ -230,7 +258,7 @@ class ConsumerWorker(Worker):
 
         self.end_of_batch(chan)
         self.flush_output(chan)  # generate message(s)
-        chan.tx_commit()         # commit messages
+        chan.tx_commit()  # commit messages
 
         # ack last message only:
         multiple = len(self.input_msgs) > 1
@@ -238,7 +266,7 @@ class ConsumerWorker(Worker):
         logger.debug("ack {tag} {multiple}")
         chan.basic_ack(delivery_tag=tag, multiple=multiple)
         self.input_msgs = []
-        sys.stdout.flush()      # for redirection, supervisord
+        sys.stdout.flush()  # for redirection, supervisord
 
     def decode_message(self, properties, body):
         # XXX look at content-type to determine how to decode
@@ -262,7 +290,7 @@ class ListConsumerWorker(ConsumerWorker):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.output_items: List[str] = []
+        self.output_items = []
 
     def process_message(self, chan, method, properties, decoded):
         results = []
@@ -288,8 +316,7 @@ class ListConsumerWorker(ConsumerWorker):
             self.output_items = []
 
     def process_item(self, item):
-        raise PipelineException(
-            "ListConsumerWorker.process_item not overridden")
+        raise PipelineException("ListConsumerWorker.process_item not overridden")
 
 
 def run(klass, *args, **kw):

@@ -1,0 +1,22 @@
+
+# PyCharm
+.idea
+
+# Python mode for VIM
+.ropeproject
+*/.ropeproject
+*/*/.ropeproject
+*/*/*/.ropeproject
+
+# Vim swap files
+*.swp
+*/*.swp
+*/*/*.swp
+*/*/*/*.swp
+
+# Ignore Docker build files
+Dockerfile
+.dockerignore
+
+# Ignore OS artifacts
+**/.DS_Store
