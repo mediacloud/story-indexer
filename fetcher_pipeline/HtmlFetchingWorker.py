@@ -52,12 +52,13 @@ class HtmlFetchingWorker(Worker):
                         help="For testing, how much of the rss to sample before batching. 0 means all",
                         default=0)
 
-    def spider_closed(self,chan,spider,reason):
+    def spider_closed(self, chan, spider, reason):
         fs = pipeline_filesystem_interface(self.args.date)
         dir_path = fs.content_path_str
         worker = Worker("elastic-gen", "publish folder to ES Queue")
         worker.send_items(chan, dir_path)
-        print(f"Spider {spider} finished with reason: {reason}, dir path: {dir_path}")
+        print(
+            f"Spider {spider} finished with reason: {reason}, dir path: {dir_path}")
 
     def main_loop(self, conn, chan):
         # Only the first job will actually generate the batches
@@ -82,13 +83,14 @@ class HtmlFetchingWorker(Worker):
         process = CrawlerProcess()
         spider = BatchSpider
 
-        dispatcher.connect(self.spider_closed(chan=chan, spider=spider,reason=None), signal=signals.spider_closed, weak=False)
+        dispatcher.connect(self.spider_closed(
+            chan=chan, spider=spider, reason=None), signal=signals.spider_closed, weak=False)
         # For now, just send the send_items method into the scrapy worker. There might be a better way down the line
-        
+
         # spider = BatchSpider(date=self.args.date,batch_index=self.args.batch_index, send_items=self.send_items, chan=chan)
         process.crawl(BatchSpider, date=self.args.date,
                       batch_index=self.args.batch_index, send_items=self.send_items, chan=chan)
-       
+
         # process.crawl(spider)
         process.start()
 

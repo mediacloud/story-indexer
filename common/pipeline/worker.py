@@ -57,7 +57,7 @@ class Worker:
         """
         # environment variable automagically set in Dokku:
 
-        default_url = os.environ.get("RABBITMQ_URL") # set by Dokku
+        default_url = os.environ.get("RABBITMQ_URL")  # set by Dokku
         # XXX give env var name instead of value?
         ap.add_argument(
             "--rabbitmq-url",
@@ -120,7 +120,7 @@ class Worker:
         self.define_options(ap)
         self.args = ap.parse_args()
 
-        ################ handle logging args FIRST!
+        # handle logging args FIRST!
         if self.args.list_loggers:
             for name in sorted(logging.root.manager.loggerDict):
                 print(name)
@@ -141,7 +141,7 @@ class Worker:
                 # XXX check level.upper() in LEVELS?
                 logging.getLogger(logger_name).setLevel(level.upper())
 
-        ################ logging now enabled
+        # logging now enabled
 
         if not self.args.amqp_url:
             logger.fatal("need RabbitMQ URL")
@@ -217,7 +217,8 @@ class ConsumerWorker(Worker):
             # add a small grace period, convert to milliseconds
             ms = (self.INPUT_BATCH_SECS + 10) * 1000
             arguments["x-consumer-timeout"] = ms
-        chan.basic_consume(self.input_queue_name, self.on_message, arguments=arguments)
+        chan.basic_consume(self.input_queue_name,
+                           self.on_message, arguments=arguments)
 
         chan.start_consuming()
 
@@ -316,7 +317,8 @@ class ListConsumerWorker(ConsumerWorker):
             self.output_items = []
 
     def process_item(self, item):
-        raise PipelineException("ListConsumerWorker.process_item not overridden")
+        raise PipelineException(
+            "ListConsumerWorker.process_item not overridden")
 
 
 def run(klass, *args, **kw):

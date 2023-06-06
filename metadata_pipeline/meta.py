@@ -15,6 +15,7 @@ from pipeline.worker import ListConsumerWorker, run
 
 logger = logging.getLogger(__name__)
 
+
 def load_html(item):
     # Check for saved headers (from recently downloaded HTML)
     # to determine original Content-Type???
@@ -79,5 +80,6 @@ class Meta(ListConsumerWorker):
 
         return None             # no output message generated for now
 
-if __name__ == '__main__':        
+
+if __name__ == '__main__':
     run(Meta, "meta", "metadata extractor worker")

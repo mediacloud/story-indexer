@@ -139,7 +139,8 @@ class Plumbing:
 
             if isinstance(elt, list):  # list of sub-pipes
                 if not prev_name:
-                    fatal(f"fanout must not be first element in pipeline: {elt}")
+                    fatal(
+                        f"fanout must not be first element in pipeline: {elt}")
                 saw_fanout = True
 
                 # create fanout output exchange for prev process:
@@ -271,7 +272,8 @@ def main():
 
             for b in p.bindings:
                 # XXX check b.dtype!!
-                chan.queue_bind(b.dest, b.source, routing_key=DEFAULT_ROUTING_KEY)
+                chan.queue_bind(b.dest, b.source,
+                                routing_key=DEFAULT_ROUTING_KEY)
 
         elif command == "delete":
             print("deleting...")

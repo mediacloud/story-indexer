@@ -45,12 +45,10 @@ class ESConsumer(ListConsumerWorker):
 
     def process_message(self, chan, method, properties, decoded):
         self.folders_path.append(decoded)
-    
 
     def end_of_batch(self, chan):
         documents = []
         folders_path = self.folders_path
-        print(f"Folder_path:{folders_path}")
         for folder_path in folders_path:
             for root, dirs, files in os.walk(folder_path):
                 for file_name in files:
@@ -59,14 +57,12 @@ class ESConsumer(ListConsumerWorker):
                         file_path = os.path.join(root, file_name)
                         content = self.read_file_content(file_path)
                         documents.append(content)
-            print(f"Documents: {documents}")
             self.ingest_to_elasticsearch(documents)
             self.send_to_archiving_queue(chan, folder_path)
 
         self.folders_path = []
         sys.stdout.flush()
         return None
-        
 
     def read_file_content(self, filepath):
         with open(filepath, "r") as file:
@@ -74,8 +70,9 @@ class ESConsumer(ListConsumerWorker):
         try:
             item = json.loads(content)
             url = item["rss_entry"]["link"]
-            pub_date_str= item.get("rss_entry").get("pub_date","")
-            pub_date = datetime.datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+            pub_date_str = item.get("rss_entry").get("pub_date", "")
+            pub_date = datetime.datetime.strptime(
+                pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
 
             if pub_date:
                 es_date = pub_date.strftime("%Y-%m-%dT%H:%M:%S")
@@ -95,7 +92,7 @@ class ESConsumer(ListConsumerWorker):
                     "snippet": None,
                     "surt_url": None,
                     "text_extraction_method": None,
-                    "title": item.get("rss_entry").get("title",""),
+                    "title": item.get("rss_entry").get("title", ""),
                     "tld": item.get("tld"),
                     "url": url,
                     "version": "1.0",
@@ -113,7 +110,8 @@ class ESConsumer(ListConsumerWorker):
 
     def create_elasticsearch_index(self, es_url):
         es = Elasticsearch(self.es_url)
-        es.indices.create(index=self.index_name, body=self.settings, ignore=400)
+        es.indices.create(index=self.index_name,
+                          body=self.settings, ignore=400)
 
     def send_to_archiving_queue(self, chan, items):
         worker = Worker("archiving-gen", "publish folder to arhchiving Queue")

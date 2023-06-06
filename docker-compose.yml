@@ -25,7 +25,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 2
- 
+
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
     ports:
@@ -41,7 +41,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-  
+
   es_pipeline:
     build:
       context: es_pipeline
@@ -60,11 +60,11 @@ services:
       elasticsearch:
         condition: service_healthy
     command: ["./run.sh"]
-  
+
   fetcher_pipeline:
     build:
       context: fetcher_pipeline
-      dockerfile: Dockerfile 
+      dockerfile: Dockerfile
     environment:
       - RABBITMQ_URL=amqp://rabbitmq:5672
     volumes:
@@ -78,7 +78,7 @@ services:
       elasticsearch:
         condition: service_healthy
     command: ["./run.sh"]
-    
+
 
 
 networks:
