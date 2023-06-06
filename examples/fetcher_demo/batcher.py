@@ -1,7 +1,7 @@
 import requests
 import xml.etree.ElementTree as ET
 from lxml import etree
-import mediacloud.api
+# import mediacloud.api
 from datetime import datetime, timedelta
 import gzip
 import random

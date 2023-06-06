@@ -193,7 +193,8 @@ def main():
     # XXX use rss-fetcher logargparse???
     ap = argparse.ArgumentParser("configure", "configure RabbitMQ queues")
 
-    amqp_url = os.environ.get('RABBITMQ_URL')
+    # amqp_url = os.environ.get('RABBITMQ_URL')
+    amqp_url = "amqp://localhost:5672"
     ap.add_argument('--rabbitmq-url', '-U', dest='amqp_url',
                     default=amqp_url,
                     help="set RabbitMQ URL (default {amqp_url}")

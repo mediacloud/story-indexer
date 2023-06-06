@@ -56,7 +56,8 @@ class Worker:
         subclass methods _SHOULD_ call super() method!!
         """
         # environment variable automagically set in Dokku:
-        default_url = os.environ.get('RABBITMQ_URL')  # set by Dokku
+        # default_url = os.environ.get('RABBITMQ_URL')  # set by Dokku
+        default_url = "amqp://localhost:5672"
         # XXX give env var name instead of value?
         ap.add_argument('--rabbitmq-url', '-U', dest='amqp_url',
                         default=default_url,
