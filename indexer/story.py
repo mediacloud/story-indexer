@@ -20,11 +20,8 @@ class StoryDatum:
     def __init__(self, exit_cb: Callable) -> None:
         self.exit_cb = exit_cb
 
-    def __enter__(
-        self,
-    ) -> (
-        Any
-    ):  # implimenting typing on return:self is really finicky, just doing this for now
+    # implimenting typing on return:self is really finicky, just doing Any for now
+    def __enter__(self) -> Any:
         return self
 
     def __setitem__(self, key: str, value: Any) -> None:
