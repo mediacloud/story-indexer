@@ -14,19 +14,35 @@ from typing import Any, Callable, Optional
 class StoryData:
     dirty: bool = False
     exit_cb: Callable = field(repr=False)
+    frozen: bool = field(default=False, repr=False)
+    internals: tuple = field(default=("dirty", "frozen"), repr=False)
+
+    def __post_init__(self) -> None:
+        # Freeze the thing only after initialization.
+        self.frozen = True
 
     # implementing typing on return:self is really finicky, just doing Any for now
     def __enter__(self) -> Any:
+        self.frozen = False
         return self
 
     def __setattr__(self, key: str, value: Any) -> None:
+        if self.frozen and key not in self.internals:
+            raise RuntimeError(
+                "Attempting write on frozen StoryData, outside of 'with'"
+            )
+
         if key not in [f.name for f in fields(self)]:
-            raise RuntimeError(f"Field {key} not defined for {self}")
+            raise RuntimeError(f"Field {key} not defined for {self.__class__.__name__}")
+
         self.__dict__[key] = value
-        if key != "dirty":  # lest we go in circles
+
+        # lest we go in circles
+        if key not in self.internals:
             self.dirty = True
 
     def __exit__(self, type: Any, value: Any, traceback: Any) -> None:
+        self.frozen = True
         self.exit_cb(self)
 
 
@@ -40,6 +56,7 @@ class RSSEntry(StoryData):
 
 class BaseStory:
     dirty: bool = False
+    # NB: this relies internally on a '_snake_case: CamelCase' convention.
     _rss_entry: RSSEntry
 
     def __init__(self) -> None:
@@ -56,10 +73,14 @@ class BaseStory:
             name = story_data.__class__.__name__
             private_name = camel_to_private_snake(name)
             setattr(self, private_name, story_data)
-            self.dump_metadata(story_data)
+            self.save_metadata(story_data)
 
-    def dump_metadata(self, story_data: StoryData) -> None:
+    def save_metadata(self, story_data: StoryData) -> None:
         # Do subclass-specific storage routines here- none needed in the base story however.
+        pass
+
+    def load_metadata(self, story_data: StoryData) -> None:
+        # Do subclass-specific lazy loading routines here.
         pass
 
     # For now just dump down the whole darn thing, why not.
@@ -106,3 +127,8 @@ if __name__ == "__main__":
 
     new_story: BaseStory = BaseStory.load(b)
     print(new_story.rss_entry().link)
+
+    try:
+        new_story.rss_entry().link = "www.google.com"
+    except RuntimeError:
+        print("Succesfully prevented out-of-context attr setting")
