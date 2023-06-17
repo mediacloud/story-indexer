@@ -9,6 +9,7 @@ class TestBaseStory:
         "title": "Rep. Payne, Jr. Opposes Republican Budget Bill to Benefit the Wealthy and Punish the Middle Class",
         "domain": "hudsontoday.com",
         "pub_date": "Sun, 30 Apr 2023 23:08:47 -0000",
+        "fetch_date": "2023-05-01",
     }
 
     def test_write_data(self) -> None:
