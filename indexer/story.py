@@ -1,4 +1,5 @@
 import pickle
+import re
 from dataclasses import dataclass, field, fields
 from typing import Any, Callable, Optional
 
@@ -22,11 +23,8 @@ class StoryData:
         if key not in [f.name for f in fields(self)]:
             raise RuntimeError(f"Field {key} not defined for {self}")
         self.__dict__[key] = value
-        if key != "dirty":
+        if key != "dirty":  # lest we go in circles
             self.dirty = True
-
-    # def __getitem__(self, attr: str) -> Any:
-    #    return getattr(self, attr)
 
     def __exit__(self, type: Any, value: Any, traceback: Any) -> None:
         self.exit_cb(self)
@@ -45,19 +43,22 @@ class BaseStory:
     _rss_entry: RSSEntry
 
     def __init__(self) -> None:
-        self._rss_entry: RSSEntry = RSSEntry(exit_cb=self.rss_entry_cb)
+        self._rss_entry: RSSEntry = RSSEntry(exit_cb=self.context_exit_cb)
 
-    # Will need the following two stubs for each property.
-    # Maybe a better way to manage this when something is
+    # Just one getter stub for each property
     def rss_entry(self) -> RSSEntry:
         return self._rss_entry
 
-    def rss_entry_cb(self, rss_entry: RSSEntry) -> None:
-        self.dirty = self.dirty or rss_entry.dirty
-        self._rss_entry = rss_entry
-        self.sync()
+    # One cb to rule them all
+    def context_exit_cb(self, story_data: StoryData) -> None:
+        if story_data.dirty:
+            self.dirty = story_data.dirty
+            name = story_data.__class__.__name__
+            private_name = camel_to_private_snake(name)
+            setattr(self, private_name, story_data)
+            self.dump_metadata(story_data)
 
-    def sync(self) -> None:
+    def dump_metadata(self, story_data: StoryData) -> None:
         # Do subclass-specific storage routines here- none needed in the base story however.
         pass
 
@@ -68,6 +69,13 @@ class BaseStory:
     @classmethod
     def load(cls, serialized: bytes) -> Any:
         return pickle.loads(serialized)
+
+
+# enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
+# https://stackoverflow.com/questions/1175208/elegant-python-function-to-convert-camelcase-to-snake-case
+def camel_to_private_snake(name: str) -> str:
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return "_" + re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
 
 
 if __name__ == "__main__":
