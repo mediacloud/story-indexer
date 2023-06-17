@@ -7,3 +7,4 @@ scrapy
 pre-commit
 types-requests
 mypy
+pytest

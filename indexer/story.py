@@ -8,20 +8,19 @@ from typing import Any, Callable, Optional
 # Subclassable with hooks for different storage backends
 
 
-# dataclass over typeddict so that we can instantiate it with a method
-# from the parent- keeps typing rules, added flexibility.
+# Core dataclass for each pipeline step, with context management
 @dataclass(kw_only=True)
 class StoryData:
     dirty: bool = False
     exit_cb: Callable = field(repr=False)
     frozen: bool = field(default=False, repr=False)
-    internals: tuple = field(default=("dirty", "frozen"), repr=False)
+    internals: tuple = field(default=("dirty", "frozen", "exit_cb"), repr=False)
 
+    # Freeze the thing only after initialization- otherwise we can't __init__ >.<
     def __post_init__(self) -> None:
-        # Freeze the thing only after initialization.
         self.frozen = True
 
-    # implementing typing on return:self is really finicky, just doing Any for now
+    # Implementing typing on return:self is really finicky, just doing Any for now
     def __enter__(self) -> Any:
         self.frozen = False
         return self
@@ -46,6 +45,7 @@ class StoryData:
         self.exit_cb(self)
 
 
+# Example
 @dataclass(kw_only=True)
 class RSSEntry(StoryData):
     link: Optional[str] = None
@@ -54,9 +54,10 @@ class RSSEntry(StoryData):
     pub_date: Optional[str] = None
 
 
+# Core Story Object
 class BaseStory:
     dirty: bool = False
-    # NB: this relies internally on a '_snake_case: CamelCase' convention.
+    # NB: this '_snake_case: CamelCase' convention is required
     _rss_entry: RSSEntry
 
     def __init__(self) -> None:
@@ -97,38 +98,3 @@ class BaseStory:
 def camel_to_private_snake(name: str) -> str:
     name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     return "_" + re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
-
-
-if __name__ == "__main__":
-    sample_rss = {
-        "link": "https://hudsontoday.com/stories/641939920-rep-payne-jr-opposes-republican-budget-bill-to-benefit-the-wealthy-and-punish-the-middle-class",
-        "title": "Rep. Payne, Jr. Opposes Republican Budget Bill to Benefit the Wealthy and Punish the Middle Class",
-        "domain": "hudsontoday.com",
-        "pub_date": "Sun, 30 Apr 2023 23:08:47 -0000",
-    }
-
-    story: BaseStory = BaseStory()
-    with story.rss_entry() as rss_entry:
-        print(rss_entry)
-        rss_entry.link = sample_rss["link"]
-        rss_entry.title = sample_rss["title"]
-        rss_entry.domain = sample_rss["domain"]
-        rss_entry.pub_date = sample_rss["pub_date"]
-        print(rss_entry.link)
-        print(rss_entry)
-        print(rss_entry.__class__.__name__)
-        try:
-            rss_entry.bad_attr = 0
-        except Exception:
-            print("Successfully prevented out of band attr setting")
-
-    print(story.rss_entry().link)
-    b = story.dump()
-
-    new_story: BaseStory = BaseStory.load(b)
-    print(new_story.rss_entry().link)
-
-    try:
-        new_story.rss_entry().link = "www.google.com"
-    except RuntimeError:
-        print("Succesfully prevented out-of-context attr setting")
