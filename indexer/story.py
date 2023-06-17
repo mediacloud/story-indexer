@@ -60,11 +60,13 @@ class BaseStory:
     # NB: this '_snake_case: CamelCase' convention is required
     _rss_entry: RSSEntry
 
-    def __init__(self) -> None:
-        self._rss_entry: RSSEntry = RSSEntry(exit_cb=self.context_exit_cb)
-
-    # Just one getter stub for each property
+    # Just one getter stub for each property. This pattern ensures that we don't have to redefine
+    # the getters on each subclass.
     def rss_entry(self) -> RSSEntry:
+        if not hasattr(self, "_rss_entry"):
+            uninitialized: RSSEntry = RSSEntry(exit_cb=self.context_exit_cb)
+            self.load_metadata(uninitialized)
+
         return self._rss_entry
 
     # One cb to rule them all
@@ -82,7 +84,10 @@ class BaseStory:
 
     def load_metadata(self, story_data: StoryData) -> None:
         # Do subclass-specific lazy loading routines here.
-        pass
+        # In the base case, we only ever return the same object we started with
+        name = story_data.__class__.__name__
+        private_name = camel_to_private_snake(name)
+        setattr(self, private_name, story_data)
 
     # For now just dump down the whole darn thing, why not.
     def dump(self) -> bytes:
@@ -98,3 +103,19 @@ class BaseStory:
 def camel_to_private_snake(name: str) -> str:
     name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     return "_" + re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+
+# A subclass which manages saving data to the disk, and uses the rss
+class DiskStory(BaseStory):
+    def save_metadata(self, story_data: StoryData) -> None:
+        pass
+
+    def load_data(self, story_data: StoryData) -> None:
+        pass
+
+    def dump(self) -> bytes:
+        return b""
+
+    @classmethod
+    def load(cls, serialized: bytes) -> Any:
+        pass
