@@ -3,7 +3,8 @@ import pickle
 import re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
-from typing import Any, Callable, Optional
+from pathlib import Path
+from typing import Any, Callable, Optional, Union, overload
 
 # A single story interface object, with typed data fields for each pipeline step,
 # context management on each of those step datum, and a serialization scheme.
@@ -57,8 +58,12 @@ class StoryData:
                 output[key] = getattr(self, key.name)
         return output
 
+    def load_dict(self, load_dict: dict) -> None:
+        for key, value in load_dict.items():
+            if key in fields(self):
+                setattr(self, key, value)
 
-# Example
+
 @dataclass(kw_only=True)
 class RSSEntry(StoryData):
     link: Optional[str] = None
@@ -66,6 +71,9 @@ class RSSEntry(StoryData):
     domain: Optional[str] = None
     pub_date: Optional[str] = None
     fetch_date: Optional[str] = None
+
+
+RSSENTRY = "_rss_entry"
 
 
 # Core Story Object
@@ -146,10 +154,11 @@ data/
 
 class DiskStory(BaseStory):
     filetypes: dict[str, str] = {
-        "rss_entry": "json",
+        "_rss_entry": "json",
     }
 
     directory: Optional[str]
+    path: Path
     data_root: str = "data/"
 
     def __init__(self, directory: Optional[str] = None):
@@ -161,48 +170,55 @@ class DiskStory(BaseStory):
         return link.replace("/", "\\")
 
     # Just approaching this with string comprehensions for now.
-    # def init_directory(self, rss_entry: StoryData) -> None:
-    #    fetch_date = rss_entry.fetch_date
-    #    if fetch_date is None:
-    #        raise RuntimeError("Cannot init directory if RSSEntry.fetch_date is None")
-    #    year, month, day = fetch_date.split("-")
+    # Using the dict interface to story_data so as to avoid typing issues.
+    def init_storage(self, story_data: StoryData) -> None:
+        data_dict: dict = story_data.as_dict()
+        fetch_date = data_dict["fetch_date"]
 
-    #    link = rss_entry.link
-    #    if link is None:
-    #        raise RuntimeError("Cannot init directory if RSSEntry.link is None")
+        if fetch_date is None:
+            raise RuntimeError("Cannot init directory if RSSEntry.fetch_date is None")
+        year, month, day = fetch_date.split("-")
 
-    # Need to do some pathlib schtuff to make sure the whole path actually exists
-    #    self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
+        link = data_dict["link"]
+        if link is None:
+            raise RuntimeError("Cannot init directory if RSSEntry.link is None")
+
+        self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
+        self.path = Path(f"{self.data_root}{self.directory}")
+        self.path.mkdir(parents=True)
 
     # There will always be an init path, and it is called after the first context exit.
     def save_metadata(self, story_data: StoryData) -> None:
-        name = camel_to_snake(story_data.__class__.__name__, private=False)
+        name = camel_to_snake(story_data.__class__.__name__)
 
         if self.directory is None:
-            if name != "rss_entry":
+            if name == RSSENTRY:
+                self.init_storage(story_data)
+            else:
                 raise RuntimeError(
-                    "Cannot save if directory is None, ex. if date/link info is missing."
+                    "Cannot save if directory information is uninitialized"
                 )
-            # else:
-            # self.init_directory(story_data)
 
         if self.filetypes[name] == "json":
-            path = f"{self.data_root}{self.directory}{name}.json"
-            with open(path, "w") as output_file:
+            filepath = self.path.joinpath(name + ".json")
+            with filepath.open() as output_file:
                 json.dump(story_data.as_dict(), output_file)
 
-    # Need some way to handle the first initialization...
     def load_metadata(self, story_data: StoryData) -> None:
-        if self.directory is None:
-            raise RuntimeError("Cannot load from uninitialized story")
+        name = camel_to_snake(story_data.__class__.__name__)
+        filepath = self.path.joinpath(f"{name}.json")
 
-        # name = camel_to_snake(story_data.__class__.__name__, private= False)
-        # if self.filetypes[name] == "json":
-        # path = f"{self.data_root}{self.directory}{name}.json"
-        # load the file
-        # marshall it into the story_data
-        # set the story data on self.
-        # Keep on keeping on
+        # if directory location is undefined, just set the provided empty story_data
+        if self.directory is None or not filepath.exists():
+            setattr(self, name, story_data)
+
+        if self.filetypes[name] == "json":
+            with filepath.open() as input_file:
+                content = json.load(input_file)
+                with story_data:
+                    story_data.load_dict(content)
+
+        setattr(self, name, story_data)
 
     def dump(self) -> bytes:
         if self.directory is not None:
