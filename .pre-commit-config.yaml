@@ -32,4 +32,3 @@ repos:
     hooks:
       - id: isort
         name: isort (python)
-        args: ["--profile", "black"]
