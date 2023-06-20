@@ -8,14 +8,19 @@ from typing import Any, Callable, Optional, Union, overload
 
 from indexer.path import DATAROOT
 
-# A single story interface object, with typed data fields for each pipeline step,
-# context management on each of those step datum, and a serialization scheme.
-# Subclassable with hooks for different storage backends
+"""
+A single story interface object, with typed data fields for each pipeline step,
+context management on each of those step datum, and a serialization scheme.
+Subclassable with hooks for different storage backends
+"""
 
 
-# Core dataclass for each pipeline step, with context management
 @dataclass(kw_only=True)
 class StoryData:
+    """
+    Core dataclass for each pipeline step, with context management
+    """
+
     dirty: bool = False
     exit_cb: Callable = field(repr=False)
     frozen: bool = field(default=False, repr=False)
@@ -82,7 +87,7 @@ RSSENTRY = "_rss_entry"
 
 @dataclass(kw_only=True)
 class RawHTML(StoryData):
-    html: Optional[str] = None
+    html: Optional[bytes] = None
 
 
 RAWHTML = "_raw_html"
@@ -119,8 +124,11 @@ CONTENTMETADATA = "_content_metadata"
 ###################################
 
 
-# Core Story Object
 class BaseStory:
+    """
+    Core story object, supporting serialization and context management for it's child StoryData entries.
+    """
+
     dirty: bool = False
     # NB: this '_snake_case: CamelCase' convention is required
     _rss_entry: RSSEntry
@@ -160,8 +168,11 @@ class BaseStory:
 
         return self._content_metadata
 
-    # One cb to rule them all
     def context_exit_cb(self, story_data: StoryData) -> None:
+        """
+        All story_data exit through here- manage saving the result of any edits to the object, and
+        pass on to subclass-specific storage routine
+        """
         if story_data.dirty:
             self.dirty = story_data.dirty
             name = story_data.__class__.__name__
@@ -170,22 +181,31 @@ class BaseStory:
             self.save_metadata(story_data)
 
     def save_metadata(self, story_data: StoryData) -> None:
-        # Do subclass-specific storage routines here- none needed in the base story however.
+        """
+        Do subclass-specific storage routines here- none needed in the base story however.
+        """
         pass
 
     def load_metadata(self, story_data: StoryData) -> None:
-        # Do subclass-specific lazy loading routines here.
-        # In the base case, we only ever set the object we started with.
+        """
+        Do subclass-specific lazy loading routines here.
+        In the base case, we only ever set the object we started with.
+        """
         name = story_data.__class__.__name__
         private_name = camel_to_snake(name)
         setattr(self, private_name, story_data)
 
-    # For now just dump down the whole darn thing, why not.
     def dump(self) -> bytes:
+        """
+        Returns a queue-appropriate serialization of the the object- in this case just pickle bytes
+        """
         return pickle.dumps(self)
 
     @classmethod
     def load(cls, serialized: bytes) -> Any:
+        """
+        Loads from a queue-appropriate serialization of the object.
+        """
         return pickle.loads(serialized)
 
 
@@ -222,6 +242,11 @@ data/
 
 
 class DiskStory(BaseStory):
+    """
+    The same interface as DiskStory, but this object manages saving fields to the filesystem, and serializes to
+    a filesystem path instead of a whole object.
+    """
+
     filetypes: dict[str, str] = {
         RSSENTRY: "json",
         RAWHTML: "html",
@@ -238,8 +263,8 @@ class DiskStory(BaseStory):
         if self.directory is not None:
             self.path = Path(f"{DATAROOT()}{self.directory}")
 
-    # The original way to handle this- there might be some way to further compress so we're always in the limit.
-    # Maybe surt is the way? Do we care if it's reversable?
+    # NB! This is a temporary fix- will need a shortening-hash for the final situation,
+    # as some urls are too long for the filesystem.
     def link_hash(self, link: str) -> str:
         return link.replace("/", "\\")
 
@@ -323,10 +348,16 @@ class DiskStory(BaseStory):
         setattr(self, name, story_data)
 
     def dump(self) -> bytes:
+        """
+        Returns a queue-appropriate serialization of the the object- in this case just the directory string
+        """
         if self.directory is not None:
             return str.encode(self.directory)
         raise RuntimeError("Cannot dump story with uninitialized directory")
 
     @classmethod
     def load(cls, serialized: bytes) -> Any:
+        """
+        Loads from a queue-appropriate serialization
+        """
         return DiskStory(serialized.decode("utf8"))

@@ -1,7 +1,7 @@
 import os
 
 
-def get_env_or_default(key: str, default: str) -> str:
+def _get_env_or_default(key: str, default: str) -> str:
     if key in os.environ:
         return os.environ[key]
     else:
@@ -9,4 +9,4 @@ def get_env_or_default(key: str, default: str) -> str:
 
 
 def DATAROOT() -> str:
-    return get_env_or_default("DATAROOT", "data/")
+    return _get_env_or_default("DATAROOT", "data/")

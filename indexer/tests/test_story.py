@@ -1,7 +1,7 @@
 import os
 import shutil
 from importlib import reload
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
@@ -106,8 +106,9 @@ class TestDiskStory:
     def set_env(self) -> None:
         os.environ["DATAROOT"] = TEST_DATA_DIR
 
+    # We want this to be cmdline toggleable probably.
     @pytest.fixture(scope="class", autouse=True)
-    def teardown_test_datadir(self) -> Generator:
+    def teardown_test_datadir(self, request: Any) -> Generator:
         yield
         shutil.rmtree(TEST_DATA_DIR)
 
