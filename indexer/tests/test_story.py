@@ -1,9 +1,10 @@
 import os
+import shutil
 from importlib import reload
+from typing import Generator
 
 import pytest
 
-import indexer  # so it can be reloaded
 from indexer.story import BaseStory, DiskStory
 
 TEST_DATA_DIR = "test_data/"
@@ -105,6 +106,11 @@ class TestDiskStory:
     def set_env(self) -> None:
         os.environ["DATAROOT"] = TEST_DATA_DIR
 
+    @pytest.fixture(scope="class", autouse=True)
+    def teardown_test_datadir(self) -> Generator:
+        yield
+        shutil.rmtree(TEST_DATA_DIR)
+
     def test_write_disk_story(self) -> None:
         story: DiskStory = DiskStory()
 
@@ -172,6 +178,9 @@ class TestDiskStory:
         with new_story.raw_html() as raw_html:
             raw_html.html = self.test_html
 
+        with new_story.http_metadata() as http_metadata:
+            http_metadata.response_code = self.test_http_metadata
+
         dumped_again: bytes = new_story.dump()
 
         third_story: DiskStory = DiskStory.load(dumped_again)
@@ -179,3 +188,5 @@ class TestDiskStory:
         assert rss_entry.link == self.sample_rss["link"]
         raw_html = third_story.raw_html()
         assert raw_html.html == self.test_html
+        http_meta = third_story.http_metadata()
+        assert http_meta.response_code == self.test_http_metadata
