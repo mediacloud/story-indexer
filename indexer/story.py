@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, overload
 
+from indexer.path import DATAROOT
+
 # A single story interface object, with typed data fields for each pipeline step,
 # context management on each of those step datum, and a serialization scheme.
 # Subclassable with hooks for different storage backends
@@ -50,17 +52,20 @@ class StoryData:
         self.frozen = True
         self.exit_cb(self)
 
-    # could just be a dict comprehension, but mypy is a tyrant! (with love)
     def as_dict(self) -> dict:
         output: dict = {}
         for key in fields(self):
             if key.name not in self.internals:
-                output[key] = getattr(self, key.name)
+                output[key.name] = getattr(self, key.name)
+
         return output
 
+    # As a convenience for loading in values from a storage interface.
     def load_dict(self, load_dict: dict) -> None:
+        print(fields(self))
+        field_names: list[str] = [f.name for f in fields(self)]
         for key, value in load_dict.items():
-            if key in fields(self):
+            if key in field_names:
                 setattr(self, key, value)
 
 
@@ -85,7 +90,7 @@ class BaseStory:
     # Just one getter stub for each property. This pattern ensures that we don't have to redefine
     # the getters on each subclass.
     def rss_entry(self) -> RSSEntry:
-        if not hasattr(self, "_rss_entry"):
+        if not hasattr(self, RSSENTRY):
             uninitialized: RSSEntry = RSSEntry(exit_cb=self.context_exit_cb)
             self.load_metadata(uninitialized)
 
@@ -159,20 +164,22 @@ class DiskStory(BaseStory):
 
     directory: Optional[str]
     path: Path
-    data_root: str = "data/"
+    loading: bool = False
 
     def __init__(self, directory: Optional[str] = None):
         self.directory = directory
+        if self.directory is not None:
+            self.path = Path(f"{DATAROOT}{self.directory}")
 
     # The original way to handle this- there might be some way to further compress so we're always in the limit.
     # Maybe surt is the way? Do we care if it's reversable?
     def link_hash(self, link: str) -> str:
         return link.replace("/", "\\")
 
-    # Just approaching this with string comprehensions for now.
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
         data_dict: dict = story_data.as_dict()
+        print(data_dict)
         fetch_date = data_dict["fetch_date"]
 
         if fetch_date is None:
@@ -184,40 +191,59 @@ class DiskStory(BaseStory):
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
         self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
-        self.path = Path(f"{self.data_root}{self.directory}")
-        self.path.mkdir(parents=True)
+        self.path = Path(f"{DATAROOT}{self.directory}")
+        self.path.mkdir(parents=True, exist_ok=True)
 
-    # There will always be an init path, and it is called after the first context exit.
     def save_metadata(self, story_data: StoryData) -> None:
+        # Short circuit any callbacks on load.
+        if self.loading:
+            return
+
         name = camel_to_snake(story_data.__class__.__name__)
 
         if self.directory is None:
+            # This is bad sweng, I know- but I think this is an acceptable shortcut in this context
+            # like, subclass-specific execution paths should live in the subclass itself, right?
+            # but idk how to avoid this without a silly amount of extra engineering.
+            # So 'init_storage' will accept StoryData but expect RSSEntry fields. Sorry.
             if name == RSSENTRY:
                 self.init_storage(story_data)
+
             else:
                 raise RuntimeError(
                     "Cannot save if directory information is uninitialized"
                 )
-
+        print(f"in save: {story_data}")
         if self.filetypes[name] == "json":
             filepath = self.path.joinpath(name + ".json")
-            with filepath.open() as output_file:
+            with filepath.open("w") as output_file:
                 json.dump(story_data.as_dict(), output_file)
 
     def load_metadata(self, story_data: StoryData) -> None:
         name = camel_to_snake(story_data.__class__.__name__)
-        filepath = self.path.joinpath(f"{name}.json")
 
         # if directory location is undefined, just set the provided empty story_data
-        if self.directory is None or not filepath.exists():
+        if self.directory is None:
             setattr(self, name, story_data)
+            return
 
+        filepath = self.path.joinpath(f"{name}.json")
+
+        if not filepath.exists():
+            setattr(self, name, story_data)
+            return
+
+        self.loading = True
         if self.filetypes[name] == "json":
-            with filepath.open() as input_file:
+            with filepath.open("r") as input_file:
                 content = json.load(input_file)
                 with story_data:
+                    print("In with:")
+                    print(f"pre: {story_data}")
                     story_data.load_dict(content)
+                    print(f"post: {story_data}")
 
+        self.loading = False
         setattr(self, name, story_data)
 
     def dump(self) -> bytes:
