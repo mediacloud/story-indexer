@@ -18,6 +18,8 @@ class TestBaseStory:
         "fetch_date": "2023-05-01",
     }
 
+    test_html = b"<html> <body> abracadabra </body> </html>"
+
     def test_write_data(self) -> None:
         story: BaseStory = BaseStory()
         with story.rss_entry() as rss_entry:
@@ -51,6 +53,29 @@ class TestBaseStory:
         assert rss_entry.domain == self.sample_rss["domain"]
         assert rss_entry.pub_date == self.sample_rss["pub_date"]
 
+    def test_multiple_fields(self) -> None:
+        story: BaseStory = BaseStory()
+        with story.rss_entry() as rss_entry:
+            rss_entry.link = self.sample_rss["link"]
+            rss_entry.title = self.sample_rss["title"]
+            rss_entry.domain = self.sample_rss["domain"]
+            rss_entry.pub_date = self.sample_rss["pub_date"]
+            rss_entry.fetch_date = self.sample_rss["fetch_date"]
+
+        dumped: bytes = story.dump()
+
+        new_story: BaseStory = BaseStory.load(dumped)
+        with new_story.raw_html() as raw_html:
+            raw_html.html = self.test_html
+
+        dumped_again: bytes = new_story.dump()
+
+        third_story: BaseStory = BaseStory.load(dumped_again)
+        rss_entry = third_story.rss_entry()
+        assert rss_entry.link == self.sample_rss["link"]
+        raw_html = third_story.raw_html()
+        assert raw_html.html == self.test_html
+
     def test_no_frozen_writes(self) -> None:
         with pytest.raises(RuntimeError):
             story: BaseStory = BaseStory()
@@ -74,6 +99,7 @@ class TestDiskStory:
     }
 
     test_html = b"<html> <body> abracadabra </body> </html>"
+    test_http_metadata = 200
 
     @pytest.fixture(scope="class", autouse=True)
     def set_env(self) -> None:
@@ -130,3 +156,26 @@ class TestDiskStory:
             story: DiskStory = DiskStory()
             with story.raw_html() as raw_html:
                 raw_html.html = self.test_html
+
+    def test_multiple_fields(self) -> None:
+        story: DiskStory = DiskStory()
+        with story.rss_entry() as rss_entry:
+            rss_entry.link = self.sample_rss["link"]
+            rss_entry.title = self.sample_rss["title"]
+            rss_entry.domain = self.sample_rss["domain"]
+            rss_entry.pub_date = self.sample_rss["pub_date"]
+            rss_entry.fetch_date = self.sample_rss["fetch_date"]
+
+        dumped: bytes = story.dump()
+
+        new_story: DiskStory = DiskStory.load(dumped)
+        with new_story.raw_html() as raw_html:
+            raw_html.html = self.test_html
+
+        dumped_again: bytes = new_story.dump()
+
+        third_story: DiskStory = DiskStory.load(dumped_again)
+        rss_entry = third_story.rss_entry()
+        assert rss_entry.link == self.sample_rss["link"]
+        raw_html = third_story.raw_html()
+        assert raw_html.html == self.test_html

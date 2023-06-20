@@ -272,7 +272,7 @@ class DiskStory(BaseStory):
             # This is bad sweng, I know- but I think this is an acceptable shortcut in this context
             # like, subclass-specific execution paths should live in the subclass itself, right?
             # but idk how to avoid this without a silly amount of extra engineering.
-            # So 'init_storage' will accept StoryData but expect RSSEntry fields. Sorry.
+            # So 'init_storage' will accept StoryData but expect RSSEntry fields.
             if name == RSSENTRY:
                 self.init_storage(story_data)
 
@@ -300,7 +300,7 @@ class DiskStory(BaseStory):
             setattr(self, name, story_data)
             return
 
-        filepath = self.path.joinpath(f"{name}.json")
+        filepath = self.path.joinpath(f"{name}.{self.filetypes[name]}")
 
         if not filepath.exists():
             setattr(self, name, story_data)
