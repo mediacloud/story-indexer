@@ -80,11 +80,53 @@ class RSSEntry(StoryData):
 RSSENTRY = "_rss_entry"
 
 
+@dataclass(kw_only=True)
+class RawHTML(StoryData):
+    html: Optional[str] = None
+
+
+RAWHTML = "_raw_html"
+
+
+@dataclass(kw_only=True)
+class HTTPMetadata(StoryData):
+    response_code: Optional[int] = None
+    # ... there's more here, figure out later
+
+
+HTTPMETADATA = "_http_metadata"
+
+
+@dataclass(kw_only=True)
+class ContentMetadata(StoryData):
+    original_url: Optional[str] = None
+    url: Optional[str] = None
+    normalized_url: Optional[str] = None
+    canonical_domain: Optional[str] = None
+    publication_date: Optional[str] = None
+    language: Optional[str] = None
+    full_language: Optional[str] = None
+    text_extraction: Optional[str] = None
+    article_title: Optional[str] = None
+    normalized_article_title: Optional[str] = None
+    text_content: Optional[str] = None
+    is_homepage: Optional[str] = None
+    is_shortened: Optional[str] = None
+
+
+CONTENTMETADATA = "_content_metadata"
+
+###################################
+
+
 # Core Story Object
 class BaseStory:
     dirty: bool = False
     # NB: this '_snake_case: CamelCase' convention is required
     _rss_entry: RSSEntry
+    _raw_html: RawHTML
+    _http_metadata: HTTPMetadata
+    _content_metadata: ContentMetadata
 
     # Just one getter stub for each property. This pattern ensures that we don't have to redefine
     # the getters on each subclass.
@@ -94,6 +136,29 @@ class BaseStory:
             self.load_metadata(uninitialized)
 
         return self._rss_entry
+
+    def raw_html(self) -> RawHTML:
+        if not hasattr(self, RAWHTML):
+            uninitialized: RawHTML = RawHTML(exit_cb=self.context_exit_cb)
+            self.load_metadata(uninitialized)
+
+        return self._raw_html
+
+    def http_metadata(self) -> HTTPMetadata:
+        if not hasattr(self, HTTPMETADATA):
+            uninitialized: HTTPMetadata = HTTPMetadata(exit_cb=self.context_exit_cb)
+            self.load_metadata(uninitialized)
+
+        return self._http_metadata
+
+    def content_metadata(self) -> ContentMetadata:
+        if not hasattr(self, CONTENTMETADATA):
+            uninitialized: ContentMetadata = ContentMetadata(
+                exit_cb=self.context_exit_cb
+            )
+            self.load_metadata(uninitialized)
+
+        return self._content_metadata
 
     # One cb to rule them all
     def context_exit_cb(self, story_data: StoryData) -> None:
@@ -158,7 +223,10 @@ data/
 
 class DiskStory(BaseStory):
     filetypes: dict[str, str] = {
-        "_rss_entry": "json",
+        RSSENTRY: "json",
+        RAWHTML: "html",
+        HTTPMETADATA: "json",
+        CONTENTMETADATA: "json",
     }
 
     directory: Optional[str]
@@ -181,6 +249,7 @@ class DiskStory(BaseStory):
         fetch_date = data_dict["fetch_date"]
 
         if fetch_date is None:
+            # test case
             raise RuntimeError("Cannot init directory if RSSEntry.fetch_date is None")
         year, month, day = fetch_date.split("-")
 
@@ -208,6 +277,7 @@ class DiskStory(BaseStory):
                 self.init_storage(story_data)
 
             else:
+                # test case
                 raise RuntimeError(
                     "Cannot save if directory information is uninitialized"
                 )
@@ -216,6 +286,11 @@ class DiskStory(BaseStory):
             filepath = self.path.joinpath(name + ".json")
             with filepath.open("w") as output_file:
                 json.dump(story_data.as_dict(), output_file)
+
+        # special case for html
+        if self.filetypes[name] == "html":
+            filepath = self.path.joinpath(name + ".html")
+            filepath.write_bytes(story_data.as_dict()["html"])
 
     def load_metadata(self, story_data: StoryData) -> None:
         name = camel_to_snake(story_data.__class__.__name__)
@@ -232,11 +307,17 @@ class DiskStory(BaseStory):
             return
 
         self.loading = True
+
         if self.filetypes[name] == "json":
             with filepath.open("r") as input_file:
                 content = json.load(input_file)
                 with story_data:
                     story_data.load_dict(content)
+
+        if self.filetypes[name] == "html":
+            content = filepath.read_bytes()
+            with story_data:
+                story_data.html = content
 
         self.loading = False
         setattr(self, name, story_data)

@@ -73,6 +73,8 @@ class TestDiskStory:
         "fetch_date": "2023-05-01",
     }
 
+    test_html = b"<html> <body> abracadabra </body> </html>"
+
     @pytest.fixture(scope="class", autouse=True)
     def set_env(self) -> None:
         os.environ["DATAROOT"] = TEST_DATA_DIR
@@ -111,3 +113,20 @@ class TestDiskStory:
         assert rss_entry.title == self.sample_rss["title"]
         assert rss_entry.domain == self.sample_rss["domain"]
         assert rss_entry.pub_date == self.sample_rss["pub_date"]
+
+    def test_no_init_date(self) -> None:
+        # This test fails because diskstory requires a 'fetch_date' to save
+        with pytest.raises(RuntimeError):
+            story: DiskStory = DiskStory()
+            with story.rss_entry() as rss_entry:
+                rss_entry.link = self.sample_rss["link"]
+                rss_entry.title = self.sample_rss["title"]
+                rss_entry.domain = self.sample_rss["domain"]
+                rss_entry.pub_date = self.sample_rss["pub_date"]
+            rss_entry = story.rss_entry()
+
+    def test_no_rss(self) -> None:
+        with pytest.raises(RuntimeError):
+            story: DiskStory = DiskStory()
+            with story.raw_html() as raw_html:
+                raw_html.html = self.test_html
