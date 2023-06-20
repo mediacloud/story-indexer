@@ -8,4 +8,5 @@ def get_env_or_default(key: str, default: str) -> str:
         return default
 
 
-DATAROOT = get_env_or_default("DATAROOT", "data/")
+def DATAROOT() -> str:
+    return get_env_or_default("DATAROOT", "data/")

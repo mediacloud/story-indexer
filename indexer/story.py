@@ -62,7 +62,6 @@ class StoryData:
 
     # As a convenience for loading in values from a storage interface.
     def load_dict(self, load_dict: dict) -> None:
-        print(fields(self))
         field_names: list[str] = [f.name for f in fields(self)]
         for key, value in load_dict.items():
             if key in field_names:
@@ -169,7 +168,7 @@ class DiskStory(BaseStory):
     def __init__(self, directory: Optional[str] = None):
         self.directory = directory
         if self.directory is not None:
-            self.path = Path(f"{DATAROOT}{self.directory}")
+            self.path = Path(f"{DATAROOT()}{self.directory}")
 
     # The original way to handle this- there might be some way to further compress so we're always in the limit.
     # Maybe surt is the way? Do we care if it's reversable?
@@ -179,7 +178,6 @@ class DiskStory(BaseStory):
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
         data_dict: dict = story_data.as_dict()
-        print(data_dict)
         fetch_date = data_dict["fetch_date"]
 
         if fetch_date is None:
@@ -191,7 +189,7 @@ class DiskStory(BaseStory):
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
         self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
-        self.path = Path(f"{DATAROOT}{self.directory}")
+        self.path = Path(f"{DATAROOT()}{self.directory}")
         self.path.mkdir(parents=True, exist_ok=True)
 
     def save_metadata(self, story_data: StoryData) -> None:
@@ -213,7 +211,7 @@ class DiskStory(BaseStory):
                 raise RuntimeError(
                     "Cannot save if directory information is uninitialized"
                 )
-        print(f"in save: {story_data}")
+
         if self.filetypes[name] == "json":
             filepath = self.path.joinpath(name + ".json")
             with filepath.open("w") as output_file:
@@ -238,10 +236,7 @@ class DiskStory(BaseStory):
             with filepath.open("r") as input_file:
                 content = json.load(input_file)
                 with story_data:
-                    print("In with:")
-                    print(f"pre: {story_data}")
                     story_data.load_dict(content)
-                    print(f"post: {story_data}")
 
         self.loading = False
         setattr(self, name, story_data)

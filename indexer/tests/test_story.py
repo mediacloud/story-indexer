@@ -1,16 +1,12 @@
 import os
+from importlib import reload
 
 import pytest
 
+import indexer  # so it can be reloaded
 from indexer.story import BaseStory, DiskStory
 
 TEST_DATA_DIR = "test_data/"
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_env() -> None:
-    print("Is this thing on?")
-    os.environ["DATAROOT"] = TEST_DATA_DIR
 
 
 class TestBaseStory:
@@ -77,8 +73,13 @@ class TestDiskStory:
         "fetch_date": "2023-05-01",
     }
 
+    @pytest.fixture(scope="class", autouse=True)
+    def set_env(self) -> None:
+        os.environ["DATAROOT"] = TEST_DATA_DIR
+
     def test_write_disk_story(self) -> None:
         story: DiskStory = DiskStory()
+
         with story.rss_entry() as rss_entry:
             rss_entry.link = self.sample_rss["link"]
             rss_entry.title = self.sample_rss["title"]
@@ -102,7 +103,7 @@ class TestDiskStory:
             rss_entry.fetch_date = self.sample_rss["fetch_date"]
 
         dumped: bytes = story.dump()
-        print(dumped)
+
         new_story: DiskStory = DiskStory.load(dumped)
 
         rss_entry = new_story.rss_entry()
