@@ -9,3 +9,4 @@ pre-commit
 types-pika
 types-requests
 mypy
+pytest
