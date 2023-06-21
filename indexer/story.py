@@ -24,8 +24,9 @@ class StoryData:
     dirty: bool = False
     exit_cb: Callable = field(repr=False)
     frozen: bool = field(default=False, repr=False)
+    content_type: str = field(default="json", repr=False)
     internals: tuple = field(
-        default=("dirty", "frozen", "exit_cb", "internals"), repr=False
+        default=("dirty", "frozen", "exit_cb", "content_type", "internals"), repr=False
     )
 
     # Freeze the thing only after initialization- otherwise we can't __init__ >.<
@@ -82,15 +83,16 @@ class RSSEntry(StoryData):
     fetch_date: Optional[str] = None
 
 
-RSSENTRY = "_rss_entry"
+RSS_ENTRY = "_rss_entry"
 
 
 @dataclass(kw_only=True)
 class RawHTML(StoryData):
+    content_type: str = "html"
     html: Optional[bytes] = None
 
 
-RAWHTML = "_raw_html"
+RAW_HTML = "_raw_html"
 
 
 @dataclass(kw_only=True)
@@ -99,7 +101,7 @@ class HTTPMetadata(StoryData):
     # ... there's more here, figure out later
 
 
-HTTPMETADATA = "_http_metadata"
+HTTP_METADATA = "_http_metadata"
 
 
 @dataclass(kw_only=True)
@@ -119,7 +121,7 @@ class ContentMetadata(StoryData):
     is_shortened: Optional[str] = None
 
 
-CONTENTMETADATA = "_content_metadata"
+CONTENT_METADATA = "_content_metadata"
 
 ###################################
 
@@ -139,28 +141,28 @@ class BaseStory:
     # Just one getter stub for each property. This pattern ensures that we don't have to redefine
     # the getters on each subclass.
     def rss_entry(self) -> RSSEntry:
-        if not hasattr(self, RSSENTRY):
+        if not hasattr(self, RSS_ENTRY):
             uninitialized: RSSEntry = RSSEntry(exit_cb=self.context_exit_cb)
             self.load_metadata(uninitialized)
 
         return self._rss_entry
 
     def raw_html(self) -> RawHTML:
-        if not hasattr(self, RAWHTML):
+        if not hasattr(self, RAW_HTML):
             uninitialized: RawHTML = RawHTML(exit_cb=self.context_exit_cb)
             self.load_metadata(uninitialized)
 
         return self._raw_html
 
     def http_metadata(self) -> HTTPMetadata:
-        if not hasattr(self, HTTPMETADATA):
+        if not hasattr(self, HTTP_METADATA):
             uninitialized: HTTPMetadata = HTTPMetadata(exit_cb=self.context_exit_cb)
             self.load_metadata(uninitialized)
 
         return self._http_metadata
 
     def content_metadata(self) -> ContentMetadata:
-        if not hasattr(self, CONTENTMETADATA):
+        if not hasattr(self, CONTENT_METADATA):
             uninitialized: ContentMetadata = ContentMetadata(
                 exit_cb=self.context_exit_cb
             )
@@ -226,10 +228,10 @@ def camel_to_snake(name: str, private: bool = True) -> str:
 data/
 - {date}/
 -- {link_hash}/
---- rss_entry.json
---- original_html.html
---- http_metadata.json
---- content_metadata.json
+--- _rss_entry.json
+--- _raw_html.html
+--- _http_metadata.json
+--- _content_metadata.json
 -- ...
 """
 # That way the serialized bytestring can just be b'{date}/{link_hash}'
@@ -246,13 +248,6 @@ class DiskStory(BaseStory):
     The same interface as DiskStory, but this object manages saving fields to the filesystem, and serializes to
     a filesystem path instead of a whole object.
     """
-
-    filetypes: dict[str, str] = {
-        RSSENTRY: "json",
-        RAWHTML: "html",
-        HTTPMETADATA: "json",
-        CONTENTMETADATA: "json",
-    }
 
     directory: Optional[str]
     path: Path
@@ -298,7 +293,7 @@ class DiskStory(BaseStory):
             # like, subclass-specific execution paths should live in the subclass itself, right?
             # but idk how to avoid this without a silly amount of extra engineering.
             # So 'init_storage' will accept StoryData but expect RSSEntry fields.
-            if name == RSSENTRY:
+            if name == RSS_ENTRY:
                 self.init_storage(story_data)
 
             else:
@@ -307,13 +302,13 @@ class DiskStory(BaseStory):
                     "Cannot save if directory information is uninitialized"
                 )
 
-        if self.filetypes[name] == "json":
+        if story_data.content_type == "json":
             filepath = self.path.joinpath(name + ".json")
             with filepath.open("w") as output_file:
                 json.dump(story_data.as_dict(), output_file)
 
         # special case for html
-        if self.filetypes[name] == "html":
+        if story_data.content_type == "html":
             filepath = self.path.joinpath(name + ".html")
             filepath.write_bytes(story_data.as_dict()["html"])
 
@@ -325,7 +320,7 @@ class DiskStory(BaseStory):
             setattr(self, name, story_data)
             return
 
-        filepath = self.path.joinpath(f"{name}.{self.filetypes[name]}")
+        filepath = self.path.joinpath(f"{name}.{story_data.content_type}")
 
         if not filepath.exists():
             setattr(self, name, story_data)
@@ -333,13 +328,13 @@ class DiskStory(BaseStory):
 
         self.loading = True
 
-        if self.filetypes[name] == "json":
+        if story_data.content_type == "json":
             with filepath.open("r") as input_file:
                 content = json.load(input_file)
                 with story_data:
                     story_data.load_dict(content)
 
-        if self.filetypes[name] == "html":
+        if story_data.content_type == "html":
             content = filepath.read_bytes()
             with story_data:
                 story_data.html = content
