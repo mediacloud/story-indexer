@@ -117,8 +117,8 @@ class ContentMetadata(StoryData):
     article_title: Optional[str] = None
     normalized_article_title: Optional[str] = None
     text_content: Optional[str] = None
-    is_homepage: Optional[str] = None
-    is_shortened: Optional[str] = None
+    is_homepage: Optional[bool] = None
+    is_shortened: Optional[bool] = None
 
 
 CONTENT_METADATA = "_content_metadata"
