@@ -15,6 +15,18 @@ Subclassable with hooks for different storage backends
 """
 
 
+# enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
+# https://stackoverflow.com/questions/1175208/elegant-python-function-to-convert-camelcase-to-snake-case
+def class_to_member_name(original_class: Callable, private: bool = True) -> str:
+    name = original_class.__name__
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    if private:
+        prefix = "_"
+    else:
+        prefix = ""
+    return prefix + re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+
 @dataclass(kw_only=True)
 class StoryData:
     """
@@ -24,14 +36,24 @@ class StoryData:
     dirty: bool = False
     exit_cb: Callable = field(repr=False)
     frozen: bool = field(default=False, repr=False)
-    content_type: str = field(default="json", repr=False)
+    CONTENT_TYPE: str = field(default="json", repr=False)
+    MEMBER_NAME: str = field(default="", repr=False)
     internals: tuple = field(
-        default=("dirty", "frozen", "exit_cb", "content_type", "internals"), repr=False
+        default=(
+            "internals",
+            "dirty",
+            "frozen",
+            "exit_cb",
+            "CONTENT_TYPE",
+            "MEMBER_NAME",
+        ),
+        repr=False,
     )
 
     # Freeze the thing only after initialization- otherwise we can't __init__ >.<
     # Convenient that dataclasses have this functionality, though.
     def __post_init__(self) -> None:
+        self.MEMBER_NAME = class_to_member_name(self.__class__)
         self.frozen = True
 
     # Implementing typing on return:self is really finicky, just doing Any for now
@@ -83,16 +105,16 @@ class RSSEntry(StoryData):
     fetch_date: Optional[str] = None
 
 
-RSS_ENTRY = "_rss_entry"
+RSS_ENTRY = class_to_member_name(RSSEntry)
 
 
 @dataclass(kw_only=True)
 class RawHTML(StoryData):
-    content_type: str = "html"
+    CONTENT_TYPE: str = "html"
     html: Optional[bytes] = None
 
 
-RAW_HTML = "_raw_html"
+RAW_HTML = class_to_member_name(RawHTML)
 
 
 @dataclass(kw_only=True)
@@ -101,7 +123,7 @@ class HTTPMetadata(StoryData):
     # ... there's more here, figure out later
 
 
-HTTP_METADATA = "_http_metadata"
+HTTP_METADATA = class_to_member_name(HTTPMetadata)
 
 
 @dataclass(kw_only=True)
@@ -121,7 +143,7 @@ class ContentMetadata(StoryData):
     is_shortened: Optional[bool] = None
 
 
-CONTENT_METADATA = "_content_metadata"
+CONTENT_METADATA = class_to_member_name(ContentMetadata)
 
 ###################################
 
@@ -177,9 +199,7 @@ class BaseStory:
         """
         if story_data.dirty:
             self.dirty = story_data.dirty
-            name = story_data.__class__.__name__
-            private_name = camel_to_snake(name)
-            setattr(self, private_name, story_data)
+            setattr(self, story_data.MEMBER_NAME, story_data)
             self.save_metadata(story_data)
 
     def save_metadata(self, story_data: StoryData) -> None:
@@ -193,9 +213,7 @@ class BaseStory:
         Do subclass-specific lazy loading routines here.
         In the base case, we only ever set the object we started with.
         """
-        name = story_data.__class__.__name__
-        private_name = camel_to_snake(name)
-        setattr(self, private_name, story_data)
+        setattr(self, story_data.MEMBER_NAME, story_data)
 
     def dump(self) -> bytes:
         """
@@ -209,17 +227,6 @@ class BaseStory:
         Loads from a queue-appropriate serialization of the object.
         """
         return pickle.loads(serialized)
-
-
-# enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
-# https://stackoverflow.com/questions/1175208/elegant-python-function-to-convert-camelcase-to-snake-case
-def camel_to_snake(name: str, private: bool = True) -> str:
-    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    if private:
-        prefix = "_"
-    else:
-        prefix = ""
-    return prefix + re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
 
 
 # A subclass which manages saving data to the disk
@@ -286,7 +293,7 @@ class DiskStory(BaseStory):
         if self.loading:
             return
 
-        name = camel_to_snake(story_data.__class__.__name__)
+        name = story_data.MEMBER_NAME
 
         if self.directory is None:
             # This is bad sweng, I know- but I think this is an acceptable shortcut in this context
@@ -302,25 +309,25 @@ class DiskStory(BaseStory):
                     "Cannot save if directory information is uninitialized"
                 )
 
-        if story_data.content_type == "json":
+        if story_data.CONTENT_TYPE == "json":
             filepath = self.path.joinpath(name + ".json")
             with filepath.open("w") as output_file:
                 json.dump(story_data.as_dict(), output_file)
 
         # special case for html
-        if story_data.content_type == "html":
+        if story_data.CONTENT_TYPE == "html":
             filepath = self.path.joinpath(name + ".html")
             filepath.write_bytes(story_data.as_dict()["html"])
 
     def load_metadata(self, story_data: StoryData) -> None:
-        name = camel_to_snake(story_data.__class__.__name__)
+        name = story_data.MEMBER_NAME
 
         # if directory location is undefined, just set the provided empty story_data
         if self.directory is None:
             setattr(self, name, story_data)
             return
 
-        filepath = self.path.joinpath(f"{name}.{story_data.content_type}")
+        filepath = self.path.joinpath(f"{name}.{story_data.CONTENT_TYPE}")
 
         if not filepath.exists():
             setattr(self, name, story_data)
@@ -328,13 +335,13 @@ class DiskStory(BaseStory):
 
         self.loading = True
 
-        if story_data.content_type == "json":
+        if story_data.CONTENT_TYPE == "json":
             with filepath.open("r") as input_file:
                 content = json.load(input_file)
                 with story_data:
                     story_data.load_dict(content)
 
-        if story_data.content_type == "html":
+        if story_data.CONTENT_TYPE == "html":
             content = filepath.read_bytes()
             with story_data:
                 story_data.html = content
