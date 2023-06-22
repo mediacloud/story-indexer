@@ -42,7 +42,7 @@ class Parser(StoryWorker):
             with story.content_metadata() as cmd:
                 # XXX assumes identical item names!!
                 #       could copy items individually with type checking
-                #       mcmetadata returned TypedDict?
+                #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
                     setattr(cmd, key, val)
         # XXX else quarantine?!
