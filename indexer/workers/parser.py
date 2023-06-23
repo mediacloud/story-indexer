@@ -29,9 +29,9 @@ class Parser(StoryWorker):
 
         link = rss.link
         if link:
+            # XXX want Story method to retrieve unicode string!!
             if raw.html:
-                # XXX WRONG!! should honor charset info in HTTP Content-Type header!
-                html = raw.html.decode("utf-8")
+                html = raw.html.decode("utf-8")  # XXX wrong!
             else:
                 html = ""  # XXX error?
 
