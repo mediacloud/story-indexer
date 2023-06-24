@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, overload
+from uuid import NAMESPACE_URL, UUID, uuid3
 
 from indexer.path import DATAROOT
 
@@ -265,10 +266,8 @@ class DiskStory(BaseStory):
         if self.directory is not None:
             self.path = Path(f"{DATAROOT()}{self.directory}")
 
-    # NB! This is a temporary fix- will need a shortening-hash for the final situation,
-    # as some urls are too long for the filesystem.
-    def link_hash(self, link: str) -> str:
-        return link.replace("/", "\\")
+    def link_hash(self, link: str) -> UUID:
+        return uuid3(NAMESPACE_URL, link)
 
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
@@ -284,7 +283,7 @@ class DiskStory(BaseStory):
         if link is None:
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
-        self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
+        self.directory = f"{year}/{month}/{day}/{self.link_hash(link).hex}/"
         self.path = Path(f"{DATAROOT()}{self.directory}")
         self.path.mkdir(parents=True, exist_ok=True)
 
