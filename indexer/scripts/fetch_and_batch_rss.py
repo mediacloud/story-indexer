@@ -130,7 +130,6 @@ class RSS_Batcher(App):
         # fetch_date
         ap.add_argument(
             "--fetch-date",
-            action="store_const",
             dest="fetch_date",
             help="Date (in YYYY-MM-DD) to fetch",
         )
@@ -138,8 +137,8 @@ class RSS_Batcher(App):
         # sample_size
         ap.add_argument(
             "--sample-size",
-            action="store_const",
             dest="sample_size",
+            type=int,
             default=None,
             help="Number of stories to batch. Default (None) is 'all of them'",
         )
@@ -148,8 +147,8 @@ class RSS_Batcher(App):
         num_batches_default = 20
         ap.add_argument(
             "--num-batches",
-            action="store_const",
             dest="num_batches",
+            type=int,
             default=num_batches_default,
             help=f"Number of batches to break stories into (default {num_batches_default})",
         )
@@ -159,7 +158,8 @@ class RSS_Batcher(App):
             "--init-stories",
             dest="init_stories",
             action=argparse.BooleanOptionalAction,
-            help="Toggle initialization of story objects- if on, this script initializes the data directory for each story and only passes serialized story content in the batchfile. If off, batchfiles contain the whole rss_entry content",
+            default=True,
+            help="Toggle initialization of story objects- if on (by default), this script initializes the data directory for each story and only passes serialized story content in the batchfile. If off, batchfiles contain the whole rss_entry content",
         )
 
     def process_args(self) -> None:
@@ -213,3 +213,11 @@ class RSS_Batcher(App):
             writer.writeheader()
             for domain, index in batch_map.items():
                 writer.writerow({"domain": domain, "batch_index": index})
+
+
+if __name__ == "__main__":
+    app = RSS_Batcher(
+        "RSS_Batcher",
+        "Fetches RSS from S3, breaks into batches, and (optionally) sets up disk storage for future pipeline steps",
+    )
+    app.main()

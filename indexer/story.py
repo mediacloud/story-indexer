@@ -285,7 +285,7 @@ class DiskStory(BaseStory):
 
         data_path = DATAPATH_BY_DATE(fetch_date)
         self.directory = f"{data_path}{self.link_hash(link).hex}/"
-        self.path = Path(f"{DATAROOT()}{self.directory}")
+        self.path = Path(self.directory)
         self.path.mkdir(parents=True, exist_ok=True)
 
     def save_metadata(self, story_data: StoryData) -> None:
