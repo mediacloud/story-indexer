@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Union, overload
 from uuid import NAMESPACE_URL, UUID, uuid3
 
-from indexer.path import DATAROOT
+from indexer.path import DATAPATH_BY_DATE, DATAROOT
 
 """
 A single story interface object, with typed data fields for each pipeline step,
@@ -283,7 +283,8 @@ class DiskStory(BaseStory):
         if link is None:
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
-        self.directory = f"{year}/{month}/{day}/{self.link_hash(link).hex}/"
+        data_path = DATAPATH_BY_DATE(fetch_date)
+        self.directory = f"{data_path}{self.link_hash(link).hex}/"
         self.path = Path(f"{DATAROOT()}{self.directory}")
         self.path.mkdir(parents=True, exist_ok=True)
 
