@@ -4,4 +4,4 @@ supervisord.log
 venv/*
 __pycache__
 env/*
-.env
+.env*~
