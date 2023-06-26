@@ -18,6 +18,7 @@ from pika.spec import Basic
 
 # story-indexer
 from indexer.app import App, AppException
+from indexer.story import BaseStory
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,9 @@ class InputMessage(NamedTuple):
     body: bytes
 
 
-class Worker(App):
+class QApp(App):
     """
-    Base class for AMQP/pika based pipeline Worker.
+    Base class for AMQP/pika based App.
     Producers (processes that have no input queue)
     should derive from this class
     """
@@ -46,7 +47,6 @@ class Worker(App):
         super().__init__(process_name, descr)
 
         self.connection: Optional[BlockingConnection] = None
-        self.chan: Optional[BlockingChannel] = None
 
         # script/configure.py creates queues/exchanges with process-{in,out}
         # names based on pipeline.json file:
@@ -64,7 +64,7 @@ class Worker(App):
             "-U",
             dest="amqp_url",
             default=default_url,
-            help="set RabbitMQ URL (default {default_url}",
+            help="override RABBITMQ_URL ({default_url}",
         )
 
     def process_args(self) -> None:
@@ -73,47 +73,23 @@ class Worker(App):
         assert self.args
         url = self.args.amqp_url
         if not url:
-            logger.fatal("need RabbitMQ URL")
+            logger.fatal("need --rabbitmq-url or RABBITMQ_URL")
             sys.exit(1)
         self.connection = BlockingConnection(URLParameters(url))
         assert self.connection
-        self.chan = self.connection.channel()
         logger.info(f"connected to {url}")
-
-    def encode_message(self, data: Any) -> Tuple[str, str, bytes]:
-        # XXX allow control over encoding?
-        # see ConsumerWorker decode_message!!!
-        encoded = pickle.dumps(data)
-        # return (content-type, content-encoding, body)
-        return (MIME_TYPE_PICKLE, "none", encoded)
 
     def send_message(
         self,
         chan: BlockingChannel,
-        data: Any,
+        data: bytes,
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
     ) -> None:
-        # XXX wrap, and include message history?
-        content_type, content_encoding, encoded = self.encode_message(data)
-        chan.basic_publish(
-            exchange or self.output_exchange_name,
-            routing_key,
-            encoded,  # body
-            BasicProperties(content_type=content_type),
-        )
-
-    # for generators:
-    def send_items(self, chan: BlockingChannel, items: List[Any]) -> None:
-        logger.debug(f"send_items {len(items)}")
-        # XXX split up into multiple msgs as needed!
-        # XXX per-process (OUTPUT_BATCH) for max items/msg?????
-        # XXX take dest exchange??
-        # XXX perform wrapping?
-        self.send_message(chan, items)
+        chan.basic_publish(exchange or self.output_exchange_name, routing_key, data)
 
 
-class ConsumerWorker(Worker):
+class Worker(QApp):
     """Base class for Workers that consume messages"""
 
     # XXX maybe allow command line args, environment overrides?
@@ -134,10 +110,11 @@ class ConsumerWorker(Worker):
         basic main_loop for a consumer.
         override for a producer!
         """
-        assert self.chan
-        self.chan.tx_select()  # enter transaction mode
+        assert self.connection
+        chan = self.connection.channel()
+        chan.tx_select()  # enter transaction mode
         # set "prefetch" limit so messages get distributed among workers:
-        self.chan.basic_qos(prefetch_count=self.INPUT_BATCH_MSGS * 2)
+        chan.basic_qos(prefetch_count=self.INPUT_BATCH_MSGS * 2)
 
         arguments = {}
         # if batching multiple input messages,
@@ -146,11 +123,9 @@ class ConsumerWorker(Worker):
             # add a small grace period, convert to milliseconds
             ms = (self.INPUT_BATCH_SECS + 10) * 1000
             arguments["x-consumer-timeout"] = ms
-        self.chan.basic_consume(
-            self.input_queue_name, self.on_message, arguments=arguments
-        )
+        chan.basic_consume(self.input_queue_name, self.on_message, arguments=arguments)
 
-        self.chan.start_consuming()  # enter pika main loop
+        chan.start_consuming()  # enter pika main loop; calls on_message
 
     def on_message(
         self,
@@ -170,6 +145,7 @@ class ConsumerWorker(Worker):
         if len(self.input_msgs) < self.INPUT_BATCH_MSGS:
             # here only when batching multiple msgs
             if self.input_timer is None and self.INPUT_BATCH_SECS and self.connection:
+                # start timeout, in case less than a full batch is available
                 self.input_timer = self.connection.call_later(
                     self.INPUT_BATCH_SECS, lambda: self._process_messages(chan)
                 )
@@ -187,11 +163,11 @@ class ConsumerWorker(Worker):
         INPUT_BATCH_SECS elapsed after first message
         """
         for m, p, b in self.input_msgs:
-            # XXX wrap in try? reject bad msgs??
-            decoded = self.decode_message(p, b)
-            self.process_message(chan, m, p, decoded)
-            # XXX check processing status?? reject bad msgs?
+            # XXX wrap in try?
+            # XXX check processing status??
+            # XXX reject bad msgs??
             # XXX increment counters based on status??
+            self.process_message(chan, m, p, b)
 
         self.end_of_batch(chan)
         chan.tx_commit()  # commit sent messages
@@ -205,24 +181,50 @@ class ConsumerWorker(Worker):
         self.input_msgs = []
         sys.stdout.flush()  # for redirection, supervisord
 
-    def decode_message(self, properties: BasicProperties, body: bytes) -> Any:
-        # XXX look at content-type to determine how to decode
-        decoded = pickle.loads(body)  # decode payload
-        # XXX extract & return message history?
-        # XXX send stats on delay since last hop???
-        return decoded
+    def process_message(
+        self,
+        chan: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+    ) -> None:
+        raise AppException("Worker.process_message not overridden")
+
+    def end_of_batch(self, chan: BlockingChannel) -> None:
+        """hook for batch processors (ie; write to database)"""
+
+
+class StoryWorker(Worker):
+    """
+    Process Stories in Queue Messages
+    """
 
     def process_message(
         self,
         chan: BlockingChannel,
         method: Basic.Deliver,
         properties: BasicProperties,
-        decoded: Any,
+        body: bytes,
     ) -> None:
-        raise AppException("Worker.process_message not overridden")
+        # XXX pass content-type?
+        story = BaseStory.load(body)
+        self.process_story(chan, story)
 
-    def end_of_batch(self, chan: BlockingChannel) -> None:
-        """hook for batch processors (ie; write to database)"""
+    def process_story(
+        self,
+        chan: BlockingChannel,
+        story: BaseStory,
+    ) -> None:
+        raise AppException("Worker.process_story not overridden")
+
+    def send_story(
+        self,
+        chan: BlockingChannel,
+        story: BaseStory,
+        exchange: Optional[str] = None,
+        routing_key: str = DEFAULT_ROUTING_KEY,
+    ) -> None:
+        self.send_message(chan, story.dump(), exchange, routing_key)
 
 
 def run(klass: type[Worker], *args: Any, **kw: Any) -> None:

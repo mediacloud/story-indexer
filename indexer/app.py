@@ -13,6 +13,7 @@ LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
 LOGGER_LEVEL_SEP = ":"
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,14 +64,16 @@ class App:
             dest="list_loggers",
             help="list all logger names and exit",
         )
+
+        log_level = os.getenv("LOG_LEVEL", "INFO")
         ap.add_argument(
             "--log-level",
             "-l",
             action="store",
             choices=LEVELS,
             dest=LEVEL_DEST,
-            default=os.getenv("LOG_LEVEL", "INFO"),
-            help="set default logging level to LEVEL",
+            default=log_level,
+            help=f"set default logging level to LEVEL (default {log_level})",
         )
 
         # set specific logger verbosity:
