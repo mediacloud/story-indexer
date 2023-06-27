@@ -18,20 +18,3 @@ class ElasticsearchConnector:
             index=self.index_name, body=document
         )
         return response
-
-
-class ElasticsearchImporter:
-    def __init__(self, connector: ElasticsearchConnector):
-        self.connector = connector
-
-    def import_stories(self, stories: List[Dict[str, Any]]) -> None:
-        """
-        Load story object from queue and import to elastic search
-        """
-        raise NotImplementedError("The _process_story method is not implemented yet")
-
-    def _process_story(self, story: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process story and extract metadata
-        """
-        raise NotImplementedError("The _process_story method is not implemented yet")

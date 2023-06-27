@@ -1,6 +1,6 @@
 argparse
 boto3
-mediacloud-metadata>=0.9.3
+# mediacloud-metadata>=0.9.3
 pika
 rabbitmq-admin
 supervisor

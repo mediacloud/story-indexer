@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Dict, Optional
 
 import pytest
 from elasticsearch import Elasticsearch
