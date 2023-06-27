@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch
 @pytest.fixture(scope="class", autouse=True)
 def set_env() -> None:
     os.environ["ELASTICSEARCH_HOST"] = "http://localhost:9200"
-    os.environ["index_name"] = "mediacloud_search_text"
+    os.environ["INDEX_NAME"] = "mediacloud_search_text"
 
 
 @pytest.fixture(scope="class")
@@ -22,7 +22,7 @@ def elasticsearch_client() -> Any:
 
 class TestElasticsearchConnection:
     def test_create_index(self, elasticsearch_client: Any) -> None:
-        index_name = os.environ.get("index_name")
+        index_name = os.environ.get("INDEX_NAME")
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
 
@@ -50,7 +50,7 @@ class TestElasticsearchConnection:
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
-        index_name = os.environ.get("index_name")
+        index_name = os.environ.get("INDEX_NAME")
         document = {
             "article_title": "Test Document",
             "text_content": "Lorem ipsum dolor sit amet.",
@@ -73,7 +73,7 @@ class TestElasticsearchConnection:
     @classmethod
     def teardown_class(cls) -> None:
         elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
-        index_name = os.environ.get("index_name")
+        index_name = os.environ.get("INDEX_NAME")
         elasticsearch_client = Elasticsearch(hosts=[elasticsearch_host])
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)

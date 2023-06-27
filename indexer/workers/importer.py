@@ -2,12 +2,13 @@
 elasticsearch import pipeline worker
 """
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
+from typing import Any, Dict, List, Optional, Union, cast
 
 from elasticsearch import ElasticsearchException
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.elastic_importer import ElasticsearchConnector
+from indexer.elastic_conf import ElasticsearchConnector
 from indexer.story import BaseStory
 from indexer.worker import StoryWorker, run
 
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 class ElasticsearchImporter(StoryWorker):
     def __init__(self, connector: ElasticsearchConnector):
+        elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
+        index_name = cast(str, os.environ.get("INDEX_NAME"))
+        connector = ElasticsearchConnector(elasticsearch_host, index_name)
         self.connector = connector
 
     def process_story(

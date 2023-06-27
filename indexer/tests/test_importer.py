@@ -7,7 +7,7 @@ from elasticsearch import ElasticsearchException
 from pika.adapters.blocking_connection import BlockingChannel
 from pytest_mock import MockFixture, mocker
 
-from indexer.elastic_importer import ElasticsearchConnector
+from indexer.elastic_conf import ElasticsearchConnector
 from indexer.story import BaseStory, ContentMetadata
 from indexer.workers.importer import ElasticsearchImporter
 
@@ -15,7 +15,7 @@ from indexer.workers.importer import ElasticsearchImporter
 @pytest.fixture(scope="class", autouse=True)
 def set_env() -> None:
     os.environ["ELASTICSEARCH_HOST"] = "http://localhost:9200"
-    os.environ["index_name"] = "mediacloud_search_text"
+    os.environ["INDEX_NAME"] = "mediacloud_search_text"
 
 
 @pytest.fixture(scope="class")
