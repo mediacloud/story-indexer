@@ -16,7 +16,7 @@ App interface to fetching RSS content from S3, splitting into batches, and prepa
 logger = logging.getLogger(__name__)
 
 
-class RSS_Batcher(App):
+class RSSBatcher(App):
     fetch_date: str
     sample_size: Optional[int]
     num_batches: int
@@ -116,7 +116,7 @@ class RSS_Batcher(App):
 
 
 if __name__ == "__main__":
-    app = RSS_Batcher(
+    app = RSSBatcher(
         "RSS_Batcher",
         "Fetches RSS from S3, breaks into batches, and (optionally) sets up disk storage for future pipeline steps",
     )
