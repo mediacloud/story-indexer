@@ -121,6 +121,8 @@ RAW_HTML = class_to_member_name(RawHTML)
 @dataclass(kw_only=True)
 class HTTPMetadata(StoryData):
     response_code: Optional[int] = None
+    fetch_timestamp: Optional[float] = None
+
     # ... there's more here, figure out later
 
 
@@ -265,7 +267,7 @@ class DiskStory(BaseStory):
     def __init__(self, directory: Optional[str] = None):
         self.directory = directory
         if self.directory is not None:
-            self.path = Path(f"{DATAROOT()}{self.directory}")
+            self.path = Path(self.directory)
 
     def link_hash(self, link: str) -> UUID:
         return uuid3(NAMESPACE_URL, link)

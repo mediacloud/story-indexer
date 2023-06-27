@@ -99,7 +99,9 @@ class RSS_Batcher(App):
                             rss_entry.domain = story["domain"]
                             rss_entry.pub_date = story["pub_date"]
                             rss_entry.fetch_date = self.fetch_date
-                        writer.writerow({"serialized_story": new_story.dump()})
+                        writer.writerow(
+                            {"serialized_story": new_story.dump().decode("utf8")}
+                        )
                     else:
                         writer.writerow(story)
 
