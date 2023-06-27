@@ -5,14 +5,28 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Union, cast
 
-from elasticsearch import ElasticsearchException
+from elasticsearch import Elasticsearch, ElasticsearchException
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.elastic_conf import ElasticsearchConnector
 from indexer.story import BaseStory
 from indexer.worker import StoryWorker, run
 
 logger = logging.getLogger(__name__)
+
+
+class ElasticsearchConnector:
+    def __init__(self, elasticsearch_host: str, index_name: str):
+        self.elasticsearch_client = Elasticsearch(hosts=[elasticsearch_host])
+        self.index_name = index_name
+
+    def create_index(self) -> None:
+        self.elasticsearch_client.indices.create(index=self.index_name)
+
+    def index_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
+        response: Dict[str, Any] = self.elasticsearch_client.index(
+            index=self.index_name, body=document
+        )
+        return response
 
 
 class ElasticsearchImporter(StoryWorker):
@@ -33,21 +47,21 @@ class ElasticsearchImporter(StoryWorker):
         content_metadata = story.content_metadata()
         if content_metadata:
             data: Dict[str, Optional[Union[str, bool]]] = {
-                "original_url": content_metadata.original_url,
-                "url": content_metadata.url,
-                "normalized_url": content_metadata.normalized_url,
-                "canonical_domain": content_metadata.canonical_domain,
-                "publication_date": content_metadata.publication_date,
-                "language": content_metadata.language,
-                "full_language": content_metadata.full_language,
-                "text_extraction": content_metadata.text_extraction,
-                "article_title": content_metadata.article_title,
-                "normalized_article_title": content_metadata.normalized_article_title,
-                "text_content": content_metadata.text_content,
-                "is_homepage": content_metadata.is_homepage,
-                "is_shortened": content_metadata.is_shortened,
+                "original_url": content_metadata.original_url or "",
+                "url": content_metadata.url or "",
+                "normalized_url": content_metadata.normalized_url or "",
+                "canonical_domain": content_metadata.canonical_domain or "",
+                "publication_date": content_metadata.publication_date or "",
+                "language": content_metadata.language or "",
+                "full_language": content_metadata.full_language or "",
+                "text_extraction": content_metadata.text_extraction or "",
+                "article_title": content_metadata.article_title or "",
+                "normalized_article_title": content_metadata.normalized_article_title
+                or "",
+                "text_content": content_metadata.text_content or "",
+                "is_homepage": content_metadata.is_homepage or False,
+                "is_shortened": content_metadata.is_shortened or False,
             }
-            data = {k: v for k, v in data.items() if v is not None}
 
             if data:
                 self.import_story(data)
