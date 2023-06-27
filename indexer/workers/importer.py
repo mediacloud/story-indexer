@@ -19,8 +19,7 @@ class ElasticsearchImporter(StoryWorker):
     def __init__(self, connector: ElasticsearchConnector):
         elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
         index_name = cast(str, os.environ.get("INDEX_NAME"))
-        connector = ElasticsearchConnector(elasticsearch_host, index_name)
-        self.connector = connector
+        self.connector = ElasticsearchConnector(elasticsearch_host, index_name)
 
     def process_story(
         self,
