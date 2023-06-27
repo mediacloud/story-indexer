@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Union, overload
 from uuid import NAMESPACE_URL, UUID, uuid3
 
-from indexer.path import DATAPATH_BY_DATE, DATAROOT
+from indexer.path import DATAPATH_BY_DATE, DATAROOT, STORIES
 
 """
 A single story interface object, with typed data fields for each pipeline step,
@@ -235,14 +235,15 @@ class BaseStory:
 """
 data/
 - {date}/
--- {link_hash}/
---- _rss_entry.json
---- _raw_html.html
---- _http_metadata.json
---- _content_metadata.json
+-- {stories}/
+--- {link_hash}/
+---- _rss_entry.json
+---- _raw_html.html
+---- _http_metadata.json
+---- _content_metadata.json
 -- ...
 """
-# That way the serialized bytestring can just be b'{date}/{link_hash}'
+# That way the serialized bytestring can just be the path from data to link_hash
 # Two kinks- one is that we need some way to mark that the html is stored as html- that's easy enough though.
 # Two is that the link_hash from the first draft didn't work for long url, filesystem has a length limit.
 # ...
@@ -284,7 +285,7 @@ class DiskStory(BaseStory):
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
         data_path = DATAPATH_BY_DATE(fetch_date)
-        self.directory = f"{data_path}{self.link_hash(link).hex}/"
+        self.directory = f"{data_path}{STORIES}/{self.link_hash(link).hex}/"
         self.path = Path(self.directory)
         self.path.mkdir(parents=True, exist_ok=True)
 

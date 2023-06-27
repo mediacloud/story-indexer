@@ -15,3 +15,6 @@ def DATAPATH_BY_DATE(date: str, init_path: bool = True) -> str:
     if init_path:
         Path(datapath).mkdir(parents=True, exist_ok=True)
     return datapath
+
+
+STORIES = "stories"
