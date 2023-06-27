@@ -10,3 +10,4 @@ types-pika
 types-requests
 mypy
 pytest
+elasticsearch

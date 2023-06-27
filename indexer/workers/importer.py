@@ -5,7 +5,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Union, cast
 
-from elasticsearch import Elasticsearch, ElasticsearchException
+from elastic_transport import ObjectApiResponse
+from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
 from indexer.story import BaseStory
@@ -22,9 +23,9 @@ class ElasticsearchConnector:
     def create_index(self) -> None:
         self.elasticsearch_client.indices.create(index=self.index_name)
 
-    def index_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
-        response: Dict[str, Any] = self.elasticsearch_client.index(
-            index=self.index_name, body=document
+    def index_document(self, document: Dict[str, Any]) -> ObjectApiResponse[Any]:
+        response: ObjectApiResponse[Any] = self.elasticsearch_client.index(
+            index=self.index_name, document=document
         )
         return response
 
@@ -67,7 +68,7 @@ class ElasticsearchImporter(StoryWorker):
 
     def import_story(
         self, data: Dict[str, Optional[Union[str, bool]]]
-    ) -> Dict[str, str]:
+    ) -> ObjectApiResponse[Any]:
         """
         Import a single story to Elasticsearch
         """
@@ -80,10 +81,10 @@ class ElasticsearchImporter(StoryWorker):
                 else:
                     # Log no imported stories
                     logger.info("Story was not imported.")
-            return response
-        except ElasticsearchException as e:
+        except Exception as e:
             logger.error(f"Elasticsearch exception: {str(e)}")
-            return {}
+
+        return response
 
 
 if __name__ == "__main__":

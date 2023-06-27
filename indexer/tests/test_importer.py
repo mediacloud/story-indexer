@@ -1,6 +1,6 @@
 import dataclasses
 import os
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
 import pytest
 from elasticsearch import Elasticsearch
@@ -16,7 +16,7 @@ def set_env() -> None:
 
 @pytest.fixture(scope="class")
 def elasticsearch_client() -> Any:
-    elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
+    elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
     client = Elasticsearch(hosts=[elasticsearch_host])
     assert client.ping(), "Failed to connect to Elasticsearch"
 
@@ -25,7 +25,7 @@ def elasticsearch_client() -> Any:
 
 class TestElasticsearchConnection:
     def test_create_index(self, elasticsearch_client: Any) -> None:
-        index_name = os.environ.get("INDEX_NAME")
+        index_name = cast(str, os.environ.get("index_name"))
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
 
@@ -53,7 +53,7 @@ class TestElasticsearchConnection:
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
-        index_name = os.environ.get("INDEX_NAME")
+        index_name = cast(str, os.environ.get("index_name"))
         document = {
             "article_title": "Test Document",
             "text_content": "Lorem ipsum dolor sit amet.",
@@ -75,8 +75,8 @@ class TestElasticsearchConnection:
 
     @classmethod
     def teardown_class(cls) -> None:
-        elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
-        index_name = os.environ.get("INDEX_NAME")
+        elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
+        index_name = cast(str, os.environ.get("index_name"))
         elasticsearch_client = Elasticsearch(hosts=[elasticsearch_host])
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
