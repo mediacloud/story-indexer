@@ -2,4 +2,4 @@
 
 . bin/func.sh
 
-run_python indexer.scripts.fetch_and_batch_rss "$@"
+run_python indexer.workers.fetcher.fetch_and_batch_rss "$@"
