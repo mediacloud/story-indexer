@@ -5,15 +5,15 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
-from rss_utils import RSSEntry
 from scrapy.crawler import CrawlerProcess
 
 from indexer.path import DATAPATH_BY_DATE
 from indexer.story import StoryFactory, uuid_by_link
 from indexer.worker import QApp
+from indexer.workers.fetcher.rss_utils import RSSEntry
 
 """
-App interface to launching a scrapy crawler on a set of batched stories
+Worker (Producer) interface which queues stories fetched by the HTML fetcher
 """
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class BatchQueuer(QApp):
             serialized = Path(story_loc).read_bytes()
             story = Story.load(serialized)
 
-            http_meta = story.http_meta()
+            http_meta = story.http_metadata()
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
 
