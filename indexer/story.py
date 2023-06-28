@@ -385,7 +385,7 @@ class StoryFactory:
     """
 
     def __init__(self) -> None:
-        self.iface = os.getenv("STORY_INTERFACE", "BaseStory")
+        self.iface = os.getenv("STORY_FACTORY", "BaseStory")
         self.classes = {
             "BaseStory": BaseStory,
             "DiskStory": DiskStory,

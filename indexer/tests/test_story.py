@@ -203,7 +203,7 @@ class TestStoryFactory:
     }
 
     def test_story_factory(self) -> None:
-        STORY_IFACE = "STORY_INTERFACE"
+        STORY_IFACE = "STORY_FACTORY"
         pre_environ = None
         if STORY_IFACE in os.environ:
             pre_environ = os.environ[STORY_IFACE]
