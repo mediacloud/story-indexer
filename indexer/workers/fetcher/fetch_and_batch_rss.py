@@ -91,19 +91,16 @@ class RSSBatcher(App):
                 writer = csv.DictWriter(batch_file, fieldnames=header)
                 writer.writeheader()
                 for story in batch:
-                    if self.init_stories:
-                        new_story: DiskStory = DiskStory()
-                        with new_story.rss_entry() as rss_entry:
-                            rss_entry.link = story["link"]
-                            rss_entry.title = story["title"]
-                            rss_entry.domain = story["domain"]
-                            rss_entry.pub_date = story["pub_date"]
-                            rss_entry.fetch_date = self.fetch_date
-                        writer.writerow(
-                            {"serialized_story": new_story.dump().decode("utf8")}
-                        )
-                    else:
-                        writer.writerow(story)
+                    new_story: DiskStory = DiskStory()
+                    with new_story.rss_entry() as rss_entry:
+                        rss_entry.link = story["link"]
+                        rss_entry.title = story["title"]
+                        rss_entry.domain = story["domain"]
+                        rss_entry.pub_date = story["pub_date"]
+                        rss_entry.fetch_date = self.fetch_date
+                    writer.writerow(
+                        {"serialized_story": new_story.dump().decode("utf8")}
+                    )
 
         # This might not be neccesary, but keeping it around for now.
         batch_map_path = data_path + "batch_map.csv"

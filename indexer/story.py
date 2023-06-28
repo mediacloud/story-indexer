@@ -1,10 +1,11 @@
 import json
+import os
 import pickle
 import re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Union, overload
+from typing import Any, Callable, Dict, List, Optional, Union
 from uuid import NAMESPACE_URL, UUID, uuid3
 
 from indexer.path import DATAPATH_BY_DATE, DATAROOT, STORIES
@@ -366,3 +367,25 @@ class DiskStory(BaseStory):
         Loads from a queue-appropriate serialization
         """
         return DiskStory(serialized.decode("utf8"))
+
+
+# Story Factory
+# the pattern might be:
+# Story = StoryFactory()
+# new_story = Story()
+# loaded_story = Story.load()
+class StoryFactory:
+    def __init__(self) -> None:
+        self.iface = os.getenv("STORY_INTERFACE", "BaseStory")
+        self.classes = {
+            "BaseStory": BaseStory,
+            "DiskStory": DiskStory,
+        }
+
+    def __call__(self, *args: List, **kwargs: Dict[Any, Any]) -> BaseStory:
+        instance = self.classes[self.iface](*args, **kwargs)
+        assert isinstance(instance, BaseStory)
+        return instance
+
+    def load(self, serialized: bytes) -> Any:
+        return self.classes[self.iface].load(serialized)  # type: ignore[attr-defined]
