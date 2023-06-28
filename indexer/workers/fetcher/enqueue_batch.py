@@ -2,12 +2,14 @@ import argparse
 import csv
 import logging
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+from rss_utils import RSSEntry
 from scrapy.crawler import CrawlerProcess
 
 from indexer.path import DATAPATH_BY_DATE
-from indexer.story import BaseStory, DiskStory
+from indexer.story import StoryFactory, uuid_by_link
 from indexer.worker import QApp
 
 """
@@ -15,6 +17,9 @@ App interface to launching a scrapy crawler on a set of batched stories
 """
 
 logger = logging.getLogger(__name__)
+
+
+Story = StoryFactory()
 
 
 class BatchQueuer(QApp):
@@ -67,14 +72,19 @@ class BatchQueuer(QApp):
         logger.info(f"Loading batch {self.batch_index} from disk")
 
         data_path = DATAPATH_BY_DATE(self.fetch_date)
-        batch_path = data_path + f"batch_{self.batch_index}.csv"
-        with open(batch_path, "r") as batch_file:
+        batch_path = data_path + f"batch_{self.batch_index}"
+
+        with open(batch_path + ".csv", "r") as batch_file:
             batch_reader = csv.DictReader(batch_file)
             for row in batch_reader:
-                batch.append(str.encode(row["serialized_story"]))
+                entry = row
+                batch.append(entry)
 
         for entry in batch:
-            story = DiskStory.load(entry)
+            story_loc = batch_path + "/" + uuid_by_link(entry["link"])
+            serialized = Path(story_loc).read_bytes()
+            story = Story.load(serialized)
+
             http_meta = story.http_meta()
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())

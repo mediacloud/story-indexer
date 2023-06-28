@@ -17,6 +17,10 @@ Subclassable with hooks for different storage backends
 """
 
 
+def uuid_by_link(link: str) -> str:
+    return uuid3(NAMESPACE_URL, link).hex
+
+
 # enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
 # https://stackoverflow.com/questions/1175208/elegant-python-function-to-convert-camelcase-to-snake-case
 def class_to_member_name(original_class: Callable, private: bool = True) -> str:
@@ -173,6 +177,14 @@ class BaseStory:
 
         return self._rss_entry
 
+    def uuid(self) -> Optional[str]:
+        if self._rss_entry is None:
+            return None
+        else:
+            link = self._rss_entry.link
+            assert isinstance(link, str)
+            return uuid_by_link(link)
+
     def raw_html(self) -> RawHTML:
         if not hasattr(self, RAW_HTML):
             uninitialized: RawHTML = RawHTML(exit_cb=self.context_exit_cb)
@@ -247,8 +259,6 @@ data/
 -- ...
 """
 # That way the serialized bytestring can just be the path from data to link_hash
-# Two kinks- one is that we need some way to mark that the html is stored as html- that's easy enough though.
-# Two is that the link_hash from the first draft didn't work for long url, filesystem has a length limit.
 # ...
 
 # Some of the ways that project level paramaters like the data directory are managed here feel wrong, but
@@ -270,9 +280,6 @@ class DiskStory(BaseStory):
         if self.directory is not None:
             self.path = Path(self.directory)
 
-    def link_hash(self, link: str) -> UUID:
-        return uuid3(NAMESPACE_URL, link)
-
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
         data_dict: dict = story_data.as_dict()
@@ -288,7 +295,7 @@ class DiskStory(BaseStory):
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
         data_path = DATAPATH_BY_DATE(fetch_date)
-        self.directory = f"{data_path}{STORIES}/{self.link_hash(link).hex}/"
+        self.directory = f"{data_path}{STORIES}/{self.uuid()}/"
         self.path = Path(self.directory)
         self.path.mkdir(parents=True, exist_ok=True)
 
@@ -369,12 +376,14 @@ class DiskStory(BaseStory):
         return DiskStory(serialized.decode("utf8"))
 
 
-# Story Factory
-# the pattern might be:
-# Story = StoryFactory()
-# new_story = Story()
-# loaded_story = Story.load()
 class StoryFactory:
+    """
+    A Story Factory- eg:
+        Story = StoryFactory()
+        new_story = Story()
+        loaded_story = Story.load()
+    """
+
     def __init__(self) -> None:
         self.iface = os.getenv("STORY_INTERFACE", "BaseStory")
         self.classes = {

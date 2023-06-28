@@ -1,4 +1,5 @@
 data/*
+test_data/*
 supervisord.log
 .ipynb_checkpoints
 venv/*

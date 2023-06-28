@@ -1,6 +1,7 @@
 import gzip
 import random
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from uuid import NAMESPACE_URL, uuid3
 
 import requests
 from lxml import etree
@@ -19,6 +20,7 @@ class RSSEntry(TypedDict):
     title: str
     domain: str
     pub_date: str
+    fetch_date: str
 
 
 def fetch_backup_rss(
@@ -57,6 +59,7 @@ def fetch_backup_rss(
             "title": item.findtext("title"),
             "domain": item.findtext("domain"),
             "pub_date": item.findtext("pubDate"),
+            "fetch_date": fetch_date,
         }
         found_items.append(entry)
 

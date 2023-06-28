@@ -2,18 +2,21 @@ import argparse
 import csv
 import logging
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 from indexer.app import App
 from indexer.path import DATAPATH_BY_DATE
-from indexer.story import BaseStory, DiskStory
-from indexer.workers.fetcher.rss_utils import batch_rss, fetch_backup_rss
+from indexer.story import BaseStory, StoryFactory
+from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_backup_rss
 
 """
 App interface to fetching RSS content from S3, splitting into batches, and preparing the filesystem for the next step
 """
 
 logger = logging.getLogger(__name__)
+
+Story = StoryFactory()
 
 
 class RSSBatcher(App):
@@ -82,25 +85,27 @@ class RSSBatcher(App):
         data_path = DATAPATH_BY_DATE(self.fetch_date)
 
         for batch_index, batch in enumerate(batches):
-            batch_path = data_path + f"batch_{batch_index}.csv"
-            with open(batch_path, "w") as batch_file:
-                if self.init_stories:
-                    header = ["serialized_story"]
-                else:
-                    header = batch[0].keys()
+            batch_path = data_path + f"batch_{batch_index}"
+            Path(batch_path).mkdir(parents=True, exist_ok=True)
+            with open(batch_path + ".csv", "w") as batch_file:
+                header = batch[0].keys()
                 writer = csv.DictWriter(batch_file, fieldnames=header)
                 writer.writeheader()
                 for story in batch:
-                    new_story: DiskStory = DiskStory()
+                    writer.writerow(story)
+
+                    new_story: BaseStory = Story()
                     with new_story.rss_entry() as rss_entry:
                         rss_entry.link = story["link"]
                         rss_entry.title = story["title"]
                         rss_entry.domain = story["domain"]
                         rss_entry.pub_date = story["pub_date"]
-                        rss_entry.fetch_date = self.fetch_date
-                    writer.writerow(
-                        {"serialized_story": new_story.dump().decode("utf8")}
-                    )
+                        rss_entry.fetch_date = story["fetch_date"]
+
+                    uuid = new_story.uuid()
+                    assert isinstance(uuid, str)
+                    save_loc = batch_path + "/" + uuid
+                    Path(save_loc).write_bytes(new_story.dump())
 
         # This might not be neccesary, but keeping it around for now.
         batch_map_path = data_path + "batch_map.csv"

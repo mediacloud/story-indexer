@@ -1,6 +1,7 @@
 import csv
 import datetime
 import logging
+from pathlib import Path
 from typing import Any, Dict, Generator, List
 
 import scrapy
@@ -11,9 +12,12 @@ from twisted.python.failure import Failure
 
 from indexer.app import App
 from indexer.path import DATAPATH_BY_DATE
-from indexer.story import BaseStory, DiskStory
+from indexer.story import BaseStory, DiskStory, StoryFactory, uuid_by_link
+from indexer.workers.fetcher.rss_utils import RSSEntry
 
 logger = logging.getLogger(__name__)
+
+Story = StoryFactory()
 
 
 class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
@@ -42,31 +46,33 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
         self.batch_index = batch_index
 
         data_path = DATAPATH_BY_DATE(fetch_date)
-        batch_path = data_path + f"batch_{batch_index}.csv"
+        self.batch_path = data_path + f"batch_{batch_index}"
 
         self.batch = []
         logger.info(f"Loading batch {self.batch_index} from disk")
-        with open(batch_path, "r") as batch_file:
+        with open(self.batch_path + ".csv", "r") as batch_file:
             batch_reader = csv.DictReader(batch_file)
             for row in batch_reader:
-                self.batch.append(str.encode(row["serialized_story"]))
+                entry = row
+                self.batch.append(entry)
 
     def start_requests(self) -> Generator:
         for entry in self.batch:
-            story = DiskStory.load(entry)
+            story_loc = self.batch_path + "/" + uuid_by_link(entry["link"])
+            serialized = Path(story_loc).read_bytes()
+
+            story = Story.load(serialized)
             url = story.rss_entry().link
 
             yield scrapy.Request(
                 url=url,
                 callback=self.parse,
                 errback=self.on_error,
-                cb_kwargs={"entry": entry},
+                cb_kwargs={"story": story},
             )
 
     # Using ANY for now here as well, just while the import situation is unclear
-    def parse(self, response: Any, entry: bytes) -> None:
-        story = DiskStory.load(entry)
-
+    def parse(self, response: Any, story: BaseStory) -> None:
         with story.raw_html() as raw_html:
             raw_html.html = response.body
 
@@ -74,11 +80,19 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
             http_metadata.response_code = response.status
             http_metadata.fetch_timestamp = datetime.datetime.now().timestamp()
 
+        uuid = story.uuid()
+        assert isinstance(uuid, str)
+        save_loc = self.batch_path + "/" + uuid
+        Path(save_loc).write_bytes(story.dump())
+
     # Any here because I can't quite crack how the twisted failure object is scoped in this context
     def on_error(self, failure: Any) -> None:
         if failure.check(HttpError):
-            entry = failure.request.cb_kwargs["entry"]
-            story = DiskStory.load(entry)
+            story = failure.request.cb_kwargs["story"]
+
             with story.http_metadata() as http_metadata:
                 http_metadata.response_code = failure.value.response.status
                 http_metadata.fetch_timestamp = datetime.datetime.now().timestamp()
+
+            save_loc = self.batch_path + "/" + story.uuid()
+            Path(save_loc).write_bytes(story.dump())
