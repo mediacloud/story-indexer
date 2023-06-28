@@ -89,6 +89,27 @@ class TestBaseStory:
             rss_entry = story.rss_entry()
             rss_entry.new_attr = True
 
+    def test_unicode(self) -> None:
+        story: BaseStory = BaseStory()
+        with story.rss_entry() as rss_entry:
+            rss_entry.link = self.sample_rss["link"]
+            rss_entry.title = self.sample_rss["title"]
+            rss_entry.domain = self.sample_rss["domain"]
+            rss_entry.pub_date = self.sample_rss["pub_date"]
+            rss_entry.fetch_date = self.sample_rss["fetch_date"]
+
+        assert story.raw_html().encoding is None
+        assert story.raw_html().unicode is None
+
+        local_html = "html_fixtures/641939920-rep-payne-jr-opposes-republican-budget-bill-to-benefit-the-wealthy-and-punish-the-middle-class"
+        with open(local_html, "rb") as html_fixture:
+            html = html_fixture.read()
+            with story.raw_html() as story_html:
+                story_html.html = html
+
+        assert story.raw_html().encoding == "UTF-8"
+        assert story.raw_html().unicode is not None
+
 
 class TestDiskStory:
     sample_rss = {

@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, overload
 
+import cchardet as chardet
+
 from indexer.path import DATAROOT
 
 """
@@ -112,6 +114,23 @@ RSS_ENTRY = class_to_member_name(RSSEntry)
 class RawHTML(StoryData):
     CONTENT_TYPE: str = "html"
     html: Optional[bytes] = None
+
+    @property
+    def encoding(self) -> Optional[str]:
+        if self.html is None:
+            return None
+        else:
+            encoding = chardet.detect(self.html)["encoding"]
+            assert isinstance(encoding, str)
+            return encoding
+
+    @property
+    def unicode(self) -> Optional[str]:
+        if self.html is None:
+            return None
+        else:
+            assert isinstance(self.encoding, str)
+            return self.html.decode(self.encoding)
 
 
 RAW_HTML = class_to_member_name(RawHTML)
