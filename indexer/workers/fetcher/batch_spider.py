@@ -78,6 +78,8 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
 
         with story.http_metadata() as http_metadata:
             http_metadata.response_code = response.status
+            http_metadata.final_url = response.url
+            http_metadata.encoding = response.encoding
             http_metadata.fetch_timestamp = datetime.datetime.now().timestamp()
 
         uuid = story.uuid()

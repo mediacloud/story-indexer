@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from indexer.app import App
 from indexer.path import DATAPATH_BY_DATE
 from indexer.story import BaseStory, StoryFactory
-from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_backup_rss
+from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_rss
 
 """
 App interface to fetching RSS content from S3, splitting into batches, and preparing the filesystem for the next step
@@ -23,7 +23,6 @@ class RSSBatcher(App):
     fetch_date: str
     sample_size: Optional[int]
     num_batches: int
-    init_stories: bool = True
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -54,15 +53,6 @@ class RSSBatcher(App):
             help=f"Number of batches to break stories into (default {num_batches_default})",
         )
 
-        # init_stories
-        ap.add_argument(
-            "--init-stories",
-            dest="init_stories",
-            action=argparse.BooleanOptionalAction,
-            default=True,
-            help="Toggle initialization of story objects- if on (by default), this script initializes the data directory for each story and only passes serialized story content in the batchfile. If off, batchfiles contain the whole rss_entry content",
-        )
-
     def process_args(self) -> None:
         super().process_args()
 
@@ -76,10 +66,9 @@ class RSSBatcher(App):
 
         self.sample_size = self.args.sample_size
         self.num_batches = self.args.num_batches
-        self.init_stories = self.args.init_stories
 
     def main_loop(self) -> None:
-        rss_records = fetch_backup_rss(self.fetch_date, self.sample_size)
+        rss_records = fetch_rss(self.fetch_date, self.sample_size)
         batches, batch_map = batch_rss(rss_records, num_batches=self.num_batches)
 
         data_path = DATAPATH_BY_DATE(self.fetch_date)

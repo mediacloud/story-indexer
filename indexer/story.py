@@ -127,6 +127,8 @@ RAW_HTML = class_to_member_name(RawHTML)
 class HTTPMetadata(StoryData):
     response_code: Optional[int] = None
     fetch_timestamp: Optional[float] = None
+    final_url: Optional[str] = None
+    encoding: Optional[str] = None
 
     # ... there's more here, figure out later
 
