@@ -23,7 +23,9 @@ class RSSEntry(TypedDict):
     fetch_date: str
 
 
-def fetch_rss(fetch_date: str, sample_size: Optional[int] = None) -> List[RSSEntry]:
+def fetch_daily_rss(
+    fetch_date: str, sample_size: Optional[int] = None
+) -> List[RSSEntry]:
     """
     Fetch the content of the backup rss fetcher for a given day and return as a list of dicts.
     sample_size: 0 or

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from indexer.app import App
 from indexer.path import DATAPATH_BY_DATE
 from indexer.story import BaseStory, StoryFactory
-from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_rss
+from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_daily_rss
 
 """
 App interface to fetching RSS content from S3, splitting into batches, and preparing the filesystem for the next step
@@ -68,7 +68,7 @@ class RSSBatcher(App):
         self.num_batches = self.args.num_batches
 
     def main_loop(self) -> None:
-        rss_records = fetch_rss(self.fetch_date, self.sample_size)
+        rss_records = fetch_daily_rss(self.fetch_date, self.sample_size)
         batches, batch_map = batch_rss(rss_records, num_batches=self.num_batches)
 
         data_path = DATAPATH_BY_DATE(self.fetch_date)
