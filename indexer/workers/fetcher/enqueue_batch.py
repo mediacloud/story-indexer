@@ -81,9 +81,10 @@ class BatchQueuer(QApp):
                 batch.append(entry)
 
         for entry in batch:
-            story_loc = batch_path + "/" + uuid_by_link(entry["link"])
-            serialized = Path(story_loc).read_bytes()
-            story = Story.load(serialized)
+            # story_loc = batch_path + "/" + uuid_by_link(entry["link"])
+            # serialized = Path(story_loc).read_bytes()
+            # story = Story.load(serialized)
+            story = Story.from_disk(batch_path, uuid_by_link(entry["link"]))
 
             http_meta = story.http_metadata()
             if http_meta.response_code == 200:

@@ -58,10 +58,13 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
 
     def start_requests(self) -> Generator:
         for entry in self.batch:
-            story_loc = self.batch_path + "/" + uuid_by_link(entry["link"])
-            serialized = Path(story_loc).read_bytes()
+            # story_loc = self.batch_path + "/" + uuid_by_link(entry["link"])
+            # serialized = Path(story_loc).read_bytes()
 
-            story = Story.load(serialized)
+            # story = Story.load(serialized)
+
+            story = Story.from_disk(self.batch_path, uuid_by_link(entry["link"]))
+
             url = story.rss_entry().link
 
             yield scrapy.Request(
@@ -82,10 +85,11 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
             http_metadata.encoding = response.encoding
             http_metadata.fetch_timestamp = datetime.datetime.now().timestamp()
 
-        uuid = story.uuid()
-        assert isinstance(uuid, str)
-        save_loc = self.batch_path + "/" + uuid
-        Path(save_loc).write_bytes(story.dump())
+        Story.to_disk(story, self.batch_path)
+        # uuid = story.uuid()
+        # assert isinstance(uuid, str)
+        # save_loc = self.batch_path + "/" + uuid
+        # Path(save_loc).write_bytes(story.dump())
 
     # Any here because I can't quite crack how the twisted failure object is scoped in this context
     def on_error(self, failure: Any) -> None:
@@ -96,5 +100,4 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
                 http_metadata.response_code = failure.value.response.status
                 http_metadata.fetch_timestamp = datetime.datetime.now().timestamp()
 
-            save_loc = self.batch_path + "/" + story.uuid()
-            Path(save_loc).write_bytes(story.dump())
+            Story.to_disk(story, self.batch_path)

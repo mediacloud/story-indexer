@@ -180,6 +180,7 @@ class BaseStory:
         return self._rss_entry
 
     def uuid(self) -> Optional[str]:
+        # Used in serialization
         if self._rss_entry is None:
             return None
         else:
@@ -317,7 +318,6 @@ class DiskStory(BaseStory):
                 self.init_storage(story_data)
 
             else:
-                # test case
                 raise RuntimeError(
                     "Cannot save if directory information is uninitialized"
                 )
@@ -400,3 +400,22 @@ class StoryFactory:
 
     def load(self, serialized: bytes) -> Any:
         return self.classes[self.iface].load(serialized)  # type: ignore[attr-defined]
+
+    def from_disk(self, path: str, uuid: str) -> Any:
+        """
+        Load a serialized story from disk, at path/story.uuid()
+        Belongs in story_factory since the load method is dependant on which class is used.
+        """
+        story_loc = path + "/" + uuid
+        serialized = Path(story_loc).read_bytes()
+        return self.load(serialized)
+
+    def to_disk(self, story: BaseStory, path: str) -> None:
+        """
+        Store the serialized story to disk, at path/story.uuid()
+        Belongs in StoryFactory so it's adjacent to its sibling load
+        """
+        uuid = story.uuid()
+        assert isinstance(uuid, str)
+        save_loc = path + "/" + uuid
+        Path(save_loc).write_bytes(story.dump())

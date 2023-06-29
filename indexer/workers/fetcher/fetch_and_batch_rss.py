@@ -91,10 +91,11 @@ class RSSBatcher(App):
                         rss_entry.pub_date = story["pub_date"]
                         rss_entry.fetch_date = story["fetch_date"]
 
-                    uuid = new_story.uuid()
-                    assert isinstance(uuid, str)
-                    save_loc = batch_path + "/" + uuid
-                    Path(save_loc).write_bytes(new_story.dump())
+                    # uuid = new_story.uuid()
+                    # assert isinstance(uuid, str)
+                    # save_loc = batch_path + "/" + uuid
+                    # Path(save_loc).write_bytes(new_story.dump())
+                    Story.to_disk(new_story, batch_path)
 
         # This might not be neccesary, but keeping it around for now.
         batch_map_path = data_path + "batch_map.csv"
