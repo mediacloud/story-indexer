@@ -1,5 +1,4 @@
 *.egg-info
-*.pot
 *.py[co]
 .ipynb_checkpoints
 .mypy_cache/
