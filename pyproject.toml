@@ -38,8 +38,7 @@ show_error_codes = true
 
 [tool.pip-tools]
 allow-unsafe = true
-generate-hashes = true
-quite = true
+quiet = true
 resolver = "backtracking"
 upgrade = true
 # To enable Hash-Checking-Mode uncomment the following line
