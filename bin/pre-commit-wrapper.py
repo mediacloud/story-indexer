@@ -2,9 +2,9 @@
 # adapted from:
 # https://raw.githubusercontent.com/raiden-network/raiden/develop/tools/pre-commit/pre-commit-wrapper.py 74f1467
 """
-This is a small helper to run pylint and mypy with the Raiden dev requirements installed in the
+This is a small helper to run mypy with the Raiden dev requirements installed in the
 pre-commit generated hook virtualenv.
-This is necessary since both pylint and mypy need access to the third party library source files
+This is necessary since both mypy need access to the third party library source files
 in order to function correctly.
 
 To speed up the hook runtime we generate and store a hash of the requirements-dev file and only
@@ -23,7 +23,7 @@ import sys
 import sysconfig
 from pathlib import Path
 
-REQUIREMENTS_FILE = "requirements.txt"
+REQUIREMENTS_FILE = "requirements-dev.txt"
 REQUIREMENTS_HASH_FILE_NAME = "_REQUIREMENTS_HASH.txt"
 
 
@@ -76,11 +76,7 @@ def main() -> None:
     sys.path.insert(0, os.getcwd())
 
     tool = sys.argv.pop(1)
-    if tool == "pylint":
-        from pylint import run_pylint
-
-        run_pylint()
-    elif tool == "mypy":
+    if tool == "mypy":
         from mypy.__main__ import console_entry
 
         console_entry()
