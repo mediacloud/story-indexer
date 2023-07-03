@@ -4,7 +4,7 @@
 """
 This is a small helper to run mypy with the Raiden dev requirements installed in the
 pre-commit generated hook virtualenv.
-This is necessary since both mypy need access to the third party library source files
+This is necessary since mypy need access to the third party library source files
 in order to function correctly.
 
 To speed up the hook runtime we generate and store a hash of the requirements-dev file and only
