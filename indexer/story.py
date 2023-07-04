@@ -364,18 +364,12 @@ class DiskStory(BaseStory):
 
     def dump(self) -> bytes:
         """
-        Returns a queue-appropriate serialization of the the object- in this case just the directory string
+        Returns a queue-appropriate serialization of the the object- this story with just a directory name, pickled.
         """
         if self.directory is not None:
-            return str.encode(self.directory)
+            dumped_story: DiskStory = DiskStory(self.directory)
+            return pickle.dumps(dumped_story)
         raise RuntimeError("Cannot dump story with uninitialized directory")
-
-    @classmethod
-    def load(cls, serialized: bytes) -> Any:
-        """
-        Loads from a queue-appropriate serialization
-        """
-        return DiskStory(serialized.decode("utf8"))
 
 
 class StoryFactory:
@@ -399,4 +393,4 @@ class StoryFactory:
         return instance
 
     def load(self, serialized: bytes) -> Any:
-        return self.classes[self.iface].load(serialized)  # type: ignore[attr-defined]
+        return pickle.loads(serialized)
