@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class ElasticsearchConnector:
     def __init__(
         self,
-        elasticsearch_host: Optional[Union[str, Mapping[str, Union[str, int]]]] = None,
+        hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]],
         index_name: Optional[str] = None,
     ):
         self.elasticsearch_client = (
