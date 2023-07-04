@@ -1,5 +1,5 @@
 # pull official base image
-FROM python:3.10-slim-bullseye as builder
+FROM python:3.10-slim-bookworm as builder
 
 # set work directory
 WORKDIR /app
