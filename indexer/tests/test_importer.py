@@ -16,10 +16,10 @@ def set_env() -> None:
 
 @pytest.fixture(scope="class")
 def elasticsearch_client() -> Any:
-    elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
-    if elasticsearch_host is None:
+    hosts = os.environ.get("ELASTICSEARCH_HOST")
+    if hosts is None:
         pytest.skip("ELASTICSEARCH_HOST is not set")
-    client = Elasticsearch(hosts=[elasticsearch_host])
+    client = Elasticsearch(hosts=hosts)
     assert client.ping(), "Failed to connect to Elasticsearch"
 
     return client
