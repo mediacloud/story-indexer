@@ -29,11 +29,7 @@ class ElasticsearchConnector:
         self.index_name = index_name
         if self.elasticsearch_client and self.index_name:
             if not self.elasticsearch_client.indices.exists(index=self.index_name):
-                self.create_index()
-
-    def create_index(self) -> None:
-        if self.elasticsearch_client and self.index_name:
-            self.elasticsearch_client.indices.create(index=self.index_name)
+                self.elasticsearch_client.indices.create(index=self.index_name)
 
     def index(self, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
         if self.elasticsearch_client and self.index_name:
