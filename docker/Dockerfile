@@ -15,7 +15,7 @@ COPY ../requirements.txt .
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
 
 
-FROM python:3.10-slim-bullseye
+FROM python:3.10-slim-bookworm
 
 ENV APP_HOST=.
 ENV APP_DOCKER=/app
