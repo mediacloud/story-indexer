@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
-from elastic_transport import ObjectApiResponse
+from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
@@ -20,23 +20,22 @@ logger = logging.getLogger(__name__)
 class ElasticsearchConnector:
     def __init__(
         self,
-        hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]],
-        index_name: Optional[str] = None,
-    ):
+        hosts: Union[
+            str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
+        ],
+        index_name: str,
+    ) -> None:
         self.client = Elasticsearch(hosts)
-        self.index = index
-        if self.elasticsearch_client and self.index_name:
-            if not self.elasticsearch_client.indices.exists(index=self.index_name):
-                self.elasticsearch_client.indices.create(index=self.index_name)
+        self.index_name = index_name
+        if self.client and self.index_name:
+            if not self.client.indices.exists(index=self.index_name):
+                self.client.indices.create(index=self.index_name)
 
     def index(self, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
-        if self.elasticsearch_client and self.index_name:
-            response: ObjectApiResponse[Any] = self.elasticsearch_client.index(
-                index=self.index_name, document=document
-            )
-            return response
-        else:
-            raise ValueError("Elasticsearch host or index name is not provided.")
+        response: ObjectApiResponse[Any] = self.client.index(
+            index=self.index_name, document=document
+        )
+        return response
 
 
 class ElasticsearchImporter(StoryWorker):
@@ -57,7 +56,7 @@ class ElasticsearchImporter(StoryWorker):
             dest="index_name",
             type=str,
             default=index_name,
-            help="Elasticsearch index name, default 'mediacloud_search_text'",
+            help="Elasticsearch index name, default %(default)",
         )
 
     def process_args(self) -> None:

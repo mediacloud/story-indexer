@@ -85,7 +85,9 @@ class TestElasticsearchConnection:
 @pytest.fixture(scope="class")
 def elasticsearch_connector() -> ElasticsearchConnector:
     elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
-    index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
+    index_name = cast(str, os.environ.get("ELASTICSEARCH_INDEX_NAME"))
+    if elasticsearch_host is None or index_name is None:
+        pytest.skip("ELASTICSEARCH_HOST or ELASTICSEARCH_INDEX_NAME is not set")
     connector = ElasticsearchConnector(elasticsearch_host, index_name)
     return connector
 
