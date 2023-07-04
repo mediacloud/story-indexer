@@ -35,7 +35,7 @@ class ElasticsearchConnector:
         if self.elasticsearch_client and self.index_name:
             self.elasticsearch_client.indices.create(index=self.index_name)
 
-    def index_document(self, document: Dict[str, Any]) -> ObjectApiResponse[Any]:
+    def index(self, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
         if self.elasticsearch_client and self.index_name:
             response: ObjectApiResponse[Any] = self.elasticsearch_client.index(
                 index=self.index_name, document=document
@@ -102,7 +102,7 @@ class ElasticsearchImporter(StoryWorker):
                 if value is None or value == "":
                     raise ValueError(f"Value for key '{key}' is not provided.")
 
-            data: Dict[str, Optional[Union[str, bool]]] = {
+            data: Mapping[str, Optional[Union[str, bool]]] = {
                 "original_url": content_metadata.get("original_url"),
                 "url": content_metadata.get("url"),
                 "normalized_url": content_metadata.get("normalized_url"),
@@ -122,14 +122,14 @@ class ElasticsearchImporter(StoryWorker):
                 self.import_story(data)
 
     def import_story(
-        self, data: Dict[str, Optional[Union[str, bool]]]
+        self, data: Mapping[str, Optional[Union[str, bool]]]
     ) -> ObjectApiResponse[Any]:
         """
         Import a single story to Elasticsearch
         """
         try:
             if data:
-                response = self.connector.index_document(data)
+                response = self.connector.index(data)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
                 else:

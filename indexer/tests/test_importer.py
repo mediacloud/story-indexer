@@ -1,6 +1,6 @@
 import dataclasses
 import os
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 import pytest
 from elasticsearch import Elasticsearch
@@ -25,7 +25,7 @@ def elasticsearch_client() -> Any:
     return client
 
 
-test_data: Dict[str, Optional[Union[str, bool]]] = {
+test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
     "url": "http://example.com",
     "normalized_url": "http://example.com",
