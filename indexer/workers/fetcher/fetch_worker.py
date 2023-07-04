@@ -125,7 +125,7 @@ class FetchWorker(QApp):
 
             self.stories_to_fetch.append(new_story)
 
-        logger.info(f"Initialized {len(self.stories_to_fetch)}")
+        logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
         # Fetch html as stories
         process = CrawlerProcess()
@@ -133,10 +133,12 @@ class FetchWorker(QApp):
         process.crawl(BatchSpider, batch=self.stories_to_fetch, cb=self.scrapy_cb)
         process.start()
 
-        logger.info(f"Fetched {len(self.fetched_stories)} in batch {self.batch_index}")
+        logger.info(
+            f"Fetched {len(self.fetched_stories)} stories in batch {self.batch_index}"
+        )
 
         # enqueue stories
-        self.qconnect()  # type: ignore[attr-defined]
+        self.qconnect()
 
         assert self.connection
         chan = self.connection.channel()
