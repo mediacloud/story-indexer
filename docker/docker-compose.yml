@@ -37,32 +37,34 @@ services:
       timeout: 10s
       retries: 2
 
-  importer_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - WORKER=importer
+  common_worker:
+    <<: &common_worker
+      build:
+        context: ..
+        dockerfile: docker/Dockerfile
+      environment:
+        - RABBITMQ_URL=amqp://rabbitmq:5672
+        - RUN=${RUN}
+      depends_on:
+        rabbitmq:
+          condition: service_healthy
+  fetch_worker:
+    <<: *common_worker
     environment:
-      - RABBITMQ_URL=amqp://rabbitmq:5672
-      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
-    networks:
-      - mc_elastic_network
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+      - RUN=fetcher
 
   extract_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - WORKER=extracter
+    <<: *common_worker
     environment:
-      - RABBITMQ_URL=amqp://rabbitmq:5672
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+      - RUN=extract
+
+  importer_worker:
+    <<: *common_worker
+    environment:
+      - RUN=importer
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
+    networks:
+      - mc_story_indexer
 
 volumes:
   elasticsearch_data:

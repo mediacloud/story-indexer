@@ -8,13 +8,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    && apt-get clean
+RUN apt-get update
 
 # install dependencies
-COPY requirements.txt .
+COPY ../requirements.txt .
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
 
 
@@ -29,14 +26,17 @@ COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache /wheels/*
 
-# entry point script for Docker images
+COPY ../bin/func.sh ${APP_DOCKER}/bin/
 COPY ../bin/indirect.sh ${APP_DOCKER}/bin/
+COPY ../bin/run-extract.sh ${APP_DOCKER}/bin
+
 
 RUN chmod +x ${APP_DOCKER}/bin/indirect.sh
 
 
-COPY ../indexer ${APP_DOCKER}/indexer
-
+COPY ../indexer ${APP_DOCKER}/indexer/
 # pass the executable as ARG and use it in CMD
-ARG WORKER
-CMD [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]
+ARG RUN
+ENV RUN=${RUN}
+
+ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]
