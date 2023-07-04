@@ -43,6 +43,8 @@ class QApp(App):
     should derive from this class
     """
 
+    AUTO_CONNECT = True
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -71,12 +73,22 @@ class QApp(App):
         super().process_args()
 
         assert self.args
-        url = self.args.amqp_url
-        if not url:
+        if not self.args.amqp_url:
             logger.fatal("need --rabbitmq-url or RABBITMQ_URL")
             sys.exit(1)
+
+        if self.AUTO_CONNECT:
+            self.qconnect()
+
+    def qconnect(self) -> None:
+        """
+        called from process_args if AUTO_CONNECT is True
+        """
+        assert self.args  # checked in process_args
+        url = self.args.amqp_url
+        assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
-        assert self.connection
+        assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
     def send_message(
