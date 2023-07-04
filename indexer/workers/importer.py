@@ -23,10 +23,8 @@ class ElasticsearchConnector:
         hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]],
         index_name: Optional[str] = None,
     ):
-        self.elasticsearch_client = (
-            Elasticsearch(hosts=[elasticsearch_host]) if elasticsearch_host else None
-        )
-        self.index_name = index_name
+        self.client = Elasticsearch(hosts)
+        self.index = index
         if self.elasticsearch_client and self.index_name:
             if not self.elasticsearch_client.indices.exists(index=self.index_name):
                 self.elasticsearch_client.indices.create(index=self.index_name)
