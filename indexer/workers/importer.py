@@ -56,7 +56,7 @@ class ElasticsearchImporter(StoryWorker):
             dest="index_name",
             type=str,
             default=index_name,
-            help="Elasticsearch index name, default %(default)",
+            help=f"Elasticsearch index name, default {index_name}",
         )
 
     def process_args(self) -> None:
@@ -95,20 +95,9 @@ class ElasticsearchImporter(StoryWorker):
                 if value is None or value == "":
                     raise ValueError(f"Value for key '{key}' is not provided.")
 
+            keys_to_skip = ["is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {
-                "original_url": content_metadata.get("original_url"),
-                "url": content_metadata.get("url"),
-                "normalized_url": content_metadata.get("normalized_url"),
-                "canonical_domain": content_metadata.get("canonical_domain"),
-                "publication_date": content_metadata.get("publication_date"),
-                "language": content_metadata.get("language"),
-                "full_language": content_metadata.get("full_language"),
-                "text_extraction": content_metadata.get("text_extraction"),
-                "article_title": content_metadata.get("article_title"),
-                "normalized_article_title": content_metadata.get(
-                    "normalized_article_title"
-                ),
-                "text_content": content_metadata.get("text_content"),
+                k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
 
             if data:
