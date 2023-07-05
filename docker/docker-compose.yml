@@ -53,10 +53,10 @@ services:
     environment:
       - RUN=fetcher
 
-  extract_worker:
+  parser_worker:
     <<: *common_worker
     environment:
-      - RUN=extract
+      - RUN=parser
 
   importer_worker:
     <<: *common_worker
