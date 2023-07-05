@@ -58,6 +58,7 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
     def parse(self, response: Any, story: BaseStory) -> None:
         with story.raw_html() as raw_html:
             raw_html.html = response.body
+            raw_html.encoding = response.encoding
 
         with story.http_metadata() as http_metadata:
             http_metadata.response_code = response.status

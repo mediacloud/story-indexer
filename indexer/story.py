@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 from uuid import NAMESPACE_URL, UUID, uuid3
 
+import cchardet as chardet
+
 from indexer.path import DATAPATH_BY_DATE, DATAROOT, STORIES
 
 """
@@ -118,6 +120,24 @@ RSS_ENTRY = class_to_member_name(RSSEntry)
 class RawHTML(StoryData):
     CONTENT_TYPE: str = "html"
     html: Optional[bytes] = None
+    encoding: Optional[str] = None
+
+    # A backup plan, in case setting encoding at fetch time fails for some reason.
+    def guess_encoding(self) -> None:
+        if self.html is None:
+            return None
+        else:
+            self.encoding = chardet.detect(self.html)["encoding"]
+
+    @property
+    def unicode(self) -> Optional[str]:
+        if self.html is None:
+            return None
+        else:
+            if self.encoding is None:
+                self.guess_encoding()
+            assert isinstance(self.encoding, str)
+            return self.html.decode(self.encoding)
 
 
 RAW_HTML = class_to_member_name(RawHTML)
