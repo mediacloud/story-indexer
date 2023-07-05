@@ -101,13 +101,13 @@ class TestBaseStory:
         assert story.raw_html().encoding is None
         assert story.raw_html().unicode is None
 
-        local_html = "html_fixtures/641939920-rep-payne-jr-opposes-republican-budget-bill-to-benefit-the-wealthy-and-punish-the-middle-class"
+        local_html = "indexer/tests/html_fixtures/641939920-rep-payne-jr-opposes-republican-budget-bill-to-benefit-the-wealthy-and-punish-the-middle-class"
         with open(local_html, "rb") as html_fixture:
             html = html_fixture.read()
             with story.raw_html() as story_html:
                 story_html.html = html
+                story_html.encoding = "UTF-8"
 
-        assert story.raw_html().encoding == "UTF-8"
         assert story.raw_html().unicode is not None
 
 

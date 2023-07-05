@@ -120,21 +120,22 @@ RSS_ENTRY = class_to_member_name(RSSEntry)
 class RawHTML(StoryData):
     CONTENT_TYPE: str = "html"
     html: Optional[bytes] = None
+    encoding: Optional[str] = None
 
-    @property
-    def encoding(self) -> Optional[str]:
+    # A backup plan, in case setting encoding at fetch time fails for some reason.
+    def guess_encoding(self) -> None:
         if self.html is None:
             return None
         else:
-            encoding = chardet.detect(self.html)["encoding"]
-            assert isinstance(encoding, str)
-            return encoding
+            self.encoding = chardet.detect(self.html)["encoding"]
 
     @property
     def unicode(self) -> Optional[str]:
         if self.html is None:
             return None
         else:
+            if self.encoding is None:
+                self.guess_encoding()
             assert isinstance(self.encoding, str)
             return self.html.decode(self.encoding)
 
