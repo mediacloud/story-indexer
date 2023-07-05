@@ -5,7 +5,7 @@ from typing import Any, Generator
 
 import pytest
 
-from indexer.story import BaseStory, DiskStory
+from indexer.story import BaseStory, DiskStory, StoryFactory
 
 TEST_DATA_DIR = "test_data/"
 
@@ -212,3 +212,55 @@ class TestDiskStory:
         assert raw_html.html == self.test_html
         http_meta = third_story.http_metadata()
         assert http_meta.response_code == self.test_http_metadata
+
+
+class TestStoryFactory:
+    sample_rss = {
+        "link": "https://hudsontoday.com/stories/641939920-rep-payne-jr-opposes-republican-budget-bill-to-benefit-the-wealthy-and-punish-the-middle-class",
+        "title": "Rep. Payne, Jr. Opposes Republican Budget Bill to Benefit the Wealthy and Punish the Middle Class",
+        "domain": "hudsontoday.com",
+        "pub_date": "Sun, 30 Apr 2023 23:08:47 -0000",
+        "fetch_date": "2023-05-01",
+    }
+
+    def test_story_factory(self) -> None:
+        STORY_IFACE = "STORY_FACTORY"
+        pre_environ = None
+        if STORY_IFACE in os.environ:
+            pre_environ = os.environ[STORY_IFACE]
+            del os.environ[STORY_IFACE]
+
+        Story = StoryFactory()
+
+        story: BaseStory = Story()
+        assert isinstance(story, BaseStory)
+        assert not isinstance(story, DiskStory)
+
+        os.environ[STORY_IFACE] = "DiskStory"
+
+        Story = StoryFactory()
+        story1: BaseStory = Story()
+        assert isinstance(story1, DiskStory)
+
+        if pre_environ is not None:
+            del os.environ[STORY_IFACE]
+
+    def test_story_factory_load(self) -> None:
+        Story = StoryFactory()
+
+        story: BaseStory = Story()
+        with story.rss_entry() as rss_entry:
+            rss_entry.link = self.sample_rss["link"]
+            rss_entry.title = self.sample_rss["title"]
+            rss_entry.domain = self.sample_rss["domain"]
+            rss_entry.pub_date = self.sample_rss["pub_date"]
+            rss_entry.fetch_date = self.sample_rss["fetch_date"]
+
+        dumped: bytes = story.dump()
+        new_story: BaseStory = Story.load(dumped)
+
+        rss_entry = new_story.rss_entry()
+        assert rss_entry.link == self.sample_rss["link"]
+        assert rss_entry.title == self.sample_rss["title"]
+        assert rss_entry.domain == self.sample_rss["domain"]
+        assert rss_entry.pub_date == self.sample_rss["pub_date"]

@@ -1,3 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "story-indexer"
+version = "0.0.1"
+dependencies = [
+  "argparse",
+  "boto3",
+  "mediacloud-metadata",
+  "pika",
+  "rabbitmq-admin",
+  "supervisor",
+  "scrapy",
+]
+
+[project.optional-dependencies]
+dev = ["pre-commit", "types-pika", "types-requests", "mypy", "pytest"]
+
+
 [tool.isort]
 profile = "black"
 
@@ -14,3 +35,11 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
+
+[tool.pip-tools]
+allow-unsafe = true
+quiet = true
+resolver = "backtracking"
+upgrade = true
+# To enable Hash-Checking-Mode uncomment the following line
+# generate-hashes = true
