@@ -1,6 +1,10 @@
+*.egg-info
+*.py[co]
+.ipynb_checkpoints
+.mypy_cache/
+__pycache__
 data/*
 supervisord.log
-.ipynb_checkpoints
 venv/*
-__pycache__
 env/*
+*~
