@@ -109,8 +109,8 @@ class ElasticsearchImporter(StoryWorker):
         """
         Import a single story to Elasticsearch
         """
-        try:
-            if data:
+        if data:
+            try:
                 response = self.connector.index(data)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
