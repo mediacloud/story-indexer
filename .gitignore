@@ -7,4 +7,5 @@ data/*
 test_data/*
 supervisord.log
 venv/*
+env/*
 *~

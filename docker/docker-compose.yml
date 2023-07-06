@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.11-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - mc_story_indexer
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    environment:
+      - node.name=elasticsearch
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - mc_story_indexer
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+
+  common_worker:
+    <<: &common_worker
+      build:
+        context: ..
+        dockerfile: docker/Dockerfile
+      environment:
+        - RABBITMQ_URL=amqp://rabbitmq:5672
+        - RUN=${RUN}
+      depends_on:
+        rabbitmq:
+          condition: service_healthy
+  fetch_worker:
+    <<: *common_worker
+    environment:
+      - RUN=fetcher
+
+  parser_worker:
+    <<: *common_worker
+    environment:
+      - RUN=parser
+
+  importer_worker:
+    <<: *common_worker
+    environment:
+      - RUN=importer
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
+    networks:
+      - mc_story_indexer
+
+volumes:
+  elasticsearch_data:
+
+networks:
+  mc_story_indexer:
+    driver: bridge
