@@ -2,23 +2,33 @@
 indexer.pipeline utility for describing and initializing queues
 for a processing pipeline using indexer.worker.QApp/Worker/...
 
-Every consumer has an an input queue WORKERNAME-in. Every producer has
-an output exchange WORKERNAME-out with links to downstream input
-queues, a worker is a process with both inputs and outputs.
+But wait, this file is also a script for configuring
+the default pipeline.... It's a floor wax AND a desert topping!
+
+https://www.nbc.com/saturday-night-live/video/shimmer-floor-wax/2721424
 """
 
 import argparse
+import logging
 import sys
 from typing import Any, Callable, Dict, List, Set, Union, cast
 
 # PyPI
 import pika
+from pika.exchange_type import ExchangeType
 from rabbitmq_admin import AdminAPI
 
 # local:
-from indexer.worker import QApp
+from indexer.worker import (
+    DEFAULT_ROUTING_KEY,
+    QApp,
+    input_queue_name,
+    output_exchange_name,
+)
 
 COMMANDS: List[str] = []
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineError(RuntimeError):
@@ -28,28 +38,34 @@ class PipelineError(RuntimeError):
 class Process:
     """Virtual base class describing a pipeline process (producer, worker, consumer)"""
 
-    def __init__(self, pipeline: "Pipeline", name: str, consumer: bool):
+    def __init__(
+        self, pipeline: "Pipeline", name: str, consumer: bool, outputs: "Outputs"
+    ):
         if name in pipeline.procs:
             raise PipelineError(f"process {name} is already defined")
 
         self.name: str = name
         self.pipeline: "Pipeline" = pipeline
         self.consumer: bool = consumer
+        self.outputs = outputs
 
         pipeline.procs[name] = self
 
 
 class ProducerBase(Process):
-    """Base class for Process with outputs"""
+    """
+    Base class for Process with outputs.
+    NOT meant for direct use!
+    """
 
     def __init__(
         self,
         pipeline: "Pipeline",
         name: str,
+        consumer: bool,
         outputs: "Outputs",
-        consumer: bool = False,
     ):
-        super().__init__(pipeline, name, consumer)
+        super().__init__(pipeline, name, consumer, outputs)
         if len(outputs) == 0:
             raise PipelineError(f"{self.__class__.__name__} {name} has no outputs")
 
@@ -64,33 +80,38 @@ class Producer(ProducerBase):
     """Process with outputs only"""
 
     def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
-        super().__init__(pipeline, name, outputs, False)
+        super().__init__(pipeline, name, False, outputs)
 
 
 class Worker(ProducerBase):
     """Process with inputs and output"""
 
     def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
-        super().__init__(pipeline, name, outputs, True)
+        super().__init__(pipeline, name, True, outputs)
 
 
 class Consumer(Process):
     """Process with inputs but no output"""
 
     def __init__(self, pipeline: "Pipeline", name: str):
-        super().__init__(pipeline, name, True)
+        super().__init__(pipeline, name, True, [])
 
 
 Outputs = List[Union[Worker, Consumer]]
 
+# CommandMethod = Callable[["Pipeline"],None]
+CommandMethod = Callable
 
-def command(func: Callable) -> Callable:
+
+def command(func: CommandMethod) -> CommandMethod:
     """decorator for Pipeline command methods"""
     COMMANDS.append(func.__name__)
     return func
 
 
 class Pipeline(QApp):
+    PIKA_LOG_DEFAULT = logging.WARNING
+
     def __init__(self, name: str, descr: str):
         self.procs: Dict[str, Process] = {}
         super().__init__(name, descr)
@@ -125,12 +146,60 @@ class Pipeline(QApp):
     @command
     def configure(self) -> None:
         """configure queues"""
-        print("HERE: configure")
+        assert self.connection
+        chan = self.connection.channel()
+
+        # create queues and exchanges
+        for name, proc in self.procs.items():
+            if proc.consumer:
+                qname = input_queue_name(name)
+                # durable == messages stored on disk
+                logger.debug(f"declaring queue {qname}")
+                chan.queue_declare(qname, durable=True)
+
+            if proc.outputs:
+                ename = output_exchange_name(proc.name)
+                if len(proc.outputs) == 1:
+                    etype = ExchangeType.direct
+                else:
+                    etype = ExchangeType.fanout
+                logger.debug(f"declaring {etype} exchange {ename}")
+                chan.exchange_declare(ename, etype)
+
+                for outproc in proc.outputs:
+                    dest_queue_name = input_queue_name(outproc.name)
+                    logger.debug(
+                        f" binding queue {dest_queue_name} to exchange {ename}"
+                    )
+                    chan.queue_bind(
+                        dest_queue_name, ename, routing_key=DEFAULT_ROUTING_KEY
+                    )
 
     @command
     def delete(self) -> None:
         """delete queues"""
-        print("HERE: delete")
+        assert self.connection
+        chan = self.connection.channel()
+
+        for name, proc in self.procs.items():
+            if proc.consumer:
+                qname = input_queue_name(name)
+                logger.debug(f"deleting queue {qname}")
+                chan.queue_delete(qname)
+
+            if proc.outputs:
+                ename = output_exchange_name(name)
+                logger.debug(f"deleting exchange {ename}")
+                chan.exchange_delete(ename)
+
+                for outproc in proc.outputs:
+                    dest_queue_name = input_queue_name(outproc.name)
+                    logger.debug(
+                        f" deleting binding {dest_queue_name} queue to exchange {ename}"
+                    )
+                    chan.queue_unbind(
+                        dest_queue_name, ename, routing_key=DEFAULT_ROUTING_KEY
+                    )
 
     @command
     def help(self) -> None:
@@ -145,24 +214,27 @@ class Pipeline(QApp):
     def show(self) -> None:
         """show queues"""
         defns = self.get_definitions()
-        curr_queues = [q["name"] for q in defns["queues"]]
-        curr_exchanges = [(e["name"], e["type"]) for e in defns["exchanges"]]
-        print("RabbitMQ current:")
-        print("    queues", curr_queues)
-        print("    exchanges", curr_exchanges)
-        print("    bindings", defns["bindings"])
+        for what in ("queues", "exchanges", "bindings"):
+            things = defns[what]
+            print("")
+            if things:
+                print(what)
+                for thing in things:
+                    print("   ", things)
+            else:
+                print(f"no {what}s")
 
     #### utilities
-    def get_command_func(self, cmd: str) -> Callable:
+    def get_command_func(self, cmd: str) -> Callable[[], None]:
         """returns command function as a bound method"""
         meth = getattr(self, cmd)
         assert callable(meth)
-        return cast(Callable, meth)
+        return cast(Callable[[], None], meth)
 
     def get_definitions(self) -> Dict:
         """
         use rabbitmq_admin package to get server config via RabbitMQ admin API.
-        takes pika (AMQP) parsed URL for connection params
+        Uses pika (AMQP) parsed URL for connection params
         """
         args = self.args
         assert args
@@ -179,10 +251,9 @@ class Pipeline(QApp):
 
 
 if __name__ == "__main__":
-    p = Pipeline("test", "test of pipeline configurator")
-    p.add_producer("a", [p.add_worker("b", [p.add_consumer("c")])])
-
-    for name, proc in p.procs.items():
-        print(name, proc)
-
+    # when invoked via "python -m indexer.pipeline"
+    # or "python indexer/pipeline.py"
+    # configure the default queues.
+    p = Pipeline("pipeline", "configure story-indexer queues")
+    p.add_producer("fetcher", [p.add_worker("parser", [p.add_consumer("importer")])])
     p.main()
