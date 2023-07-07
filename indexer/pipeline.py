@@ -2,14 +2,18 @@
 indexer.pipeline utility for describing and initializing queues
 for a processing pipeline using indexer.worker.QApp/Worker/...
 
-Every consumer has an an input queue WORKERNAME-in, Every producer has
+Every consumer has an an input queue WORKERNAME-in. Every producer has
 an output exchange WORKERNAME-out with links to downstream input
-queues.
+queues, a worker is a process with both inputs and outputs.
 """
 
 import argparse
 import sys
-from typing import Callable, Dict, List, Set, Union, cast
+from typing import Any, Callable, Dict, List, Set, Union, cast
+
+# PyPI
+import pika
+from rabbitmq_admin import AdminAPI
 
 # local:
 from indexer.worker import QApp
@@ -22,51 +26,62 @@ class PipelineError(RuntimeError):
 
 
 class Process:
-    """Virtual class describing a pipeline process (producer, worker, consumer)"""
+    """Virtual base class describing a pipeline process (producer, worker, consumer)"""
 
-    def __init__(self, pipeline: "Pipeline", name: str, producer: bool):
-        if name in pipeline.workers:
-            raise PipelineError(f"{name} is already defined")
+    def __init__(self, pipeline: "Pipeline", name: str, consumer: bool):
+        if name in pipeline.procs:
+            raise PipelineError(f"process {name} is already defined")
 
         self.name: str = name
         self.pipeline: "Pipeline" = pipeline
-        self.producer: bool = producer
+        self.consumer: bool = consumer
 
-        pipeline.workers[name] = self
-        pipeline.queues.add(name)  # XXX f"{name}-in" ?
+        pipeline.procs[name] = self
 
 
-class Producer(Process):
-    """Process with no inputs"""
+class ProducerBase(Process):
+    """Base class for Process with outputs"""
+
+    def __init__(
+        self,
+        pipeline: "Pipeline",
+        name: str,
+        outputs: "Outputs",
+        consumer: bool = False,
+    ):
+        super().__init__(pipeline, name, consumer)
+        if len(outputs) == 0:
+            raise PipelineError(f"{self.__class__.__name__} {name} has no outputs")
+
+        for output in outputs:
+            if not output.consumer:
+                raise PipelineError(f"{name} output {output.name} not a consumer!")
+
+        self.outputs = outputs
+
+
+class Producer(ProducerBase):
+    """Process with outputs only"""
+
+    def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
+        super().__init__(pipeline, name, outputs, False)
+
+
+class Worker(ProducerBase):
+    """Process with inputs and output"""
+
+    def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
+        super().__init__(pipeline, name, outputs, True)
+
+
+class Consumer(Process):
+    """Process with inputs but no output"""
 
     def __init__(self, pipeline: "Pipeline", name: str):
         super().__init__(pipeline, name, True)
 
 
-Inputs = List[Union[Producer, "Worker"]]
-
-
-class Worker(Process):
-    """Process with inputs and output"""
-
-    def __init__(
-        self, pipeline: "Pipeline", name: str, inputs: Inputs, _producer: bool = True
-    ):
-        if len(inputs) == 0:
-            raise PipelineError(f"consumer {name} has no inputs")
-
-        for input in inputs:
-            if not input.producer:
-                raise PipelineError(f"{name} input {input.name} not a producer!")
-
-        super().__init__(pipeline, name, _producer)
-
-
-class Consumer(Worker):
-    """Process with inputs but no output"""
-
-    def __init__(self, pipeline: "Pipeline", name: str, inputs: Inputs):
-        super().__init__(pipeline, name, inputs, False)
+Outputs = List[Union[Worker, Consumer]]
 
 
 def command(func: Callable) -> Callable:
@@ -77,25 +92,36 @@ def command(func: Callable) -> Callable:
 
 class Pipeline(QApp):
     def __init__(self, name: str, descr: str):
-        self.queues: Set = set()
-        self.workers: Dict[str, Process] = {}
+        self.procs: Dict[str, Process] = {}
         super().__init__(name, descr)
 
-    def add_producer(self, name: str) -> Producer:
-        """Add a Process with no inputs"""
-        return Producer(self, name)
-
-    def add_worker(self, name: str, inputs: Inputs) -> Worker:
-        return Worker(self, name, inputs)
-
-    def add_consumer(self, name: str, inputs: Inputs) -> Consumer:
-        """Add a Process with no output"""
-        return Consumer(self, name, inputs)
-
+    #### QApp methods
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("command", nargs=1, type=str, choices=COMMANDS, help="Command")
 
+    def main_loop(self) -> None:
+        """Not a loop!"""
+        assert self.args
+        cmds = self.args.command
+        assert cmds
+
+        cmd = cmds[0]
+        self.get_command_func(cmd)()
+
+    #### User methods for defining topology before calling main
+    def add_producer(self, name: str, outputs: Outputs) -> Producer:
+        """Add a Process with no inputs"""
+        return Producer(self, name, outputs)
+
+    def add_worker(self, name: str, outputs: Outputs) -> Worker:
+        return Worker(self, name, outputs)
+
+    def add_consumer(self, name: str) -> Consumer:
+        """Add a Process with no output"""
+        return Consumer(self, name)
+
+    #### Commands (in alphabetical order)
     @command
     def configure(self) -> None:
         """configure queues"""
@@ -115,23 +141,48 @@ class Pipeline(QApp):
             descr = self.get_command_func(cmd).__doc__
             print(f"{cmd:12.12} {descr}")
 
+    @command
+    def show(self) -> None:
+        """show queues"""
+        defns = self.get_definitions()
+        curr_queues = [q["name"] for q in defns["queues"]]
+        curr_exchanges = [(e["name"], e["type"]) for e in defns["exchanges"]]
+        print("RabbitMQ current:")
+        print("    queues", curr_queues)
+        print("    exchanges", curr_exchanges)
+        print("    bindings", defns["bindings"])
+
+    #### utilities
     def get_command_func(self, cmd: str) -> Callable:
         """returns command function as a bound method"""
-        return cast(Callable, getattr(self, cmd))
+        meth = getattr(self, cmd)
+        assert callable(meth)
+        return cast(Callable, meth)
 
-    def main_loop(self) -> None:
-        assert self.args
-        cmds = self.args.command
-        assert cmds
-
-        cmd = cmds[0]
-        self.get_command_func(cmd)()
+    def get_definitions(self) -> Dict:
+        """
+        use rabbitmq_admin package to get server config via RabbitMQ admin API.
+        takes pika (AMQP) parsed URL for connection params
+        """
+        args = self.args
+        assert args
+        par = pika.connection.URLParameters(args.amqp_url)
+        creds = par.credentials
+        assert isinstance(creds, pika.credentials.PlainCredentials)
+        port = 15672  # XXX par.port + 10000???
+        api = AdminAPI(
+            url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
+        )
+        defns = api.get_definitions()
+        assert isinstance(defns, dict)
+        return defns
 
 
 if __name__ == "__main__":
     p = Pipeline("test", "test of pipeline configurator")
-    p.add_consumer("c", [p.add_worker("b", [p.add_producer("a")])])
+    p.add_producer("a", [p.add_worker("b", [p.add_consumer("c")])])
 
-    print(p.queues)
-    print(p.workers)
+    for name, proc in p.procs.items():
+        print(name, proc)
+
     p.main()
