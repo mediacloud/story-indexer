@@ -36,6 +36,19 @@ class InputMessage(NamedTuple):
     body: bytes
 
 
+def input_queue_name(procname: str) -> str:
+    """take process name, return input queue name"""
+    # Every consumer has an an input queue NAME-in.
+    return procname + "-in"
+
+
+def output_exchange_name(procname: str) -> str:
+    """take process name, return input exchange name"""
+    # Every producer has an output exchange NAME-out
+    # with links to downstream input queues.
+    return procname + "-out"
+
+
 class QApp(App):
     """
     Base class for AMQP/pika based App.
@@ -45,15 +58,18 @@ class QApp(App):
 
     AUTO_CONNECT = True
 
+    # pika logs (a lot) at INFO level: make logging.WARNING the default?
+    # this default can be overridden with "--log-level pika:info"
+    PIKA_LOG_DEFAULT: Optional[int] = None
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
         self.connection: Optional[BlockingConnection] = None
 
-        # script/configure.py creates queues/exchanges with process-{in,out}
-        # names based on pipeline.json file:
-        self.input_queue_name = f"{self.process_name}-in"
-        self.output_exchange_name = f"{self.process_name}-out"
+        # script/configure.py creates queues/exchanges
+        self.input_queue_name = input_queue_name(self.process_name)
+        self.output_exchange_name = output_exchange_name(self.process_name)
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -68,6 +84,9 @@ class QApp(App):
             default=default_url,
             help="override RABBITMQ_URL ({default_url}",
         )
+
+        if self.PIKA_LOG_DEFAULT is not None:
+            logging.getLogger("pika").setLevel(self.PIKA_LOG_DEFAULT)
 
     def process_args(self) -> None:
         super().process_args()
