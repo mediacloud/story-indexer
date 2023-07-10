@@ -1,18 +1,26 @@
 import json
+import os
 import pickle
 import re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Union, overload
+from typing import Any, Callable, Dict, List, Optional, Union
+from uuid import NAMESPACE_URL, UUID, uuid3
 
-from indexer.path import DATAROOT
+import cchardet as chardet
+
+from indexer.path import DATAPATH_BY_DATE, DATAROOT, STORIES
 
 """
 A single story interface object, with typed data fields for each pipeline step,
 context management on each of those step datum, and a serialization scheme.
 Subclassable with hooks for different storage backends
 """
+
+
+def uuid_by_link(link: str) -> str:
+    return uuid3(NAMESPACE_URL, link).hex
 
 
 # enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
@@ -112,6 +120,24 @@ RSS_ENTRY = class_to_member_name(RSSEntry)
 class RawHTML(StoryData):
     CONTENT_TYPE: str = "html"
     html: Optional[bytes] = None
+    encoding: Optional[str] = None
+
+    # A backup plan, in case setting encoding at fetch time fails for some reason.
+    def guess_encoding(self) -> None:
+        if self.html is None:
+            return None
+        else:
+            self.encoding = chardet.detect(self.html)["encoding"]
+
+    @property
+    def unicode(self) -> Optional[str]:
+        if self.html is None:
+            return None
+        else:
+            if self.encoding is None:
+                self.guess_encoding()
+            assert isinstance(self.encoding, str)
+            return self.html.decode(self.encoding)
 
 
 RAW_HTML = class_to_member_name(RawHTML)
@@ -120,6 +146,10 @@ RAW_HTML = class_to_member_name(RawHTML)
 @dataclass(kw_only=True)
 class HTTPMetadata(StoryData):
     response_code: Optional[int] = None
+    fetch_timestamp: Optional[float] = None
+    final_url: Optional[str] = None
+    encoding: Optional[str] = None
+
     # ... there's more here, figure out later
 
 
@@ -168,6 +198,15 @@ class BaseStory:
             self.load_metadata(uninitialized)
 
         return self._rss_entry
+
+    def uuid(self) -> Optional[str]:
+        # Used in serialization
+        if self._rss_entry is None:
+            return None
+        else:
+            link = self._rss_entry.link
+            assert isinstance(link, str)
+            return uuid_by_link(link)
 
     def raw_html(self) -> RawHTML:
         if not hasattr(self, RAW_HTML):
@@ -234,16 +273,15 @@ class BaseStory:
 """
 data/
 - {date}/
--- {link_hash}/
---- _rss_entry.json
---- _raw_html.html
---- _http_metadata.json
---- _content_metadata.json
+-- {stories}/
+--- {link_hash}/
+---- _rss_entry.json
+---- _raw_html.html
+---- _http_metadata.json
+---- _content_metadata.json
 -- ...
 """
-# That way the serialized bytestring can just be b'{date}/{link_hash}'
-# Two kinks- one is that we need some way to mark that the html is stored as html- that's easy enough though.
-# Two is that the link_hash from the first draft didn't work for long url, filesystem has a length limit.
+# That way the serialized bytestring can just be the path from data to link_hash
 # ...
 
 # Some of the ways that project level paramaters like the data directory are managed here feel wrong, but
@@ -263,12 +301,7 @@ class DiskStory(BaseStory):
     def __init__(self, directory: Optional[str] = None):
         self.directory = directory
         if self.directory is not None:
-            self.path = Path(f"{DATAROOT()}{self.directory}")
-
-    # NB! This is a temporary fix- will need a shortening-hash for the final situation,
-    # as some urls are too long for the filesystem.
-    def link_hash(self, link: str) -> str:
-        return link.replace("/", "\\")
+            self.path = Path(self.directory)
 
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
@@ -284,8 +317,9 @@ class DiskStory(BaseStory):
         if link is None:
             raise RuntimeError("Cannot init directory if RSSEntry.link is None")
 
-        self.directory = f"{year}/{month}/{day}/{self.link_hash(link)}/"
-        self.path = Path(f"{DATAROOT()}{self.directory}")
+        data_path = DATAPATH_BY_DATE(fetch_date)
+        self.directory = f"{data_path}{STORIES}/{self.uuid()}/"
+        self.path = Path(self.directory)
         self.path.mkdir(parents=True, exist_ok=True)
 
     def save_metadata(self, story_data: StoryData) -> None:
@@ -304,7 +338,6 @@ class DiskStory(BaseStory):
                 self.init_storage(story_data)
 
             else:
-                # test case
                 raise RuntimeError(
                     "Cannot save if directory information is uninitialized"
                 )
@@ -351,15 +384,33 @@ class DiskStory(BaseStory):
 
     def dump(self) -> bytes:
         """
-        Returns a queue-appropriate serialization of the the object- in this case just the directory string
+        Returns a queue-appropriate serialization of the the object- this story with just a directory name, pickled.
         """
         if self.directory is not None:
-            return str.encode(self.directory)
+            dumped_story: DiskStory = DiskStory(self.directory)
+            return pickle.dumps(dumped_story)
         raise RuntimeError("Cannot dump story with uninitialized directory")
 
-    @classmethod
-    def load(cls, serialized: bytes) -> Any:
-        """
-        Loads from a queue-appropriate serialization
-        """
-        return DiskStory(serialized.decode("utf8"))
+
+class StoryFactory:
+    """
+    A Story Factory- eg:
+        Story = StoryFactory()
+        new_story = Story()
+        loaded_story = Story.load()
+    """
+
+    def __init__(self) -> None:
+        self.iface = os.getenv("STORY_FACTORY", "BaseStory")
+        self.classes = {
+            "BaseStory": BaseStory,
+            "DiskStory": DiskStory,
+        }
+
+    def __call__(self, *args: List, **kwargs: Dict[Any, Any]) -> BaseStory:
+        instance = self.classes[self.iface](*args, **kwargs)
+        assert isinstance(instance, BaseStory)
+        return instance
+
+    def load(self, serialized: bytes) -> Any:
+        return pickle.loads(serialized)
