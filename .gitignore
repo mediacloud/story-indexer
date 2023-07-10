@@ -1,6 +1,10 @@
-data/*
-supervisord.log
+*.egg-info
+*.py[co]
 .ipynb_checkpoints
-venv/*
+.mypy_cache/
 __pycache__
+data/*
+test_data/*
+supervisord.log
+venv/*
 env/*
