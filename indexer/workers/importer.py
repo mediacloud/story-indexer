@@ -99,16 +99,15 @@ class ElasticsearchImporter(StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-
-            if data:
-                self.import_story(data)
+            self.import_story(data)
 
     def import_story(
         self, data: Mapping[str, Optional[Union[str, bool]]]
-    ) -> ObjectApiResponse[Any]:
+    ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
         """
+        response = None
         if data:
             try:
                 response = self.connector.index(data)
@@ -117,8 +116,8 @@ class ElasticsearchImporter(StoryWorker):
                 else:
                     # Log no imported stories
                     logger.info("Story was not imported.")
-        except Exception as e:
-            logger.error(f"Elasticsearch exception: {str(e)}")
+            except Exception as e:
+                logger.error(f"Elasticsearch exception: {str(e)}")
 
         return response
 

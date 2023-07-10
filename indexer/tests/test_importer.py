@@ -104,4 +104,7 @@ class TestElasticsearchImporter:
     ) -> None:
         importer.connector = elasticsearch_connector
         response = importer.import_story(test_data)
-        assert response.get("result") == "created"
+        if response is not None:
+            assert response.get("result") == "created"
+        else:
+            raise AssertionError("No response received")
