@@ -222,7 +222,7 @@ class Pipeline(QApp):
                 for thing in things:
                     print("   ", things)
             else:
-                print(f"no {what}s")
+                print(f"no {what}")
 
     #### utilities
     def get_command_func(self, cmd: str) -> Callable[[], None]:
