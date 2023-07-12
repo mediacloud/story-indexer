@@ -67,7 +67,7 @@ class QApp(App):
 
         self.connection: Optional[BlockingConnection] = None
 
-        # script/configure.py creates queues/exchanges
+        # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
 
