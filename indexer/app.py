@@ -6,7 +6,11 @@ import argparse
 import logging
 import os
 import sys
+import urllib.parse
 from typing import Optional
+
+# PyPI
+import statsd  # using local (partial) stub file
 
 FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 LEVEL_DEST = "log_level"  # args entry name!
@@ -32,6 +36,7 @@ class App:
         self.process_name = process_name
         self.descr = descr
         self.args: Optional[argparse.Namespace] = None  # set by main
+        self._statsd: Optional[statsd.StatsdClient] = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         """
@@ -121,11 +126,53 @@ class App:
                 logging.getLogger(logger_name).setLevel(level.upper())
         ################ logging now enabled
 
+    ################ stats reporting
+
+    def _stats_init(self) -> None:
+        """
+        one-time init for statistics
+        """
+        # FYI: STATSD_URL is set by dokku-graphite plugin
+        statsd_url = os.getenv("STATSD_URL", None)
+        if not statsd_url:
+            logger.info("STATSD_URL not set")
+            return
+
+        parsed_url = urllib.parse.urlparse(statsd_url)
+        if parsed_url.scheme != "statsd":
+            logger.warning("STATSD_URL {statsd_url} scheme not 'statsd'")
+            return
+
+        if ":" in parsed_url.netloc:
+            host, portstr = parsed_url.netloc.split(":", 1)
+            port = int(portstr)  # could raise ValueError
+        else:
+            host = parsed_url.netloc
+            port = None
+
+        if not host:
+            logger.warning("STATSD_URL {statsd_url} missing host")
+            return
+
+        realm = os.getenv("STATSD_REALM", None)
+        if not realm:  # should be one of 'prod', 'staging' or developer name
+            logger.warning(f"STATSD_URL {statsd_url} but STATSD_REALM not set")
+            return
+
+        prefix = f"mc.{realm}.{self.process_name}"
+        logger.info(f"sending stats to {statsd_url} prefix {prefix}")
+        self._statsd = statsd.StatsdClient(host, port, prefix)
+
+    # XXX counter, gauge, time_context, time_value: all take optional tags
+
+    ################ main program
+
     def main(self) -> None:
         ap = argparse.ArgumentParser(self.process_name, self.descr)
         self.define_options(ap)
         self.args = ap.parse_args()
         self.process_args()
+        self._stats_init()
         self.main_loop()
 
     def main_loop(self) -> None:
