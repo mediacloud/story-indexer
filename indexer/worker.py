@@ -175,6 +175,10 @@ class Worker(QApp):
         Here w/ INPUT_BATCH_MSGS or
         INPUT_BATCH_SECS elapsed after first message
         """
+        # NOTE! when INPUT_BATCH_MSGS != 1, timing for entire batch
+        # (not normalized per message): actual work is done by
+        # "end_of_batch" method
+
         with self.timer("process_msgs"):
             for m, p, b in self.input_msgs:
                 # XXX wrap in try, handle retry, quarantine, increment counters
