@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "story-indexer"
 version = "0.0.1"
 dependencies = [
-  "argparse",
   "boto3",
+  "elasticsearch",
   "mediacloud-metadata",
   "pika",
   "rabbitmq-admin",
@@ -43,3 +43,10 @@ resolver = "backtracking"
 upgrade = true
 # To enable Hash-Checking-Mode uncomment the following line
 # generate-hashes = true
+
+# https://setuptools.pypa.io/en/latest/userguide/package_discovery.html#custom-discovery
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["indexer*"]
+exclude = ["indexer.tests*"]
+namespaces = false
