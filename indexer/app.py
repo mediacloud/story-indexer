@@ -6,17 +6,21 @@ import argparse
 import logging
 import os
 import sys
+import time
 import urllib.parse
-from typing import Optional
+from types import TracebackType
+from typing import Any, List, Optional, Tuple
 
 # PyPI
-import statsd  # using local (partial) stub file
+import statsd  # depends on stubs/statsd.pyi
+
+Labels = List[Tuple[str, Any]]  # optional labels/values for a statistic report
 
 FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
 LOGGER_LEVEL_SEP = ":"
-
+TAGS = False  # get from env?? graphite >= 1.1.0 tags
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +167,63 @@ class App:
         logger.info(f"sending stats to {statsd_url} prefix {prefix}")
         self._statsd = statsd.StatsdClient(host, port, prefix)
 
-    # XXX counter, gauge, time_context, time_value: all take optional tags
+    def _name(self, name: str, labels: Labels = []) -> str:
+        """
+        return a statsd suitable variable for name (may contain dots)
+        and labels (in the prometheus sense), a list of (name,value) pairs.
+
+        Sorts by dimension name to ensure consistent ordering.
+
+        This MAY turn out to be a pain if you want to slice
+        a chart based on one dimension (if that happens,
+        add a no_sort argument to "inc" and "gauge", to pass here?
+        """
+        if labels:
+            if TAGS:  # graphite 1.1 tags
+                # https://graphite.readthedocs.io/en/latest/tags.html#tags
+                # sorting may be unnecessary
+                slabels = ";".join([f"{name}={val}" for name, val in sorted(labels)])
+                name = f"{name};{slabels}"
+            else:  # pre-1.1 graphite w/o tag support (note sorting)
+                # (no arbitrary tags in netdata)
+                slabels = ".".join([f"{name}_{val}" for name, val in sorted(labels)])
+                name = f"{name}.{slabels}"
+        return name
+
+    def incr(self, name: str, value: int = 1, labels: Labels = []) -> None:
+        """
+        Increment a counter
+        (something that never decreases, like an odometer)
+
+        Please use the convention that counter names end in "s".
+        """
+        if self._statsd:
+            self._statsd.incr(self._name(name, labels), value)
+
+    def gauge(self, name: str, value: float, labels: Labels = []) -> None:
+        """
+        Indicate value of a gauge
+        (something that goes up and down, like a thermometer or speedometer)
+        """
+        if self._statsd:
+            self._statsd.gauge(self._name(name, labels), value)
+
+    def timing(self, name: str, ms: float, labels: Labels = []) -> None:
+        """
+        Report a timing (duration) in milliseconds.  Any variable that has
+        a range of values (and multiple values per period) can be
+        reported as a timing.  statsd records statistics (per period)
+        on the distribution of values.  If a straight histogram is
+        desired, it can be added here as a tagged counter.
+        """
+        if self._statsd:
+            self._statsd.timing(self._name(name, labels), ms)
+
+    def timer(self, name: str) -> "_TimingContext":
+        """
+        return "with" context for timing a block of code
+        """
+        return _TimingContext(self, name)
 
     ################ main program
 
@@ -173,10 +233,44 @@ class App:
         self.args = ap.parse_args()
         self.process_args()
         self._stats_init()
-        self.main_loop()
+
+        with self.timer("main_loop"):  # also serves as restart count
+            self.main_loop()
 
     def main_loop(self) -> None:
-        raise AppException(f"{self.__class__.__name__} must override main_loop!")
+        """
+        not necessarily a loop!
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} must override main_loop!")
+
+
+class _TimingContext:
+    """
+    a "with" context for timing a block of code
+    returned by App.timing_context(name).
+    """
+
+    def __init__(self, app: App, name: str):
+        self.app = app
+        self.name = name
+        self.t0 = -1.0
+
+    def __enter__(self) -> None:
+        assert self.t0 < 0  # make sure not active!
+        self.t0 = time.monotonic()
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        assert self.t0 > 0  # check enter'ed
+        # statsd wants milliseconds:
+        ms = (time.monotonic() - self.t0) * 1000
+        logger.debug("%s: %g ms", self.name, ms)
+        self.app.timing(self.name, ms)
+        self.t0 = -1.0
 
 
 if __name__ == "__main__":
