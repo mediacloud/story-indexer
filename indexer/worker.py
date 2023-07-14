@@ -150,7 +150,7 @@ class Worker(QApp):
         basic_consume callback function
         """
 
-        logger.debug(f"on_message {method.delivery_tag}")
+        logger.debug("on_message %s", method.delivery_tag)  # no preformat!
 
         self.input_msgs.append(InputMessage(method, properties, body))
 
@@ -167,6 +167,7 @@ class Worker(QApp):
         if self.input_timer and self.connection:
             self.connection.remove_timeout(self.input_timer)
             self.input_timer = None
+
         self._process_messages(chan)
 
     def _process_messages(self, chan: BlockingChannel) -> None:
@@ -174,23 +175,23 @@ class Worker(QApp):
         Here w/ INPUT_BATCH_MSGS or
         INPUT_BATCH_SECS elapsed after first message
         """
-        for m, p, b in self.input_msgs:
-            # XXX wrap in try?
-            # XXX check processing status??
-            # XXX reject bad msgs??
-            # XXX increment counters based on status??
-            self.process_message(chan, m, p, b)
+        with self.timer("process_msgs"):
+            for m, p, b in self.input_msgs:
+                # XXX wrap in try, handle retry, quarantine, increment counters
+                self.process_message(chan, m, p, b)
 
-        self.end_of_batch(chan)
-        chan.tx_commit()  # commit sent messages
+            self.end_of_batch(chan)
 
-        # ack last message only:
-        multiple = len(self.input_msgs) > 1
-        tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
-        assert tag is not None  # XXX better error?
-        logger.debug("ack {tag} {multiple}")
-        chan.basic_ack(delivery_tag=tag, multiple=multiple)
-        self.input_msgs = []
+            chan.tx_commit()  # commit sent messages
+
+            # ack message(s)
+            multiple = len(self.input_msgs) > 1
+            tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
+            assert tag is not None
+            logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
+            chan.basic_ack(delivery_tag=tag, multiple=multiple)
+            self.input_msgs = []
+
         sys.stdout.flush()  # for redirection, supervisord
 
     def process_message(
