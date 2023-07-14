@@ -2,9 +2,6 @@
 metadata parser pipeline worker
 """
 
-import datetime as dt
-import gzip
-import json
 import logging
 
 # PyPI:
@@ -28,12 +25,9 @@ class Parser(StoryWorker):
         raw = story.raw_html()
 
         link = rss.link
+        # XXX quarantine Story if no link or HTML???
         if link:
-            # XXX want Story method to retrieve unicode string!!
-            if raw.html:
-                html = raw.html.decode("utf-8")  # XXX wrong!
-            else:
-                html = ""  # XXX error?
+            html = raw.unicode
 
             # metadata dict
             # may raise mcmetadata.exceptions.BadContentError
@@ -45,7 +39,6 @@ class Parser(StoryWorker):
                 #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
                     setattr(cmd, key, val)
-        # XXX else quarantine?!
 
         self.send_story(chan, story)
 
