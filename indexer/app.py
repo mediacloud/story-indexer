@@ -163,20 +163,29 @@ class App:
             logger.warning(f"STATSD_URL {statsd_url} but STATSD_REALM not set")
             return
 
-        prefix = f"mc.{realm}.{self.process_name}"
+        prefix = f"mc.{realm}.story-indexer.{self.process_name}"
         logger.info(f"sending stats to {statsd_url} prefix {prefix}")
         self._statsd = statsd.StatsdClient(host, port, prefix)
 
     def _name(self, name: str, labels: Labels = []) -> str:
         """
-        return a statsd suitable variable for name (may contain dots)
+        Returns a statsd suitable variable for name (may contain dots)
         and labels (in the prometheus sense), a list of (name,value) pairs.
 
-        Sorts by dimension name to ensure consistent ordering.
+        Hides that fact that older versions of graphite (the storage
+        system) don't have any concept of labels.
 
-        This MAY turn out to be a pain if you want to slice
-        a chart based on one dimension (if that happens,
-        add a no_sort argument to "inc" and "gauge", to pass here?
+        If statsd/graphite is ever replaced with a collection/storage
+        system that wants to see labels separately from variable name,
+        then this function's only reason for being would be to
+        translate a dotted path into a form appropriate for the
+        collection/storage system.
+
+        NOTE: Sorts by label/dimension name to ensure consistent
+        ordering in case multiple labels presented in differing order
+        in different calls.  This MAY turn out to be a pain if you
+        want to slice a chart based on one dimension (if that happens,
+        add a no_sort argument to "incr" and "gauge", to pass here?
         """
         if labels:
             if TAGS:  # graphite 1.1 tags
@@ -196,6 +205,11 @@ class App:
         (something that never decreases, like an odometer)
 
         Please use the convention that counter names end in "s".
+
+        NOTE!  The storage requirements for a time series are
+        multiplied by the product of the number of unique values
+        (cardinality) of each label, SO label values should
+        be constrained to a small set!!!
         """
         if self._statsd:
             self._statsd.incr(self._name(name, labels), value)
@@ -204,6 +218,11 @@ class App:
         """
         Indicate value of a gauge
         (something that goes up and down, like a thermometer or speedometer)
+
+        NOTE!  The storage requirements for a time series are
+        multiplied by the product of the number of unique values
+        (cardinality) of each label, SO label values should
+        be constrained to a small set!!!
         """
         if self._statsd:
             self._statsd.gauge(self._name(name, labels), value)
@@ -215,6 +234,13 @@ class App:
         reported as a timing.  statsd records statistics (per period)
         on the distribution of values.  If a straight histogram is
         desired, it can be added here as a tagged counter.
+
+        NOTE!  The storage requirements for a time series are
+        multiplied by the product of the number of unique values
+        (cardinality) of each label, SO label values should
+        be constrained to a small set!!!
+
+        ALSO: statd already creates NUMEROUS series for each timing!
         """
         if self._statsd:
             self._statsd.timing(self._name(name, labels), ms)
