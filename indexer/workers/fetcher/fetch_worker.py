@@ -143,10 +143,14 @@ class FetchWorker(QApp):
         assert self.connection
         chan = self.connection.channel()
 
+        sent_stories = []
+        logger.info(f"fetched stories: {len(self.fetched_stories)}")
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
             if http_meta.response_code == 200:
+                sent_stories.append(story)
                 self.send_message(chan, story.dump())
+        logger.info(f"sent stories: {len(sent_stories)}")
 
 
 if __name__ == "__main__":

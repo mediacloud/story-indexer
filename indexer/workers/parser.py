@@ -24,10 +24,12 @@ class Parser(StoryWorker):
         chan: BlockingChannel,
         story: BaseStory,
     ) -> None:
+        logger.info(f"Parser, {story}")
         rss = story.rss_entry()
         raw = story.raw_html()
 
         link = rss.link
+        logger.info(f"Parser, RSS Link: {link}")
         if link:
             # XXX want Story method to retrieve unicode string!!
             if raw.html:
