@@ -91,7 +91,8 @@ class ElasticsearchImporter(StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    raise ValueError(f"Value for key '{key}' is not provided.")
+                    logger.error(f"Value for key '{key}' is not provided.")
+                    continue
 
             keys_to_skip = ["is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {

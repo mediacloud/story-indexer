@@ -48,6 +48,7 @@ services:
       depends_on:
         rabbitmq:
           condition: service_healthy
+
   fetch_worker:
     <<: *common_worker
     environment:
@@ -58,11 +59,11 @@ services:
     environment:
       - RUN=parser
 
-  # importer_worker:
-  #   <<: *common_worker
-  #   environment:
-  #     - RUN=importer
-  #     - ELASTICSEARCH_HOST=http://elasticsearch:9200/
+  importer_worker:
+    <<: *common_worker
+    environment:
+      - RUN=importer
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
 
 volumes:
   elasticsearch_data:
