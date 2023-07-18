@@ -16,6 +16,10 @@ from indexer.worker import StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
+# Counter names
+IMPORTED_STORIES = "imported-stories"
+IMPORT_FAILED_STORIES = "import-failed-stories"
+
 
 class ElasticsearchConnector:
     def __init__(
@@ -113,9 +117,11 @@ class ElasticsearchImporter(StoryWorker):
                 response = self.connector.index(data)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
+                    self.incr(IMPORTED_STORIES)
                 else:
                     # Log no imported stories
                     logger.info("Story was not imported.")
+                    self.incr(IMPORT_FAILED_STORIES)
             except Exception as e:
                 logger.error(f"Elasticsearch exception: {str(e)}")
 
