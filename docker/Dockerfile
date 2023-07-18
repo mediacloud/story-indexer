@@ -26,12 +26,8 @@ COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache /wheels/*
 
-# COPY ../bin/func.sh ${APP_DOCKER}/bin/
-# COPY ../bin/indirect.sh ${APP_DOCKER}/bin/
-# COPY ../bin/run-extract.sh ${APP_DOCKER}/bin
 COPY ../bin/*.sh ${APP_DOCKER}/bin/
 
-# RUN chmod +x ${APP_DOCKER}/bin/indirect.sh
 RUN chmod +x ${APP_DOCKER}/bin/*.sh
 
 
