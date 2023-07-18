@@ -1,11 +1,17 @@
 # story-indexer
 
-A blank slate with linting and typing implemented as pre-commit hooks.
+## Description
 
-#### Setup
+## Setup
+
+Activate a `python3.10` virtual env and then from the root of the project, run `make` to install all required dependencies.
 
 ```sh
-python -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 make
 ```
+
+### Other useful targets
+
+Run `make help` to see the list of other useful targets
