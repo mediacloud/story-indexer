@@ -38,7 +38,8 @@ class Parser(StoryWorker):
                 #       could copy items individually with type checking
                 #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
-                    setattr(cmd, key, val)
+                    if hasattr(cmd, key):  # avoid hardwired exceptions list?!
+                        setattr(cmd, key, val)
 
         self.send_story(chan, story)
 
