@@ -15,7 +15,7 @@ services:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
       timeout: 10s
-      retries: 2
+      retries: 5
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -33,7 +33,7 @@ services:
       test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 2
+      retries: 5
 
   common_worker:
     <<: &common_worker
@@ -43,6 +43,7 @@ services:
       environment:
         - RABBITMQ_URL=amqp://rabbitmq:5672
         - RUN=${RUN}
+        - RUN_ON_START=1
       volumes:
         - ../indexer:/app/indexer
       depends_on:

@@ -8,7 +8,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-RUN apt-get update
+RUN apt-get update && apt-get install -y curl
 
 # install dependencies
 COPY ../requirements.txt .
@@ -36,4 +36,4 @@ COPY ../indexer ${APP_DOCKER}/indexer/
 ARG RUN
 ENV RUN=${RUN}
 
-ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]
+ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/start_script.sh" ]
