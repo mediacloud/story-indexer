@@ -17,9 +17,6 @@ from indexer.worker import StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
-# Counter names
-PARSED_STORIES = "parsed-stories"
-
 
 class Parser(StoryWorker):
     def process_story(
@@ -51,7 +48,7 @@ class Parser(StoryWorker):
         # XXX else quarantine?!
 
         self.send_story(chan, story)
-        self.incr(PARSED_STORIES)
+        self.incr("parsed-stories")
 
 
 if __name__ == "__main__":

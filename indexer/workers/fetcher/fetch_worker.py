@@ -20,11 +20,6 @@ logger = logging.getLogger(__name__)
 
 Story = StoryFactory()
 
-# Counter names
-RSS_STORIES = "rss-stories"
-FETCHED_STORIES = "fetched-stories"
-FAILED_STORIES = "failed-stories"
-
 
 class FetchWorker(QApp):
     AUTO_CONNECT: bool = False
@@ -128,7 +123,7 @@ class FetchWorker(QApp):
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
 
             self.stories_to_fetch.append(new_story)
-            self.incr(RSS_STORIES)
+            self.incr("rss-stories")
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
@@ -150,11 +145,16 @@ class FetchWorker(QApp):
 
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
+
+            assert http_meta.response_code is not None
+
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
-                self.incr(FETCHED_STORIES)
+                self.incr("fetched-stories")
+            elif http_meta.response_code in (403, 404, 429):
+                self.incr(f"failed-stories-{http_meta.response_code}")
             else:
-                self.incr(FAILED_STORIES)
+                self.incr(f"failed-stories-{http_meta.response_code//100}xx")
 
 
 if __name__ == "__main__":
