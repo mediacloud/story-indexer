@@ -28,6 +28,14 @@ MIME_TYPE_PICKLE = "application/python-pickle"
 DEFAULT_ROUTING_KEY = "default"
 
 
+class QuarantineException(AppException):
+    """
+    Exception to raise when a message cannot _possibly_ be processed,
+    and the message should be sent directly to jail
+    (do not pass go, do not collect $200)
+    """
+
+
 class InputMessage(NamedTuple):
     """used to save batches of input messages"""
 
@@ -194,29 +202,69 @@ class Worker(QApp):
         Here w/ INPUT_BATCH_MSGS or
         INPUT_BATCH_SECS elapsed after first message
         """
-        # NOTE! when INPUT_BATCH_MSGS != 1, timing for entire batch
-        # (not normalized per message): actual work is done by
-        # "end_of_batch" method
-
-        with self.timer("process_msgs"):
-            for m, p, b in self.input_msgs:
-                # XXX wrap in try, handle retry, quarantine, increment counters
+        t0 = time.monotonic()
+        msgs = 0
+        for m, p, b in self.input_msgs:
+            msgs += 1
+            try:
                 self.process_message(chan, m, p, b)
+                status = "ok"
+            except QuarantineException as e:
+                status = "error"
+                self._quarantine(chan, m, p, b, e)
+            except Exception as e:
+                status = "retry"
+                self._retry(chan, m, p, b, e)
 
-            self.end_of_batch(chan)
+        # when INPUT_BATCH_MSGS != 1, actual work is done by
+        # "end_of_batch" method, so include in total time
+        self.end_of_batch(chan)
 
-            # ack message(s)
-            multiple = len(self.input_msgs) > 1
-            tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
-            assert tag is not None
-            logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
-            chan.basic_ack(delivery_tag=tag, multiple=multiple)
-            self.input_msgs = []
+        if msgs:
+            ms_per_msg = 1000 * (time.monotonic() - t0) / msgs
+            # NOTE! also serves as message counter!
+            self.timing("message", ms_per_msg, [("stat", status)])
 
-            # AFTER basic_ack!
-            chan.tx_commit()  # commit sent messages and ack atomically!
+        # ack message(s)
+        multiple = len(self.input_msgs) > 1
+        tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
+        assert tag is not None
+        logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
+        chan.basic_ack(delivery_tag=tag, multiple=multiple)
+        self.input_msgs = []
+
+        # AFTER basic_ack!
+        chan.tx_commit()  # commit sent messages and ack atomically!
 
         sys.stdout.flush()  # for redirection, supervisord
+
+    def _quarantine(
+        self,
+        chan: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+        e: QuarantineException,
+    ) -> None:
+        # XXX code here to queue message to
+        # (per-process?) quarantine queue
+        # XXX stash str(e) as a header in message?
+        logger.info(f"quarantine: {e}")  # TEMP
+        # just dropping for now.
+
+    def _retry(
+        self,
+        chan: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+        e: Exception,
+    ) -> None:
+        logger.info(f"retry: {e!r}")  # TEMP
+        # XXX code here to requeue (with delay?)
+        # if message hasn't already been retried too many times
+        # XXX stash repr(e) as a header in message? full backtrace???
+        # XXX if process invoked with --debug, re-raise for debugging???
 
     def process_message(
         self,
@@ -225,7 +273,7 @@ class Worker(QApp):
         properties: BasicProperties,
         body: bytes,
     ) -> None:
-        raise AppException("Worker.process_message not overridden")
+        raise NotImplementedError("Worker.process_message not overridden")
 
     def end_of_batch(self, chan: BlockingChannel) -> None:
         """hook for batch processors (ie; write to database)"""
@@ -252,7 +300,7 @@ class StoryWorker(Worker):
         chan: BlockingChannel,
         story: BaseStory,
     ) -> None:
-        raise NotImplementedError("Worker.process_story not overridden")
+        raise NotImplementedError("StoryWorker.process_story not overridden")
 
     def send_story(
         self,
