@@ -106,15 +106,15 @@ class ElasticsearchImporter(StoryWorker):
             self.import_story(url_hash, data)
 
     def import_story(
-        self, url_hash: str, document: Mapping[str, Optional[Union[str, bool]]]
+        self, url_hash: str, data: Mapping[str, Optional[Union[str, bool]]]
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
         """
         response = None
-        if document:
+        if data:
             try:
-                response = self.connector.index(url_hash, document)
+                response = self.connector.index(url_hash, data)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
                 else:
