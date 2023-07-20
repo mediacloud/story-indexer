@@ -2,6 +2,7 @@
 elasticsearch import pipeline worker
 """
 import argparse
+import hashlib
 import logging
 import os
 import sys
@@ -31,9 +32,9 @@ class ElasticsearchConnector:
             if not self.client.indices.exists(index=self.index_name):
                 self.client.indices.create(index=self.index_name)
 
-    def index(self, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
+    def index(self, id: str, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
         response: ObjectApiResponse[Any] = self.client.index(
-            index=self.index_name, document=document
+            index=self.index_name, id=id, document=document
         )
         return response
 
@@ -87,7 +88,7 @@ class ElasticsearchImporter(StoryWorker):
         story: BaseStory,
     ) -> None:
         """
-        Process story and extract metadata
+        Process story and extract metadataurl
         """
         content_metadata = story.content_metadata().as_dict()
         if content_metadata:
@@ -95,22 +96,25 @@ class ElasticsearchImporter(StoryWorker):
                 if value is None or value == "":
                     raise ValueError(f"Value for key '{key}' is not provided.")
 
-            keys_to_skip = ["is_homepage", "is_shortened"]
+            url = content_metadata.get("url")
+            assert isinstance(url, str)
+            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+            keys_to_skip = ["url", "is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(data)
+            self.import_story(url_hash, data)
 
     def import_story(
-        self, data: Mapping[str, Optional[Union[str, bool]]]
+        self, url_hash: str, document: Mapping[str, Optional[Union[str, bool]]]
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
         """
         response = None
-        if data:
+        if document:
             try:
-                response = self.connector.index(data)
+                response = self.connector.index(url_hash, document)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
                 else:

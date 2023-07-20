@@ -19,9 +19,9 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.6
     # via mediacloud-metadata
-boto3==1.28.3
+boto3==1.28.7
     # via story-indexer (pyproject.toml)
-botocore==1.31.3
+botocore==1.31.7
     # via
     #   boto3
     #   s3transfer
@@ -41,7 +41,7 @@ charset-normalizer==3.2.0
     #   htmldate
     #   requests
     #   trafilatura
-click==8.1.5
+click==8.1.6
     # via nltk
 constantly==15.1.0
     # via twisted
@@ -63,7 +63,7 @@ dateparser==1.1.8
     # via
     #   htmldate
     #   mediacloud-metadata
-distlib==0.3.6
+distlib==0.3.7
     # via virtualenv
 elastic-transport==8.4.0
     # via elasticsearch
@@ -91,7 +91,7 @@ htmldate==1.4.3
     #   trafilatura
 hyperlink==21.0.0
     # via twisted
-identify==2.5.24
+identify==2.5.25
     # via pre-commit
 idna==3.4
     # via
@@ -200,7 +200,7 @@ python-dateutil==2.8.2
     #   newspaper3k
 pytz==2023.3
     # via dateparser
-pyyaml==6.0
+pyyaml==6.0.1
     # via
     #   newspaper3k
     #   pre-commit
@@ -296,7 +296,7 @@ urllib3==1.26.16
     #   htmldate
     #   requests
     #   trafilatura
-virtualenv==20.24.0
+virtualenv==20.24.1
     # via pre-commit
 w3lib==2.1.1
     # via

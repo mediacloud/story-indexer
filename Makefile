@@ -16,7 +16,7 @@ help:
 clean:
 	rm -rf __pycache__ .mypy_cache
 
-# generate and/or update requirement.txt 
+# generate and/or update requirement.txt
 upgrade-prod:
 	python -m pip install --upgrade pip-tools pip
 	python -m piptools compile \

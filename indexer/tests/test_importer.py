@@ -1,4 +1,5 @@
 import dataclasses
+import hashlib
 import os
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
@@ -27,7 +28,6 @@ def elasticsearch_client() -> Any:
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
-    "url": "http://example.com",
     "normalized_url": "http://example.com",
     "canonical_domain": "example.com",
     "publication_date": "2023-06-27",
@@ -38,6 +38,8 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "normalized_article_title": "example article",
     "text_content": "Lorem ipsum dolor sit amet",
 }
+
+test_url: str = "http://example.com"
 
 
 class TestElasticsearchConnection:
@@ -103,7 +105,9 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        response = importer.import_story(test_data)
+        assert isinstance(test_url, str)
+        id = hashlib.sha256(test_url.encode("utf-8")).hexdigest()
+        response = importer.import_story(id, test_data)
         if response is not None:
             assert response.get("result") == "created"
         else:
