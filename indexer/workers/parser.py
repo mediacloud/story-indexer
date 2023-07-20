@@ -42,17 +42,20 @@ class Parser(StoryWorker):
 
             # metadata dict
             # may raise mcmetadata.exceptions.BadContentError
-            mdd = mcmetadata.extract(link, html)
-            logger.info(f"MDD keys {mdd.keys()}")
+            try:
+                mdd = mcmetadata.extract(link, html)
+                logger.info(f"MDD keys {mdd.keys()}")
 
-            with story.content_metadata() as cmd:
-                keys_to_skip = ["text_extraction_method", "version"]
-                # XXX assumes identical item names!!
-                #       could copy items individually with type checking
-                #       if mcmetadata returned TypedDict?
-                for key, val in mdd.items():
-                    if key not in keys_to_skip:
-                        setattr(cmd, key, val)
+                with story.content_metadata() as cmd:
+                    keys_to_skip = ["text_extraction_method", "version"]
+                    # XXX assumes identical item names!!
+                    #       could copy items individually with type checking
+                    #       if mcmetadata returned TypedDict?
+                    for key, val in mdd.items():
+                        if key not in keys_to_skip:
+                            setattr(cmd, key, val)
+            except Exception as e:
+                logger.info(e)
         # XXX else quarantine?!
 
         self.send_story(chan, story)
