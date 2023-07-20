@@ -99,7 +99,7 @@ class ElasticsearchImporter(StoryWorker):
             url = content_metadata.get("url")
             assert isinstance(url, str)
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            keys_to_skip = ["url", "is_homepage", "is_shortened"]
+            keys_to_skip = ["is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }

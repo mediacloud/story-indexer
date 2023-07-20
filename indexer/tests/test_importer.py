@@ -29,6 +29,7 @@ def elasticsearch_client() -> Any:
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
     "normalized_url": "http://example.com",
+    "url": "http://example.com",
     "canonical_domain": "example.com",
     "publication_date": "2023-06-27",
     "language": "en",
@@ -38,8 +39,6 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "normalized_article_title": "example article",
     "text_content": "Lorem ipsum dolor sit amet",
 }
-
-test_url: str = "http://example.com"
 
 
 class TestElasticsearchConnection:
@@ -105,8 +104,9 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        assert isinstance(test_url, str)
-        id = hashlib.sha256(test_url.encode("utf-8")).hexdigest()
+        url = test_data.get("url")
+        assert isinstance(url, str)
+        id = hashlib.sha256(url.encode("utf-8")).hexdigest()
         response = importer.import_story(id, test_data)
         if response is not None:
             assert response.get("result") == "created"
