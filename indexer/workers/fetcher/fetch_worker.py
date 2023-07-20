@@ -150,11 +150,14 @@ class FetchWorker(QApp):
 
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
-                self.incr("fetched-stories")
+                status_label = "success"
+
             elif http_meta.response_code in (403, 404, 429):
-                self.incr(f"failed-stories-{http_meta.response_code}")
+                status_label = f"http-{http_meta.response_code}"
             else:
-                self.incr(f"failed-stories-{http_meta.response_code//100}xx")
+                status_label = f"http-{http_meta.response_code//100}xx"
+
+            self.incr("fetcher", labels=[("status", status_label)])
 
 
 if __name__ == "__main__":
