@@ -11,6 +11,7 @@ dependencies = [
   "mediacloud-metadata",
   "pika",
   "rabbitmq-admin",
+  "statsd_client",
   "supervisor",
   "scrapy",
 ]
@@ -35,6 +36,9 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
+
+# look for local stubs to PyPI packages in top level stubs directory
+mypy_path = "stubs"
 
 [tool.pip-tools]
 allow-unsafe = true

@@ -219,6 +219,8 @@ six==1.16.0
     #   url-normalize
 soupsieve==2.4.1
     # via beautifulsoup4
+statsd-client==1.0.7
+    # via story-indexer (pyproject.toml)
 supervisor==4.2.5
     # via story-indexer (pyproject.toml)
 surt==0.3.1
