@@ -49,7 +49,7 @@ class Parser(StoryWorker):
         # XXX else quarantine?!
 
         self.send_story(chan, story)
-        self.incr("parser", labels=[("method", extraction_label)])
+        self.incr("parsed-stories", labels=[("method", extraction_label)])
 
 
 if __name__ == "__main__":

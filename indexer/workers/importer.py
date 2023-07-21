@@ -122,7 +122,7 @@ class ElasticsearchImporter(StoryWorker):
                 logger.error(f"Elasticsearch exception: {str(e)}")
                 import_status_label = "failed"
 
-        self.incr("importer", labels=[("status", import_status_label)])
+        self.incr("imported-stories", labels=[("status", import_status_label)])
         return response
 
 
