@@ -45,9 +45,11 @@ class Parser(StoryWorker):
                 #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
                     setattr(cmd, key, val)
+            extraction_label = mdd.text_extraction
         # XXX else quarantine?!
 
         self.send_story(chan, story)
+        self.incr("parser", labels=[("method", extraction_label)])
 
 
 if __name__ == "__main__":
