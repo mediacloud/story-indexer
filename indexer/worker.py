@@ -205,8 +205,6 @@ class Worker(QApp):
 
             self.end_of_batch(chan)
 
-            chan.tx_commit()  # commit sent messages
-
             # ack message(s)
             multiple = len(self.input_msgs) > 1
             tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
@@ -214,6 +212,9 @@ class Worker(QApp):
             logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
             chan.basic_ack(delivery_tag=tag, multiple=multiple)
             self.input_msgs = []
+
+            # AFTER basic_ack!
+            chan.tx_commit()  # commit sent messages and ack atomically!
 
         sys.stdout.flush()  # for redirection, supervisord
 
