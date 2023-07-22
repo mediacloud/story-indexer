@@ -252,7 +252,7 @@ class StoryWorker(Worker):
         chan: BlockingChannel,
         story: BaseStory,
     ) -> None:
-        raise AppException("Worker.process_story not overridden")
+        raise NotImplementedError("Worker.process_story not overridden")
 
     def send_story(
         self,
@@ -262,6 +262,31 @@ class StoryWorker(Worker):
         routing_key: str = DEFAULT_ROUTING_KEY,
     ) -> None:
         self.send_message(chan, story.dump(), exchange, routing_key)
+
+
+class BatchStoryWorker(StoryWorker):
+    """
+    process batches of stories
+    MUST set INPUT_BATCH_MSGS to batch size!
+    """
+
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+        self._stories: List[BaseStory] = []
+
+    def process_story(
+        self,
+        chan: BlockingChannel,
+        story: BaseStory,
+    ) -> None:
+        self._stories.append(story)
+
+    def end_of_batch(self, chan: BlockingChannel) -> None:
+        self.story_batch(chan, self._stories)
+        self._stories = []
+
+    def story_batch(self, chan: BlockingChannel, stories: List[BaseStory]) -> None:
+        raise NotImplementedError("BatchStoryWorker.story_batch not overridden")
 
 
 def run(klass: type[Worker], *args: Any, **kw: Any) -> None:
