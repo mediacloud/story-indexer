@@ -197,6 +197,10 @@ class Pipeline(QApp):
                 logger.debug(f"deleting queue {qname}")
                 chan.queue_delete(qname)
 
+                qname = quarantine_queue_name(name)
+                logger.debug(f"deleting queue {qname}")
+                chan.queue_delete(qname)
+
             if proc.outputs:
                 ename = output_exchange_name(name)
                 logger.debug(f"deleting exchange {ename}")
