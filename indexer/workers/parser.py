@@ -2,9 +2,6 @@
 metadata parser pipeline worker
 """
 
-import datetime as dt
-import gzip
-import json
 import logging
 
 import chardet
@@ -30,35 +27,27 @@ class Parser(StoryWorker):
         raw = story.raw_html()
 
         link = rss.link
+        # XXX quarantine Story if no link or HTML???
         if link:
-            # XXX want Story method to retrieve unicode string!!
-            if raw.html:
-                result = chardet.detect(raw.html)
-                en_type = result["encoding"]
-                if en_type:
-                    html = raw.html.decode(en_type)
-            else:
-                html = ""  # XXX error?
+            html = raw.unicode
 
             # metadata dict
             # may raise mcmetadata.exceptions.BadContentError
-            try:
-                mdd = mcmetadata.extract(link, html)
-                logger.info(f"MDD keys {mdd.keys()}")
 
-                with story.content_metadata() as cmd:
-                    keys_to_skip = ["text_extraction_method", "version"]
-                    # XXX assumes identical item names!!
-                    #       could copy items individually with type checking
-                    #       if mcmetadata returned TypedDict?
-                    for key, val in mdd.items():
-                        if key not in keys_to_skip:
-                            setattr(cmd, key, val)
-            except Exception as e:
-                logger.info(e)
-        # XXX else quarantine?!
+            mdd = mcmetadata.extract(link, html)
+            logger.info(f"MDD keys {mdd.keys()}")
+
+            with story.content_metadata() as cmd:
+                # XXX assumes identical item names!!
+                #       could copy items individually with type checking
+                #       if mcmetadata returned TypedDict?
+                for key, val in mdd.items():
+                    if hasattr(cmd, key):  # avoid hardwired exceptions list?!
+                        setattr(cmd, key, val)
+            extraction_label = mdd.text_extraction
 
         self.send_story(chan, story)
+        self.incr("parsed-stories", labels=[("method", extraction_label)])
 
 
 if __name__ == "__main__":

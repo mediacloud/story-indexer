@@ -112,12 +112,16 @@ class ElasticsearchImporter(StoryWorker):
                 response = self.connector.index(data)
                 if response.get("result") == "created":
                     logger.info("Story has been successfully imported.")
+                    import_status_label = "success"
                 else:
                     # Log no imported stories
                     logger.info("Story was not imported.")
+                    import_status_label = "failed"
             except Exception as e:
                 logger.error(f"Elasticsearch exception: {str(e)}")
+                import_status_label = "failed"
 
+        self.incr("imported-stories", labels=[("status", import_status_label)])
         return response
 
 
