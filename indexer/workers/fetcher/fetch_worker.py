@@ -18,7 +18,6 @@ Worker (Producer) interface which queues stories fetched by the HTML fetcher
 
 logger = logging.getLogger(__name__)
 
-
 Story = StoryFactory()
 
 
@@ -124,6 +123,7 @@ class FetchWorker(QApp):
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
 
             self.stories_to_fetch.append(new_story)
+            self.incr("rss-stories")
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
@@ -145,8 +145,19 @@ class FetchWorker(QApp):
 
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
+
+            assert http_meta.response_code is not None
+
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
+                status_label = "success"
+
+            elif http_meta.response_code in (403, 404, 429):
+                status_label = f"http-{http_meta.response_code}"
+            else:
+                status_label = f"http-{http_meta.response_code//100}xx"
+
+            self.incr("fetched-stories", labels=[("status", status_label)])
 
 
 if __name__ == "__main__":
