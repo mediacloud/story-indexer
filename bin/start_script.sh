@@ -11,7 +11,7 @@ ping_rabbitmq() {
 }
 
 if [ -n "$RUN_ON_START" ]; then
-  ping_rabbitmq
+  # ping_rabbitmq
   echo "Running rabbitmq config..."
   python -m indexer.pipeline --rabbitmq-url amqp://rabbitmq:5672 configure
 else
