@@ -266,13 +266,17 @@ class StoryWorker(Worker):
 
 class BatchStoryWorker(StoryWorker):
     """
-    process batches of stories
-    MUST set INPUT_BATCH_MSGS to batch size!
+    process batches of stories:
+    INPUT_BATCH_MSGS controls batch size (and defaults to one),
+    so you likely want to increase it, BUT, it's not prohibited,
+    in case you want to test code on REALLY small batches!
     """
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._stories: List[BaseStory] = []
+        if self.INPUT_BATCH_MSGS == 1:
+            logger.info("INPUT_BATCH_MSGS is 1!!")
 
     def process_story(
         self,
