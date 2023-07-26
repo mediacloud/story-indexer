@@ -220,7 +220,7 @@ class Pipeline(QApp):
             if things:
                 print(what)
                 for thing in things:
-                    print("   ", things)
+                    print("   ", thing)
             else:
                 print(f"no {what}")
 
