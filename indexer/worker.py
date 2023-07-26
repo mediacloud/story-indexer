@@ -182,11 +182,11 @@ class Worker(QApp):
     # (INPUT_BATCH_SECS + BATCH_PROCESSING_SECS) > CONSUMER_TIMEOUT
     BATCH_PROCESSING_SECS = 60
 
-    # number of retries in a row before taking a rest
+    # number of messages requeued for retry in a row before taking a rest
     RETRIES_PAUSE_COUNT = 10
 
-    # time to delay when more than RETRIES_PAUSE_COUNT in a row
-    # (should be small relative to CONSUMER_TIMEOUT)
+    # time to delay when more than RETRIES_PAUSE_COUNT messages
+    # requeued in a row (should not exceed CONSUMER_TIMEOUT)
     RETRIES_PAUSE_SECONDS = 60
 
     def __init__(self, process_name: str, descr: str):
@@ -238,9 +238,10 @@ class Worker(QApp):
         self.input_msgs.append(InputMessage(method, properties, body))
 
         if len(self.input_msgs) < self.INPUT_BATCH_MSGS:
-            # here only when batching multiple msgs
+            # Here only when batching multiple msgs, and less than full batch.
+            # If no input_timer set, start one so that incomplete batch
+            # won't sit for longer than INPUT_BATCH_SECS
             if self.input_timer is None and self.INPUT_BATCH_SECS and self.connection:
-                # start timeout, in case less than a full batch is available
                 self.input_timer = self.connection.call_later(
                     self.INPUT_BATCH_SECS, lambda: self._process_messages(chan)
                 )
@@ -297,14 +298,15 @@ class Worker(QApp):
 
         sys.stdout.flush()  # for redirection, supervisord
 
-        # After ack/tx_commit.  Large numbers of retries in a row
-        # is likely due to an external dependancy being down,
-        # or an unexpected condition (bug) causing the worker
-        # code to crash.  Avoid spinning through retries and
-        # quarantining.  A few bad Stories intermixed will
-        # not cause a slowdown, but a clump of them will
-        # (PLB: I initially wanted to use message delays
-        # but "it's complicated")
+        # After ack/tx_commit.  Large numbers of retries in a row are
+        # likely due to an external dependancy being down, or an
+        # unexpected condition (or bug) causing the worker code to
+        # crash.  Avoid spinning through the queue doing retries until
+        # everything ends up in qurantine.  (PLB: I initially wanted
+        # to use delayed delivery for requeued work, but it just got
+        # too complicated)
+
+        # too many retries in a row?
         if self.retries >= self.RETRIES_PAUSE_COUNT:
             # NOTE! rabbitmq server will queue "prefetch_count"
             # messages, so RETRIES_PAUSE_SECONDS should not
