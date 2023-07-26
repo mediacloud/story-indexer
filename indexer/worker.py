@@ -205,8 +205,6 @@ class Worker(QApp):
 
             self.end_of_batch(chan)
 
-            chan.tx_commit()  # commit sent messages
-
             # ack message(s)
             multiple = len(self.input_msgs) > 1
             tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
@@ -214,6 +212,9 @@ class Worker(QApp):
             logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
             chan.basic_ack(delivery_tag=tag, multiple=multiple)
             self.input_msgs = []
+
+            # AFTER basic_ack!
+            chan.tx_commit()  # commit sent messages and ack atomically!
 
         sys.stdout.flush()  # for redirection, supervisord
 
@@ -251,7 +252,7 @@ class StoryWorker(Worker):
         chan: BlockingChannel,
         story: BaseStory,
     ) -> None:
-        raise AppException("Worker.process_story not overridden")
+        raise NotImplementedError("Worker.process_story not overridden")
 
     def send_story(
         self,
@@ -261,6 +262,35 @@ class StoryWorker(Worker):
         routing_key: str = DEFAULT_ROUTING_KEY,
     ) -> None:
         self.send_message(chan, story.dump(), exchange, routing_key)
+
+
+class BatchStoryWorker(StoryWorker):
+    """
+    process batches of stories:
+    INPUT_BATCH_MSGS controls batch size (and defaults to one),
+    so you likely want to increase it, BUT, it's not prohibited,
+    in case you want to test code on REALLY small batches!
+    """
+
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+        self._stories: List[BaseStory] = []
+        if self.INPUT_BATCH_MSGS == 1:
+            logger.info("INPUT_BATCH_MSGS is 1!!")
+
+    def process_story(
+        self,
+        chan: BlockingChannel,
+        story: BaseStory,
+    ) -> None:
+        self._stories.append(story)
+
+    def end_of_batch(self, chan: BlockingChannel) -> None:
+        self.story_batch(chan, self._stories)
+        self._stories = []
+
+    def story_batch(self, chan: BlockingChannel, stories: List[BaseStory]) -> None:
+        raise NotImplementedError("BatchStoryWorker.story_batch not overridden")
 
 
 def run(klass: type[Worker], *args: Any, **kw: Any) -> None:
