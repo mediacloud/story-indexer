@@ -162,7 +162,7 @@ class FetchWorker(QApp):
 
 if __name__ == "__main__":
     app = FetchWorker(
-        "FetchWorker",
+        "fetcher",
         "Reads the rss_fetcher's content, batches it, initializes story objects, fetches a batch, then enqueues it into rabbitmq",
     )
     app.main()

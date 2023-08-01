@@ -31,6 +31,7 @@ class Parser(StoryWorker):
 
             # metadata dict
             # may raise mcmetadata.exceptions.BadContentError
+
             mdd = mcmetadata.extract(link, html)
 
             with story.content_metadata() as cmd:
@@ -38,10 +39,9 @@ class Parser(StoryWorker):
                 #       could copy items individually with type checking
                 #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
-                    if hasattr(cmd, key): # avoid hardwired exceptions list?!
-                      setattr(cmd, key, val)
-            extraction_label = mdd.text_extraction
-
+                    if hasattr(cmd, key):  # avoid hardwired exceptions list?!
+                        setattr(cmd, key, val)
+            extraction_label = mdd["text_extraction_method"]
 
         self.send_story(chan, story)
         self.incr("parsed-stories", labels=[("method", extraction_label)])

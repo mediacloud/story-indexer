@@ -37,32 +37,44 @@ services:
       timeout: 10s
       retries: 2
 
-  common_worker:
-    <<: &common_worker
-      build:
-        context: ..
-        dockerfile: docker/Dockerfile
-      environment:
-        - RABBITMQ_URL=amqp://rabbitmq:5672
-        - RUN=${RUN}
-      depends_on:
-        rabbitmq:
-          condition: service_healthy
+  common_worker: &common_worker
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RUN: ${RUN}
+    networks:
+      - mc_story_indexer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  pipeline_configurator:
+    <<: *common_worker
+    environment:
+       RUN: configure-pipeline
+       RABBITMQ_URL: amqp://rabbitmq:5672
+
   fetch_worker:
     <<: *common_worker
     environment:
-      - RUN=fetcher
+      RUN: fetcher
+      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=1 --batch-index=0 --sample-size=20 "
+      RABBITMQ_URL: amqp://rabbitmq:5672
 
   parser_worker:
     <<: *common_worker
     environment:
-      - RUN=parser
+      RUN: parser
+      RABBITMQ_URL: amqp://rabbitmq:5672
 
   importer_worker:
     <<: *common_worker
     environment:
-      - RUN=importer
-      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
+      RUN: importer
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      ELASTICSEARCH_HOST: http://elasticsearch:9200/
     networks:
       - mc_story_indexer
 

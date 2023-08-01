@@ -26,17 +26,23 @@ COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache /wheels/*
 
-COPY ../bin/func.sh ${APP_DOCKER}/bin/
-COPY ../bin/indirect.sh ${APP_DOCKER}/bin/
-COPY ../bin/run-extract.sh ${APP_DOCKER}/bin
+#COPY ../bin/func.sh ${APP_DOCKER}/bin/
+#COPY ../bin/indirect.sh ${APP_DOCKER}/bin/
+#COPY ../bin/run-parser.sh ${APP_DOCKER}/bin/
+#COPY ../bin/run-fetcher.sh ${APP_DOCKER}/bin/
+#COPY ../bin/run-importer.sh ${APP_DOCKER}/bin/
+COPY ../bin/ ${APP_DOCKER}/bin/
 
-
-RUN chmod +x ${APP_DOCKER}/bin/indirect.sh
+#RUN chmod +x ${APP_DOCKER}/bin/indirect.sh
+RUN chmod +x ${APP_DOCKER}/bin/*
 
 
 COPY ../indexer ${APP_DOCKER}/indexer/
 # pass the executable as ARG and use it in CMD
 ARG RUN
 ENV RUN=${RUN}
+
+ARG RABBITMQ_URL
+ENV RABBITMQ_URL=${RABBITMQ_URL}
 
 ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]
