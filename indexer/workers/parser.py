@@ -2,9 +2,6 @@
 metadata parser pipeline worker
 """
 
-import datetime as dt
-import gzip
-import json
 import logging
 
 # PyPI:
@@ -28,12 +25,9 @@ class Parser(StoryWorker):
         raw = story.raw_html()
 
         link = rss.link
+        # XXX quarantine Story if no link or HTML???
         if link:
-            # XXX want Story method to retrieve unicode string!!
-            if raw.html:
-                html = raw.html.decode("utf-8")  # XXX wrong!
-            else:
-                html = ""  # XXX error?
+            html = raw.unicode
 
             # metadata dict
             # may raise mcmetadata.exceptions.BadContentError
@@ -44,12 +38,13 @@ class Parser(StoryWorker):
                 #       could copy items individually with type checking
                 #       if mcmetadata returned TypedDict?
                 for key, val in mdd.items():
-                    setattr(cmd, key, val)
+                    if hasattr(cmd, key): # avoid hardwired exceptions list?!
+                      setattr(cmd, key, val)
             extraction_label = mdd.text_extraction
-        # XXX else quarantine?!
+
 
         self.send_story(chan, story)
-        self.incr("parser", labels=[("method", extraction_label)])
+        self.incr("parsed-stories", labels=[("method", extraction_label)])
 
 
 if __name__ == "__main__":

@@ -19,9 +19,9 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.6
     # via mediacloud-metadata
-boto3==1.28.3
+boto3==1.28.7
     # via story-indexer (pyproject.toml)
-botocore==1.31.3
+botocore==1.31.7
     # via
     #   boto3
     #   s3transfer
@@ -39,7 +39,7 @@ charset-normalizer==3.2.0
     #   htmldate
     #   requests
     #   trafilatura
-click==8.1.5
+click==8.1.6
     # via nltk
 constantly==15.1.0
     # via twisted
@@ -173,7 +173,7 @@ python-dateutil==2.8.2
     #   newspaper3k
 pytz==2023.3
     # via dateparser
-pyyaml==6.0
+pyyaml==6.0.1
     # via newspaper3k
 queuelib==1.6.2
     # via scrapy

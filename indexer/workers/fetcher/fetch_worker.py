@@ -157,7 +157,7 @@ class FetchWorker(QApp):
             else:
                 status_label = f"http-{http_meta.response_code//100}xx"
 
-            self.incr("fetcher", labels=[("status", status_label)])
+            self.incr("fetched-stories", labels=[("status", status_label)])
 
 
 if __name__ == "__main__":
