@@ -1,16 +1,18 @@
-version: '3.8'
+version: "3.8"
 
 services:
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
     ports:
-      - "5672:5672"
+      - "56720:5672"
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - story_indexer
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
@@ -26,11 +28,17 @@ services:
       - xpack.security.enabled=false
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - story_indexer
     ports:
       - 9200:9200
       - 9300:9300
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -44,6 +52,8 @@ services:
         - RABBITMQ_URL=amqp://rabbitmq:5672
         - RUN=${RUN}
         - RUN_ON_START=1
+      networks:
+        - story_indexer
       volumes:
         - ../indexer:/app/indexer
       depends_on:
@@ -54,14 +64,23 @@ services:
     <<: *common_worker
     environment:
       - RUN=fetch-worker
+    networks:
+      - story_indexer
 
   parser_worker:
     <<: *common_worker
     environment:
       - RUN=parser
+    networks:
+      - story_indexer
 
   importer_worker:
     <<: *common_worker
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - story_indexer
     environment:
       - RUN=importer
       - ELASTICSEARCH_HOST=http://elasticsearch:9200/
@@ -71,5 +90,6 @@ volumes:
   rabbitmq_data:
 
 networks:
-  mc_story_indexer:
-    driver: bridge
+  story_indexer:
+    name: story_indexer
+    external: true
