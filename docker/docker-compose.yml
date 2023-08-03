@@ -38,6 +38,8 @@ services:
       retries: 2
 
   common_worker: &common_worker
+    #Pushing to a local registry for now, while in dev loop.
+    image: localhost:5000/common_worker
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -46,10 +48,12 @@ services:
       RUN: ${RUN}
     networks:
       - mc_story_indexer
-
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+    restart:
+        "no"
+    ## Not supported by docker swarm at this time, and services auto-restart anyway.
+    #depends_on:
+    #  rabbitmq:
+    #    condition: service_healthy
 
   pipeline_configurator:
     <<: *common_worker
@@ -57,21 +61,27 @@ services:
        RUN: configure-pipeline
        ARGS: "configure"
        RABBITMQ_URL: amqp://rabbitmq:5672
+    restart:
+        "on-failure"
 
   fetch_worker:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=1 --batch-index=0 --sample-size=20 "
+      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=5 --batch-index={{.Task.Slot}} --sample-size=20 "
       RABBITMQ_URL: amqp://rabbitmq:5672
-    #deploy:
-    #  replicas: 5
+    restart:
+        "on-failure"
+    deploy:
+      replicas: 5
 
   parser_worker:
     <<: *common_worker
     environment:
       RUN: parser
       RABBITMQ_URL: amqp://rabbitmq:5672
+    restart:
+        "on-failure"
 
   importer_worker:
     <<: *common_worker
@@ -81,10 +91,12 @@ services:
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
     networks:
       - mc_story_indexer
+    restart:
+        "on-failure"
 
 volumes:
   elasticsearch_data:
 
 networks:
   mc_story_indexer:
-    driver: bridge
+    driver: overlay

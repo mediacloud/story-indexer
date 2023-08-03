@@ -106,7 +106,8 @@ class QApp(App):
         assert self.args  # checked in process_args
         url = self.args.amqp_url
         assert url  # checked in process_args
-        self.connection = BlockingConnection(URLParameters(url))
+        reconnect_parameters = "/?connection_attempts=10&retry_delay=5"
+        self.connection = BlockingConnection(URLParameters(url + reconnect_parameters))
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
@@ -135,6 +136,10 @@ class Worker(QApp):
         super().__init__(process_name, descr)
         self.input_msgs: List[InputMessage] = []
         self.input_timer: Optional[object] = None  # opaque timer
+        # stopgap to make sure that the pipeline configurator has configurated the pipeline before we try to connect
+        logger.debug("Sleeping for 60 seconds")
+        time.sleep(60)
+        logger.debug("Done sleeping")
 
     def main_loop(self) -> None:
         """
