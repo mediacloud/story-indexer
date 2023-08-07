@@ -94,13 +94,26 @@ class FetchWorker(QApp):
         if batch_index is None:
             logger.fatal("need batch index")
             sys.exit(1)
-        self.batch_index = batch_index
+        self.batch_index = batch_index - 1  # docker .task.slots are 1-indexed.
 
         self.sample_size = self.args.sample_size
 
     def scrapy_cb(self, story: BaseStory) -> None:
         # Scrapy calls this when it's finished grabbing a story
         # NB both successes and failures end up here
+        http_meta = story.http_metadata()
+
+        assert http_meta.response_code is not None
+
+        if http_meta.response_code == 200:
+            status_label = "success"
+
+        elif http_meta.response_code in (403, 404, 429):
+            status_label = f"http-{http_meta.response_code}"
+        else:
+            status_label = f"http-{http_meta.response_code//100}xx"
+
+        self.incr("fetched-stories", labels=[("status", status_label)])
         self.fetched_stories.append(story)
 
     def main_loop(self) -> None:
@@ -157,7 +170,7 @@ class FetchWorker(QApp):
             else:
                 status_label = f"http-{http_meta.response_code//100}xx"
 
-            self.incr("fetched-stories", labels=[("status", status_label)])
+            self.incr("queued-stories", labels=[("status", status_label)])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 version: '3.8'
 
+
+
 services:
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
@@ -10,7 +12,7 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     networks:
-      - mc_story_indexer
+      - story-indexer
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
@@ -30,7 +32,7 @@ services:
       - 9200:9200
       - 9300:9300
     networks:
-      - mc_story_indexer
+      - story-indexer
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
@@ -46,8 +48,9 @@ services:
     environment:
       RABBITMQ_URL: amqp://rabbitmq:5672
       RUN: ${RUN}
+      STATSD_REALM: &STATS_REALM pgulley
     networks:
-      - mc_story_indexer
+      - story-indexer
     restart:
         "no"
     ## Not supported by docker swarm at this time, and services auto-restart anyway.
@@ -61,6 +64,8 @@ services:
        RUN: configure-pipeline
        ARGS: "configure"
        RABBITMQ_URL: amqp://rabbitmq:5672
+       STATSD_URL: statsd://stats.tarbell.mediacloud.org
+       STATSD_REALM: *STATS_REALM
     restart:
         "on-failure"
 
@@ -68,18 +73,22 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=5 --batch-index={{.Task.Slot}} --sample-size=20 "
+      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=2 --batch-index={{.Task.Slot}} --sample-size=1000 "
       RABBITMQ_URL: amqp://rabbitmq:5672
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATS_REALM
     restart:
         "on-failure"
     deploy:
-      replicas: 5
+      replicas: 2
 
   parser_worker:
     <<: *common_worker
     environment:
       RUN: parser
       RABBITMQ_URL: amqp://rabbitmq:5672
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATS_REALM
     restart:
         "on-failure"
 
@@ -89,8 +98,10 @@ services:
       RUN: importer
       RABBITMQ_URL: amqp://rabbitmq:5672
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATS_REALM
     networks:
-      - mc_story_indexer
+      - story-indexer
     restart:
         "on-failure"
 
@@ -98,5 +109,5 @@ volumes:
   elasticsearch_data:
 
 networks:
-  mc_story_indexer:
+  story-indexer:
     driver: overlay

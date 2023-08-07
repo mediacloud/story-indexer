@@ -137,9 +137,7 @@ class Worker(QApp):
         self.input_msgs: List[InputMessage] = []
         self.input_timer: Optional[object] = None  # opaque timer
         # stopgap to make sure that the pipeline configurator has configurated the pipeline before we try to connect
-        logger.debug("Sleeping for 60 seconds")
-        time.sleep(60)
-        logger.debug("Done sleeping")
+        time.sleep(120)
 
     def main_loop(self) -> None:
         """
