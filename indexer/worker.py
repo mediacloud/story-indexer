@@ -106,8 +106,10 @@ class QApp(App):
         assert self.args  # checked in process_args
         url = self.args.amqp_url
         assert url  # checked in process_args
-        reconnect_parameters = "/?connection_attempts=10&retry_delay=5"
-        self.connection = BlockingConnection(URLParameters(url + reconnect_parameters))
+        url_params = URLParameters(url)
+        url_params.connection_attempts = 10
+        url_params.retry_delay = 5
+        self.connection = BlockingConnection(url_params)
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
