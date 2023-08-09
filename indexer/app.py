@@ -25,7 +25,7 @@ TAGS = False  # get from env?? graphite >= 1.1.0 tags
 logger = logging.getLogger(__name__)
 
 
-class AppException(Exception):
+class AppException(RuntimeError):
     """
     App class Exceptions
     """

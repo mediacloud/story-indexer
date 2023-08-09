@@ -24,6 +24,7 @@ from indexer.worker import (
     QApp,
     input_queue_name,
     output_exchange_name,
+    quarantine_queue_name,
 )
 
 COMMANDS: List[str] = []
@@ -153,8 +154,17 @@ class Pipeline(QApp):
         for name, proc in self.procs.items():
             if proc.consumer:
                 qname = input_queue_name(name)
-                # durable == messages stored on disk
                 logger.debug(f"declaring queue {qname}")
+                # durable means queue survives reboot,
+                # NOT default delivery mode!
+                # see https://www.rabbitmq.com/queues.html#durability
+                chan.queue_declare(qname, durable=True)
+
+                qname = quarantine_queue_name(name)
+                logger.debug(f"declaring queue {qname}")
+                # durable means queue survives reboot,
+                # NOT default delivery mode!
+                # see https://www.rabbitmq.com/queues.html#durability
                 chan.queue_declare(qname, durable=True)
 
             if proc.outputs:
@@ -184,6 +194,10 @@ class Pipeline(QApp):
         for name, proc in self.procs.items():
             if proc.consumer:
                 qname = input_queue_name(name)
+                logger.debug(f"deleting queue {qname}")
+                chan.queue_delete(qname)
+
+                qname = quarantine_queue_name(name)
                 logger.debug(f"deleting queue {qname}")
                 chan.queue_delete(qname)
 
@@ -238,6 +252,9 @@ class Pipeline(QApp):
         """
         args = self.args
         assert args
+
+        # maybe put this in a function (in worker.py??)
+        # for use by other modules?
         par = pika.connection.URLParameters(args.amqp_url)
         creds = par.credentials
         assert isinstance(creds, pika.credentials.PlainCredentials)
@@ -245,6 +262,7 @@ class Pipeline(QApp):
         api = AdminAPI(
             url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
         )
+
         defns = api.get_definitions()
         assert isinstance(defns, dict)
         return defns
