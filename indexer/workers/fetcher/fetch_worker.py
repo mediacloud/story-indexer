@@ -105,7 +105,7 @@ class FetchWorker(QApp):
 
         assert http_meta.response_code is not None
 
-        if http_meta.response_code == 200:
+        if http_meta.response_code >= 200 and http_meta.response_code < 300:
             status_label = "success"
 
         elif http_meta.response_code in (403, 404, 429):
@@ -166,7 +166,7 @@ class FetchWorker(QApp):
 
             assert http_meta.response_code is not None
 
-            if http_meta.response_code == 200:
+            if http_meta.response_code >= 200 and http_meta.response_code < 300:
                 self.send_message(chan, story.dump())
                 queued_stories += 1
 
