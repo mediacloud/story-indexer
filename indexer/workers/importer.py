@@ -44,6 +44,7 @@ class ElasticsearchImporter(StoryWorker):
         super().define_options(ap)
         elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
+        
         ap.add_argument(
             "--elasticsearch-host",
             "-U",
