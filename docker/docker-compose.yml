@@ -98,6 +98,7 @@ services:
       RUN: importer
       RABBITMQ_URL: amqp://rabbitmq:5672
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
+      ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATS_REALM
     networks:
