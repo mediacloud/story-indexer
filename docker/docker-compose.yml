@@ -73,14 +73,14 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=2 --batch-index={{.Task.Slot}} --sample-size=1000 "
+      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=20 --batch-index={{.Task.Slot}} "
       RABBITMQ_URL: amqp://rabbitmq:5672
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATS_REALM
     restart:
         "on-failure"
     deploy:
-      replicas: 2
+      replicas: 20
 
   parser_worker:
     <<: *common_worker
