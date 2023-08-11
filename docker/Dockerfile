@@ -31,6 +31,9 @@ COPY ../bin/ ${APP_DOCKER}/bin/
 
 RUN chmod +x ${APP_DOCKER}/bin/*
 
+COPY ../conf/ ${APP_DOCKER}/conf/
+
+
 
 COPY ../indexer ${APP_DOCKER}/indexer/
 # pass the executable as ARG and use it in CMD

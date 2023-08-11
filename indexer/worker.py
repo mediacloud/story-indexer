@@ -18,7 +18,7 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
 from indexer.app import App, AppException
-from indexer.story import BaseStory
+from indexer.story import BaseStory, StoryFactory
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,8 @@ class QApp(App):
         url = self.args.amqp_url
         assert url  # checked in process_args
         url_params = URLParameters(url)
-        url_params.connection_attempts = 10
-        url_params.retry_delay = 5
+        # url_params.connection_attempts = 10 #Set in docker
+        # url_params.retry_delay = 5
         self.connection = BlockingConnection(url_params)
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
@@ -435,7 +435,8 @@ class StoryWorker(Worker):
         body: bytes,
     ) -> None:
         # XXX pass content-type?
-        story = BaseStory.load(body)
+        story_factory = StoryFactory()
+        story = story_factory.load(body)
         self.process_story(chan, story)
 
     def process_story(

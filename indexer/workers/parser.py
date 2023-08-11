@@ -21,6 +21,7 @@ class Parser(StoryWorker):
         chan: BlockingChannel,
         story: BaseStory,
     ) -> None:
+        logger.info(story)
         rss = story.rss_entry()
         raw = story.raw_html()
 
@@ -38,10 +39,23 @@ class Parser(StoryWorker):
         #     translate to QuarantineException (with loss of detail),
         #     call (_)quarantine directly (with exception),
         #     or let fail from repeated retries???
-        mdd = mcmetadata.extract(link, html)
+
+        try:
+            mdd = mcmetadata.extract(link, html)
+        except mcmetadata.exceptions.BadContentError as e:
+            raise QuarantineException(getattr(e, "message", repr(e)))
 
         extraction_label = mdd["text_extraction_method"]
 
+        # Really slapdash solution for the sake of testing.
+        if mdd["publication_date"] is not None:
+            mdd["publication_date"] = mdd["publication_date"].strftime(
+                "%a %d %b %Y, %I:%M%p"
+            )
+        else:
+            mdd["publication_date"] = "None"
+
+        logger.info(mdd)
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!
             #       could copy items individually with type checking

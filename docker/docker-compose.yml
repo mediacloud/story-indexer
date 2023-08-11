@@ -11,6 +11,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_CONFIG_FILE: /app/rabbitmq.conf
     networks:
       - story-indexer
     healthcheck:
@@ -18,6 +19,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 2
+    configs:
+       - source: rabbitmq_config
+         target: /app/rabbitmq.conf
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -46,13 +50,16 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     environment:
-      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_URL: &RABBITMQ_URL_ amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
       RUN: ${RUN}
-      STATSD_REALM: &STATS_REALM pgulley
+      STATSD_REALM: &STATSD_REALM_ pgulley
+      STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
     networks:
       - story-indexer
     restart:
         "no"
+    volumes:
+        - worker_data:/app/data/
     ## Not supported by docker swarm at this time, and services auto-restart anyway.
     #depends_on:
     #  rabbitmq:
@@ -63,9 +70,9 @@ services:
     environment:
        RUN: configure-pipeline
        ARGS: "configure"
-       RABBITMQ_URL: amqp://rabbitmq:5672
+       RABBITMQ_URL: *RABBITMQ_URL_
        STATSD_URL: statsd://stats.tarbell.mediacloud.org
-       STATSD_REALM: *STATS_REALM
+       STATSD_REALM: *STATSD_REALM_
     restart:
         "on-failure"
 
@@ -73,22 +80,24 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--quiet --fetch-date=2023-07-01 --num-batches=20 --batch-index={{.Task.Slot}} "
-      RABBITMQ_URL: amqp://rabbitmq:5672
+      ARGS: "--log-level=info --fetch-date=2023-07-01 --num-batches=10 --batch-index={{.Task.Slot}} --sample-size=10000"
+      RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATS_REALM
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
     restart:
         "on-failure"
     deploy:
-      replicas: 20
+      replicas: 10
 
   parser_worker:
     <<: *common_worker
     environment:
       RUN: parser
-      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATS_REALM
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
     restart:
         "on-failure"
 
@@ -96,18 +105,25 @@ services:
     <<: *common_worker
     environment:
       RUN: importer
-      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_URL: *RABBITMQ_URL_
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
       ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATS_REALM
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
     networks:
       - story-indexer
     restart:
         "on-failure"
 
+configs:
+  rabbitmq_config:
+    file: ../conf/rabbitmq.conf
+
 volumes:
   elasticsearch_data:
+  #Neccesary for diskstory, ideally not used
+  worker_data:
 
 networks:
   story-indexer:

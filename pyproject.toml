@@ -14,6 +14,7 @@ dependencies = [
   "statsd_client",
   "supervisor",
   "scrapy",
+  "pympler",
 ]
 
 [project.optional-dependencies]

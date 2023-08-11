@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+from pympler import asizeof
 from scrapy.crawler import CrawlerProcess
 
 from indexer.story import BaseStory, StoryFactory, uuid_by_link
@@ -117,9 +118,13 @@ class FetchWorker(QApp):
         self.fetched_stories.append(story)
 
     def main_loop(self) -> None:
-        # Fetch and batch rss
+        # Init stats
         logger.info(f"Fetching rss batch {self.batch_index} for {self.fetch_date}")
+
         self.gauge("queued-stories", 0, labels=[("batch", self.batch_index)])
+        self.gauge("oversize-stories", 0, labels=[("batch", self.batch_index)])
+
+        # Fetch and batch rss
         all_rss_records = fetch_daily_rss(self.fetch_date, self.sample_size)
         batches, batch_map = batch_rss(all_rss_records, num_batches=self.num_batches)
         self.rss_batch = batches[self.batch_index]
@@ -161,18 +166,36 @@ class FetchWorker(QApp):
         assert self.connection
         chan = self.connection.channel()
         queued_stories = 0
+        oversize_stories = 0
+        story_hist: Dict[int, int] = {}
+
         for story in self.fetched_stories:
-            http_meta = story.http_metadata()
+            story_size = asizeof.asizeof(story)
 
-            assert http_meta.response_code is not None
+            story_bin = story_size // 10000
+            if int(story_bin) in story_hist:
+                story_hist[int(story_bin)] += 1
+            else:
+                story_hist[int(story_bin)] = 0
 
-            if http_meta.response_code >= 200 and http_meta.response_code < 300:
-                self.send_message(chan, story.dump())
-                queued_stories += 1
+            if story_size < 100000:  # A bit of a margin, to protect us.
+                http_meta = story.http_metadata()
+
+                assert http_meta.response_code is not None
+
+                if http_meta.response_code >= 200 and http_meta.response_code < 300:
+                    self.send_message(chan, story.dump())
+                    queued_stories += 1
+            else:
+                oversize_stories += 1
 
         self.gauge(
             "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
         )
+        self.gauge(
+            "oversize-stories", oversize_stories, labels=[("batch", self.batch_index)]
+        )
+        logger.info(f"STORY_SIZE_HISTOGRAM: {story_hist}")
 
 
 if __name__ == "__main__":

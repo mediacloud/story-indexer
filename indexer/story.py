@@ -165,7 +165,7 @@ class ContentMetadata(StoryData):
     publication_date: Optional[str] = None
     language: Optional[str] = None
     full_language: Optional[str] = None
-    text_extraction: Optional[str] = None
+    text_extraction_method: Optional[str] = None
     article_title: Optional[str] = None
     normalized_article_title: Optional[str] = None
     text_content: Optional[str] = None
