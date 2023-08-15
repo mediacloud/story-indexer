@@ -2,6 +2,7 @@ import argparse
 import csv
 import logging
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
@@ -167,16 +168,14 @@ class FetchWorker(QApp):
         chan = self.connection.channel()
         queued_stories = 0
         oversize_stories = 0
-        story_hist: Dict[int, int] = {}
+        story_hist: Counter = Counter()
 
         for story in self.fetched_stories:
             story_size = asizeof.asizeof(story)
 
             story_bin = story_size // 10000
-            if int(story_bin) in story_hist:
-                story_hist[int(story_bin)] += 1
-            else:
-                story_hist[int(story_bin)] = 0
+
+            story_hist += Counter({int(story_bin): 1})
 
             if story_size < 100000:  # A bit of a margin, to protect us.
                 http_meta = story.http_metadata()
