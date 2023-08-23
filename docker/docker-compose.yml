@@ -138,8 +138,6 @@ services:
     environment:
       - RUN=importer
       - ELASTICSEARCH_HOST=http://elasticsearch:9200,http://elasticsearch_01:9201,http://elasticsearch_02:9202
-    networks:
-      - mc_story_indexer
 
 volumes:
   elasticsearch_data:
