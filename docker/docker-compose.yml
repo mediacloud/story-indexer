@@ -26,6 +26,7 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
+      - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
     volumes:
@@ -35,6 +36,12 @@ services:
     ports:
       - 9200:9200
       - 9300:9300
+    mem_limit: 262144
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
     healthcheck:
       test:
         [
@@ -52,6 +59,7 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
+      - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
     volumes:
@@ -61,6 +69,11 @@ services:
       - 9301:9300
     networks:
       - mc_story_indexer
+    mem_limit: 262144
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     healthcheck:
       test:
         [
@@ -76,6 +89,7 @@ services:
     environment:
       - node.name=elasticsearch_02
       - cluster.name=mc_elasticsearch
+      - bootstrap.memory_lock=true
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
@@ -87,6 +101,11 @@ services:
       - 9302:9300
     networks:
       - mc_story_indexer
+    mem_limit: 262144
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     healthcheck:
       test:
         [
