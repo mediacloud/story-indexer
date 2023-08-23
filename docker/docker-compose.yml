@@ -134,6 +134,9 @@ services:
     <<: *common_worker
     environment:
       - RUN=fetch-worker
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - STATSD_URL=statsd://stats.tarbell.mediacloud.org
+
     networks:
       - story_indexer
 
@@ -141,6 +144,8 @@ services:
     <<: *common_worker
     environment:
       - RUN=parser
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - STATSD_URL=statsd://stats.tarbell.mediacloud.org
     networks:
       - story_indexer
 
@@ -153,7 +158,10 @@ services:
       - story_indexer
     environment:
       - RUN=importer
+      - RABBITMQ_URL=amqp://rabbitmq:5672
       - ELASTICSEARCH_HOST=http://elasticsearch:9200,http://elasticsearch_01:9201,http://elasticsearch_02:9202
+      - ELASTICSEARCH_INDEX_NAME=mediacloud_search_text
+      - STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
 volumes:
   elasticsearch_data:
