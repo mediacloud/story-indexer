@@ -36,7 +36,6 @@ services:
     ports:
       - 9200:9200
       - 9300:9300
-    mem_limit: 262144
     ulimits:
       memlock:
         soft: -1
@@ -68,8 +67,7 @@ services:
       - 9201:9200
       - 9301:9300
     networks:
-      - mc_story_indexer
-    mem_limit: 262144
+      - story_indexer
     ulimits:
       memlock:
         soft: -1
@@ -100,8 +98,7 @@ services:
       - 9202:9200
       - 9302:9300
     networks:
-      - mc_story_indexer
-    mem_limit: 262144
+      - story_indexer
     ulimits:
       memlock:
         soft: -1
