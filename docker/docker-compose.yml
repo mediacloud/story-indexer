@@ -26,7 +26,6 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
     volumes:
@@ -53,7 +52,6 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
     volumes:
@@ -80,7 +78,6 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
     volumes:
