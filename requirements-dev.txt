@@ -25,7 +25,7 @@ botocore==1.31.7
     # via
     #   boto3
     #   s3transfer
-certifi==2023.5.7
+certifi==2023.7.22
     # via
     #   elastic-transport
     #   requests
@@ -34,7 +34,7 @@ cffi==1.15.1
     # via cryptography
 cfgv==3.3.1
     # via pre-commit
-chardet==5.1.0
+chardet==5.2.0
     # via readability-lxml
 charset-normalizer==3.2.0
     # via
@@ -42,12 +42,13 @@ charset-normalizer==3.2.0
     #   requests
     #   trafilatura
 click==8.1.6
+click==8.1.6
     # via nltk
 constantly==15.1.0
     # via twisted
 courlan==0.9.3
     # via trafilatura
-cryptography==41.0.2
+cryptography==41.0.3
     # via
     #   pyopenssl
     #   scrapy
@@ -64,10 +65,11 @@ dateparser==1.1.8
     #   htmldate
     #   mediacloud-metadata
 distlib==0.3.7
+distlib==0.3.7
     # via virtualenv
 elastic-transport==8.4.0
     # via elasticsearch
-elasticsearch==8.8.2
+elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
 exceptiongroup==1.1.2
     # via pytest
@@ -146,7 +148,7 @@ nltk==3.8.1
     # via newspaper3k
 nodeenv==1.8.0
     # via pre-commit
-numpy==1.25.1
+numpy==1.25.2
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -165,7 +167,7 @@ pillow==10.0.0
     # via
     #   goose3
     #   newspaper3k
-platformdirs==3.9.1
+platformdirs==3.10.0
     # via virtualenv
 pluggy==1.2.0
     # via pytest
@@ -200,6 +202,7 @@ python-dateutil==2.8.2
     #   newspaper3k
 pytz==2023.3
     # via dateparser
+pyyaml==6.0.1
 pyyaml==6.0.1
     # via
     #   newspaper3k
@@ -276,9 +279,9 @@ twisted==22.10.0
     # via scrapy
 types-pika==1.2.0b1
     # via story-indexer (pyproject.toml)
-types-requests==2.31.0.1
+types-requests==2.31.0.2
     # via story-indexer (pyproject.toml)
-types-urllib3==1.26.25.13
+types-urllib3==1.26.25.14
     # via types-requests
 typing-extensions==4.7.1
     # via
@@ -296,7 +299,7 @@ urllib3==1.26.16
     #   htmldate
     #   requests
     #   trafilatura
-virtualenv==20.24.1
+virtualenv==20.24.2
     # via pre-commit
 w3lib==2.1.1
     # via

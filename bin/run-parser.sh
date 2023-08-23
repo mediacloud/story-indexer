@@ -2,4 +2,4 @@
 
 . bin/func.sh
 
-run_python indexer.workers.parser "$@"
+run_python indexer.workers.parser --rabbitmq-url amqp://rabbitmq:5672

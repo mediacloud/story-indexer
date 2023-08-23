@@ -25,14 +25,14 @@ botocore==1.31.7
     # via
     #   boto3
     #   s3transfer
-certifi==2023.5.7
+certifi==2023.7.22
     # via
     #   elastic-transport
     #   requests
     #   trafilatura
 cffi==1.15.1
     # via cryptography
-chardet==5.1.0
+chardet==5.2.0
     # via readability-lxml
 charset-normalizer==3.2.0
     # via
@@ -45,7 +45,7 @@ constantly==15.1.0
     # via twisted
 courlan==0.9.3
     # via trafilatura
-cryptography==41.0.2
+cryptography==41.0.3
     # via
     #   pyopenssl
     #   scrapy
@@ -63,7 +63,7 @@ dateparser==1.1.8
     #   mediacloud-metadata
 elastic-transport==8.4.0
     # via elasticsearch
-elasticsearch==8.8.2
+elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
 faust-cchardet==2.1.18
     # via mediacloud-metadata
@@ -128,7 +128,7 @@ newspaper3k==0.2.8
     # via mediacloud-metadata
 nltk==3.8.1
     # via newspaper3k
-numpy==1.25.1
+numpy==1.25.2
     # via py3langid
 orderedmultidict==1.0.1
     # via furl

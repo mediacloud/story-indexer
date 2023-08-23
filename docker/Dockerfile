@@ -8,7 +8,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-RUN apt-get update
+RUN apt-get update && apt-get install -y curl
 
 # install dependencies
 COPY ../requirements.txt .
@@ -26,12 +26,9 @@ COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache /wheels/*
 
-COPY ../bin/func.sh ${APP_DOCKER}/bin/
-COPY ../bin/indirect.sh ${APP_DOCKER}/bin/
-COPY ../bin/run-extract.sh ${APP_DOCKER}/bin
+COPY ../bin/*.sh ${APP_DOCKER}/bin/
 
-
-RUN chmod +x ${APP_DOCKER}/bin/indirect.sh
+RUN chmod +x ${APP_DOCKER}/bin/*.sh
 
 
 COPY ../indexer ${APP_DOCKER}/indexer/
@@ -39,4 +36,4 @@ COPY ../indexer ${APP_DOCKER}/indexer/
 ARG RUN
 ENV RUN=${RUN}
 
-ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]
+ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/start_script.sh" ]

@@ -47,14 +47,12 @@ class ElasticsearchImporter(StoryWorker):
 
         ap.add_argument(
             "--elasticsearch-host",
-            "-U",
             dest="elasticsearch_host",
             default=elasticsearch_host,
             help="override ELASTICSEARCH_HOST",
         )
         ap.add_argument(
             "--index-name",
-            "-I",
             dest="index_name",
             type=str,
             default=index_name,
@@ -95,7 +93,8 @@ class ElasticsearchImporter(StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    raise ValueError(f"Value for key '{key}' is not provided.")
+                    logger.error(f"Value for key '{key}' is not provided.")
+                    continue
 
             url = content_metadata.get("url")
             assert isinstance(url, str)
