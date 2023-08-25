@@ -19,6 +19,15 @@ services:
       timeout: 10s
       retries: 5
 
+  elasticsearch-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
+    command: bash -c "chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data /usr/share/elasticsearch/backup"
+    networks:
+      - story_indexer
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
@@ -29,8 +38,10 @@ services:
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
+      - path.repo=/usr/share/elasticsearch/backup
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     networks:
       - story_indexer
     ports:
@@ -61,8 +72,10 @@ services:
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
+      - path.repo=/usr/share/elasticsearch/backup
     volumes:
       - elasticsearch_data_01:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     ports:
       - 9201:9200
       - 9301:9300
@@ -92,8 +105,10 @@ services:
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
+      - path.repo=/usr/share/elasticsearch/backup
     volumes:
       - elasticsearch_data_02:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     ports:
       - 9202:9200
       - 9302:9300
@@ -167,6 +182,7 @@ volumes:
   elasticsearch_data:
   elasticsearch_data_01:
   elasticsearch_data_02:
+  elasticsearch_data_backup:
   rabbitmq_data:
 
 networks:
