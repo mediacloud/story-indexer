@@ -52,7 +52,7 @@ class Parser(StoryWorker):
             )
         else:
             mdd["publication_date"] = "None"
-            
+
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!
             #       could copy items individually with type checking
@@ -60,7 +60,7 @@ class Parser(StoryWorker):
             for key, val in mdd.items():
                 if hasattr(cmd, key):  # avoid hardwired exceptions list?!
                     setattr(cmd, key, val)
-                    
+
         self.send_story(chan, story)
         self.incr("parsed-stories", labels=[("method", extraction_label)])
 

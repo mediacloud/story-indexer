@@ -94,7 +94,9 @@ class FetchWorker(QApp):
         if batch_index is None:
             logger.fatal("need batch index")
             sys.exit(1)
-        self.batch_index = batch_index - 1 #-1, because docker swarm .task.slot is 1-indexed
+        self.batch_index = (
+            batch_index - 1
+        )  # -1, because docker swarm .task.slot is 1-indexed
 
         self.sample_size = self.args.sample_size
 
@@ -136,13 +138,13 @@ class FetchWorker(QApp):
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
 
             self.stories_to_fetch.append(new_story)
-            
+
         self.gauge(
             "rss-stories",
             len(self.stories_to_fetch),
             labels=[("batch", self.batch_index)],
         )
-            
+
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
         # Fetch html as stories
@@ -169,13 +171,7 @@ class FetchWorker(QApp):
 
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
-                status_label = "success"
                 queued_stories += 1
-                
-            elif http_meta.response_code in (403, 404, 429):
-                status_label = f"http-{http_meta.response_code}"
-            else:
-                status_label = f"http-{http_meta.response_code//100}xx"
 
         self.gauge(
             "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
