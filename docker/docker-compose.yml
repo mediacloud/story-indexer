@@ -74,7 +74,8 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --fetch-date=2023-07-01 --num-batches=10 --batch-index={{.Task.Slot}} --sample-size=1000"
+      ARGS: "--log-level=info --fetch-date=2023-07-01 --batch-index={{.Task.Slot}} --sample-size=1000"
+      FETCHER_NUM_BATCHES: &NUM_BATCHES 10
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
@@ -82,7 +83,7 @@ services:
     restart:
         "on-failure"
     deploy:
-      replicas: 10
+      replicas: *NUM_BATCHES
 
     #NB- the value in '--num-batches=VAL' and 'replicas: VAL' should be the same.
     #Automatically interpolating would require an adjustment in bin/indirect.sh and is probably worthwhile down the line.
