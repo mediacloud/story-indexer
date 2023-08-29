@@ -199,6 +199,9 @@ class Worker(QApp):
 
         # number of messages retried in a row
         self.retries = 0
+        
+        #stopgap so that the configurator has run before we start the main loop
+        time.sleep(120)
 
     def main_loop(self) -> None:
         """
