@@ -2,4 +2,4 @@
 
 . bin/func.sh
 
-run_python indexer.pipeline configure
+run_python indexer.pipeline "$@"
