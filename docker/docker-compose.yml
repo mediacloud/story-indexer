@@ -3,6 +3,19 @@ version: '3.8'
 
 
 services:
+
+  swarm-cronjob:
+    image: crazymax/swarm-cronjob
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    environment:
+      - "LOG_LEVEL=info"
+      - "LOG_JSON=false"
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
     ports:
@@ -74,7 +87,7 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --fetch-date=2023-07-01 --batch-index={{.Task.Slot}} --sample-size=1000"
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=1000"
       FETCHER_NUM_BATCHES: &NUM_BATCHES 10
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
@@ -83,10 +96,12 @@ services:
     restart:
         "on-failure"
     deploy:
+      labels:
+         swarm.cronjob.enable: "true"
+         swarm.cronjob.schedule: "*/10 * * * *"
+         swarm.cronjob.replicas: *NUM_BATCHES
       replicas: *NUM_BATCHES
 
-    #NB- the value in '--num-batches=VAL' and 'replicas: VAL' should be the same.
-    #Automatically interpolating would require an adjustment in bin/indirect.sh and is probably worthwhile down the line.
 
   parser_worker:
     <<: *common_worker

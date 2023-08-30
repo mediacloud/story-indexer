@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
@@ -39,11 +39,11 @@ class FetchWorker(QApp):
         super().define_options(ap)
 
         ap.add_argument(
-            "-t",
-            "--today",
+            "-y",
+            "--yesterday",
             action="store_true",
             default=False,
-            help="Flag, if set, to fetch content for today's date at run-time",
+            help="Flag, if set, to fetch content for yesterday's date at run-time",
         )
 
         # fetch_date
@@ -87,9 +87,10 @@ class FetchWorker(QApp):
         assert self.args
         logger.info(self.args)
 
-        if self.args.today:
-            logger.info("Fetching for today's date")
-            fetch_date = datetime.today().strftime("%Y-%m-%d")
+        if self.args.yesterday:
+            logger.info("Fetching for yesterday")
+            yesterday = datetime.today() - timedelta(days=1)
+            fetch_date = yesterday.strftime("%Y-%m-%d")
         else:
             fetch_date = self.args.fetch_date
             if not fetch_date:
