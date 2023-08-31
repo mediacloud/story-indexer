@@ -38,9 +38,20 @@ class Parser(StoryWorker):
         #     translate to QuarantineException (with loss of detail),
         #     call (_)quarantine directly (with exception),
         #     or let fail from repeated retries???
-        mdd = mcmetadata.extract(link, html)
+        try:
+            mdd = mcmetadata.extract(link, html)
+        except mcmetadata.exceptions.BadContentError as e:
+            raise QuarantineException(getattr(e, "message", repr(e)))
 
-        extraction_label = mdd.text_extraction
+        extraction_label = mdd["text_extraction_method"]
+
+        # Really slapdash solution for the sake of testing.
+        if mdd["publication_date"] is not None:
+            mdd["publication_date"] = mdd["publication_date"].strftime(
+                "%a %d %b %Y, %I:%M%p"
+            )
+        else:
+            mdd["publication_date"] = "None"
 
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!

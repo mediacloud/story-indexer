@@ -1,5 +1,7 @@
 version: '3.8'
 
+
+
 services:
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
@@ -10,12 +12,13 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     networks:
-      - mc_story_indexer
+      - story-indexer
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
       timeout: 10s
       retries: 2
+
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -30,45 +33,92 @@ services:
       - 9200:9200
       - 9300:9300
     networks:
-      - mc_story_indexer
+      - story-indexer
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 2
 
-  common_worker:
-    <<: &common_worker
-      build:
-        context: ..
-        dockerfile: docker/Dockerfile
-      environment:
-        - RABBITMQ_URL=amqp://rabbitmq:5672
-        - RUN=${RUN}
-      depends_on:
-        rabbitmq:
-          condition: service_healthy
+  common_worker: &common_worker
+    #Pushing to a local registry for now, while in dev loop.
+    image: localhost:5000/common_worker
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      RABBITMQ_URL: &RABBITMQ_URL_ amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
+      RUN: ${RUN}
+      STATSD_REALM: &STATSD_REALM_ pgulley
+      STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
+    networks:
+      - story-indexer
+    restart:
+        "no"
+    volumes:
+        - worker_data:/app/data/
+
+
+  pipeline_configurator:
+    <<: *common_worker
+    environment:
+       RUN: configure-pipeline
+       ARGS: "configure"
+       RABBITMQ_URL: *RABBITMQ_URL_
+       STATSD_URL: statsd://stats.tarbell.mediacloud.org
+       STATSD_REALM: *STATSD_REALM_
+    restart:
+        "on-failure"
+
   fetch_worker:
     <<: *common_worker
     environment:
-      - RUN=fetcher
+      RUN: fetcher
+      ARGS: "--log-level=info --fetch-date=2023-07-01 --num-batches=10 --batch-index={{.Task.Slot}} --sample-size=1000"
+      RABBITMQ_URL: *RABBITMQ_URL_
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
+    restart:
+        "on-failure"
+    deploy:
+      replicas: 10
+
+    #NB- the value in '--num-batches=VAL' and 'replicas: VAL' should be the same.
+    #Automatically interpolating would require an adjustment in bin/indirect.sh and is probably worthwhile down the line.
 
   parser_worker:
     <<: *common_worker
     environment:
-      - RUN=parser
+      RUN: parser
+      RABBITMQ_URL: *RABBITMQ_URL_
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
+    restart:
+        "on-failure"
 
   importer_worker:
     <<: *common_worker
     environment:
-      - RUN=importer
-      - ELASTICSEARCH_HOST=http://elasticsearch:9200/
+      RUN: importer
+      RABBITMQ_URL: *RABBITMQ_URL_
+      ELASTICSEARCH_HOST: http://elasticsearch:9200/
+      ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATSD_REALM_
+      STORY_FACTORY: *STORY_FACTORY_
     networks:
-      - mc_story_indexer
+      - story-indexer
+    restart:
+        "on-failure"
+
 
 volumes:
   elasticsearch_data:
+  #Neccesary for diskstory, ideally not used
+  worker_data:
 
 networks:
-  mc_story_indexer:
-    driver: bridge
+  story-indexer:
+    driver: overlay

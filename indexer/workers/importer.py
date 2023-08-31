@@ -46,7 +46,6 @@ class ElasticsearchImporter(StoryWorker):
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         ap.add_argument(
             "--elasticsearch-host",
-            "-U",
             dest="elasticsearch_host",
             default=elasticsearch_host,
             help="override ELASTICSEARCH_HOST",
