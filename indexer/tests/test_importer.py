@@ -40,32 +40,32 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "text_content": "Lorem ipsum dolor sit amet",
 }
 
+test_settings = {
+    "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+    "mappings": {
+        "properties": {
+            "original_url": {"type": "keyword"},
+            "url": {"type": "keyword"},
+            "normalized_url": {"type": "keyword"},
+            "canonical_domain": {"type": "keyword"},
+            "publication_date": {"type": "date"},
+            "language": {"type": "keyword"},
+            "full_language": {"type": "keyword"},
+            "text_extraction": {"type": "keyword"},
+            "article_title": {"type": "text", "fielddata": True},
+            "normalized_article_title": {"type": "text", "fielddata": True},
+            "text_content": {"type": "text"},
+        }
+    },
+}
+
 
 class TestElasticsearchConnection:
     def test_create_index(self, elasticsearch_client: Any) -> None:
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
-
-        settings = {
-            "settings": {"number_of_shards": 1, "number_of_replicas": 0},
-            "mappings": {
-                "properties": {
-                    "original_url": {"type": "keyword"},
-                    "url": {"type": "keyword"},
-                    "normalized_url": {"type": "keyword"},
-                    "canonical_domain": {"type": "keyword"},
-                    "publication_date": {"type": "date"},
-                    "language": {"type": "keyword"},
-                    "full_language": {"type": "keyword"},
-                    "text_extraction": {"type": "keyword"},
-                    "article_title": {"type": "text", "fielddata": True},
-                    "normalized_article_title": {"type": "text", "fielddata": True},
-                    "text_content": {"type": "text"},
-                }
-            },
-        }
-        elasticsearch_client.indices.create(index=index_name, body=settings)
+        elasticsearch_client.indices.create(index=index_name, body=test_settings)
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
@@ -89,7 +89,7 @@ def elasticsearch_connector() -> ElasticsearchConnector:
     index_name = cast(str, os.environ.get("ELASTICSEARCH_INDEX_NAME"))
     if elasticsearch_host is None or index_name is None:
         pytest.skip("ELASTICSEARCH_HOST or ELASTICSEARCH_INDEX_NAME is not set")
-    connector = ElasticsearchConnector(elasticsearch_host, index_name)
+    connector = ElasticsearchConnector(elasticsearch_host, index_name, test_settings)
     return connector
 
 

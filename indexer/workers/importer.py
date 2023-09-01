@@ -17,6 +17,28 @@ from indexer.worker import StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
+shards = int(os.environ.get("ELASTICSEARCH_SHARDS", 1))
+replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 0))
+
+es_settings = {
+    "settings": {"number_of_shards": shards, "number_of_replicas": replicas},
+    "mappings": {
+        "properties": {
+            "original_url": {"type": "keyword"},
+            "url": {"type": "keyword"},
+            "normalized_url": {"type": "keyword"},
+            "canonical_domain": {"type": "keyword"},
+            "publication_date": {"type": "date"},
+            "language": {"type": "keyword", "fielddata": True},
+            "full_language": {"type": "keyword"},
+            "text_extraction": {"type": "keyword"},
+            "article_title": {"type": "text", "fielddata": True},
+            "normalized_article_title": {"type": "text", "fielddata": True},
+            "text_content": {"type": "text"},
+        }
+    },
+}
+
 
 class ElasticsearchConnector:
     def __init__(
@@ -25,11 +47,17 @@ class ElasticsearchConnector:
             str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
         ],
         index_name: str,
+        settings: Mapping[str, Any],
     ) -> None:
         self.client = Elasticsearch(hosts)
         self.index_name = index_name
+        self.settings = settings
         if self.client and self.index_name:
             if not self.client.indices.exists(index=self.index_name):
+                if self.settings:
+                    self.client.indices.create(
+                        index=self.index_name, settings=self.settings
+                    )
                 self.client.indices.create(index=self.index_name)
 
     def index(self, id: str, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
@@ -78,7 +106,7 @@ class ElasticsearchImporter(StoryWorker):
         self.index_name = index_name
 
         self.connector = ElasticsearchConnector(
-            self.elasticsearch_host, self.index_name
+            self.elasticsearch_host, self.index_name, settings=es_settings
         )
 
     def process_story(
