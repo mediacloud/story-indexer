@@ -11,7 +11,7 @@ services:
     environment:
       - "LOG_LEVEL=info"
       - "LOG_JSON=false"
-      - "TZ=America/New_York"
+      - "TZ=GMT"
     deploy:
       placement:
         constraints:
