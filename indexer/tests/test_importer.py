@@ -40,7 +40,7 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "text_content": "Lorem ipsum dolor sit amet",
 }
 
-test_settings = {
+test_settings: Mapping[str, Any] = {
     "settings": {"number_of_shards": 1, "number_of_replicas": 0},
     "mappings": {
         "properties": {
@@ -65,7 +65,7 @@ class TestElasticsearchConnection:
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
-        elasticsearch_client.indices.create(index=index_name, body=test_settings)
+        elasticsearch_client.indices.create(index=index_name, settings=test_settings)
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
