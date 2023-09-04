@@ -1,6 +1,4 @@
-version: '3.8'
-
-
+version: "3.8"
 
 services:
   rabbitmq:
@@ -19,7 +17,6 @@ services:
       timeout: 10s
       retries: 2
 
-
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
@@ -35,13 +32,17 @@ services:
     networks:
       - story-indexer
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 2
 
-  common_worker: &common_worker
-    #Pushing to a local registry for now, while in dev loop.
+  common_worker:
+    &common_worker #Pushing to a local registry for now, while in dev loop.
     image: localhost:5000/common_worker
     build:
       context: ..
@@ -53,22 +54,19 @@ services:
       STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
     networks:
       - story-indexer
-    restart:
-        "no"
+    restart: "no"
     volumes:
-        - worker_data:/app/data/
-
+      - worker_data:/app/data/
 
   pipeline_configurator:
     <<: *common_worker
     environment:
-       RUN: configure-pipeline
-       ARGS: "configure"
-       RABBITMQ_URL: *RABBITMQ_URL_
-       STATSD_URL: statsd://stats.tarbell.mediacloud.org
-       STATSD_REALM: *STATSD_REALM_
-    restart:
-        "on-failure"
+      RUN: configure-pipeline
+      ARGS: "configure"
+      RABBITMQ_URL: *RABBITMQ_URL_
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATSD_REALM_
+    restart: "on-failure"
 
   fetch_worker:
     <<: *common_worker
@@ -79,8 +77,7 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
-    restart:
-        "on-failure"
+    restart: "on-failure"
     deploy:
       replicas: 10
 
@@ -95,8 +92,7 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
-    restart:
-        "on-failure"
+    restart: "on-failure"
 
   importer_worker:
     <<: *common_worker
@@ -108,11 +104,11 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
+      ELASTICSEARCH_SHARDS: 1
+      ELASTICSEARCH_REPLICAS: 0
     networks:
       - story-indexer
-    restart:
-        "on-failure"
-
+    restart: "on-failure"
 
 volumes:
   elasticsearch_data:
