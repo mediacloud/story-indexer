@@ -134,6 +134,11 @@ class QApp(App):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
+        default_max_message_size = 100000
+        self.max_message_size = int(
+            os.environ.get("MAX_MESSAGE_SIZE", default_max_message_size)
+        )
+
     def qconnect(self) -> None:
         """
         called from process_args if AUTO_CONNECT is True
@@ -158,6 +163,10 @@ class QApp(App):
 
         if properties is None:
             properties = BasicProperties()
+
+        # Potentially stop-gap solution for oversized message handling.
+        if sys.getsizeof(data) > self.max_message_size:
+            raise QuarantineException("message too large")
 
         # persist messages on disk
         # (otherwise may be lost on reboot)
