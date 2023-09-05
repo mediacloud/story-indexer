@@ -1,7 +1,9 @@
 import argparse
 import csv
 import logging
+import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
@@ -36,6 +38,14 @@ class FetchWorker(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
 
+        ap.add_argument(
+            "-y",
+            "--yesterday",
+            action="store_true",
+            default=False,
+            help="Flag, if set, to fetch content for yesterday's date at run-time",
+        )
+
         # fetch_date
         ap.add_argument(
             "--fetch-date",
@@ -44,13 +54,13 @@ class FetchWorker(QApp):
         )
 
         # num_batches
-        num_batches_default = 20
+        num_batches_environ = os.environ.get("FETCHER_NUM_BATCHES")
         ap.add_argument(
             "--num-batches",
             dest="num_batches",
             type=int,
-            default=num_batches_default,
-            help=f"Number of batches to break stories into (default {num_batches_default})",
+            default=num_batches_environ,
+            help="Number of batches to break stories into. If not set, defaults to value of FETCHER_NUM_BATCHES environ",
         )
 
         # batch_index
@@ -77,10 +87,15 @@ class FetchWorker(QApp):
         assert self.args
         logger.info(self.args)
 
-        fetch_date = self.args.fetch_date
-        if not fetch_date:
-            logger.fatal("need fetch date")
-            sys.exit(1)
+        if self.args.yesterday:
+            logger.info("Fetching for yesterday")
+            yesterday = datetime.today() - timedelta(days=1)
+            fetch_date = yesterday.strftime("%Y-%m-%d")
+        else:
+            fetch_date = self.args.fetch_date
+            if not fetch_date:
+                logger.fatal("need fetch date")
+                sys.exit(1)
 
         self.fetch_date = fetch_date
 
