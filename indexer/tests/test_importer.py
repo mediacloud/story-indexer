@@ -49,11 +49,17 @@ test_settings: Mapping[str, Any] = {
             "normalized_url": {"type": "keyword"},
             "canonical_domain": {"type": "keyword"},
             "publication_date": {"type": "date"},
-            "language": {"type": "keyword"},
+            "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
             "full_language": {"type": "keyword"},
             "text_extraction": {"type": "keyword"},
-            "article_title": {"type": "text", "fielddata": True},
-            "normalized_article_title": {"type": "text", "fielddata": True},
+            "article_title": {
+                "type": "text",
+                "fields": {"keyword": {"type": "keyword"}},
+            },
+            "normalized_article_title": {
+                "type": "text",
+                "fields": {"keyword": {"type": "keyword"}},
+            },
             "text_content": {"type": "text"},
         }
     },
