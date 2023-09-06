@@ -147,6 +147,7 @@ class QApp(App):
         url = self.args.amqp_url
         assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
+
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
@@ -337,7 +338,7 @@ class Worker(QApp):
 
         ret = {
             "x-mc-who": self.process_name,
-            "x-mc-what": repr(e),  # str() omits exception class name
+            "x-mc-what": repr(e)[:50],  # str() omits exception class name
             "x-mc-when": str(time.time()),
             # maybe log hostname @ time w/ full traceback
             # and include hostname in headers (to find full traceback)
@@ -376,7 +377,7 @@ class Worker(QApp):
         logger.info(f"quarantine: {e}")  # TEMP
 
         headers = self._exc_headers(e)
-
+        logger.warning(f"quarantine: body {len(body)}- headers {headers}")
         # send to quarantine via direct exchange w/ headers
         self.send_message(
             chan,
@@ -409,7 +410,7 @@ class Worker(QApp):
 
         headers = self._exc_headers(e)
         headers[RETRIES_HDR] = retries + 1
-
+        logger.warning(f"retry: body {len(body)}- headers {headers}")
         # requeue to self via direct exchange w/ new headers
         # tempting to do delayed delivery, but it's a morass!
         self.send_message(
