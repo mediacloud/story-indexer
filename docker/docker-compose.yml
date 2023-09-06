@@ -21,6 +21,7 @@ services:
 
   elasticsearch-setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    user: root
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -174,7 +175,7 @@ services:
     environment:
       - RUN=importer
       - RABBITMQ_URL=amqp://rabbitmq:5672
-      - ELASTICSEARCH_HOST=http://elasticsearch:9200,http://elasticsearch_01:9201,http://elasticsearch_02:9202
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200
       - ELASTICSEARCH_INDEX_NAME=mediacloud_search_text
       - STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
@@ -182,9 +183,9 @@ volumes:
   elasticsearch_data:
   elasticsearch_data_01:
   elasticsearch_data_02:
-  elasticsearch_data_backup:
   rabbitmq_data:
-
+  elasticsearch_data_backup:
+  
 networks:
   story_indexer:
     name: story_indexer
