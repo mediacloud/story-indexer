@@ -89,7 +89,7 @@ class FetchWorker(QApp):
 
         if self.args.yesterday:
             logger.info("Fetching for yesterday")
-            yesterday = datetime.today() - timedelta(days=1)
+            yesterday = datetime.today() - timedelta(days=2)
             fetch_date = yesterday.strftime("%Y-%m-%d")
         else:
             fetch_date = self.args.fetch_date

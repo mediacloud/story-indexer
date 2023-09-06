@@ -134,7 +134,7 @@ class QApp(App):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
-        default_max_message_size = 100000
+        default_max_message_size = 1000000
         self.max_message_size = int(
             os.environ.get("MAX_MESSAGE_SIZE", default_max_message_size)
         )

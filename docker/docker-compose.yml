@@ -25,6 +25,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_CONFIG_FILE: /app/rabbitmq.conf
     networks:
       - story-indexer
     healthcheck:
@@ -32,6 +33,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 2
+    configs:
+      - source: rabbitmq_config
+        target: /etc/rabbitmq/conf.d/20-rabbitmq.conf
 
 
   elasticsearch:
@@ -130,6 +134,9 @@ services:
     restart:
         "on-failure"
 
+configs:
+  rabbitmq_config:
+    file: ../conf/rabbitmq.conf
 
 volumes:
   elasticsearch_data:
