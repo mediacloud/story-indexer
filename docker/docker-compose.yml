@@ -102,7 +102,6 @@ services:
       memlock:
         soft: -1
         hard: -1
-      - story-indexer
     healthcheck:
       test:
         [
@@ -145,23 +144,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-  common_worker:
-    <<: &common_worker
-      build:
-        context: ..
-        dockerfile: docker/Dockerfile
-      environment:
-        - RABBITMQ_URL=amqp://rabbitmq:5672
-        - RUN=${RUN}
-        - RUN_ON_START=1
-      networks:
-        - story_indexer
-      volumes:
-        - ../indexer:/app/indexer
-      depends_on:
-        rabbitmq:
-          condition: service_healthy
 
   common_worker: &common_worker
     #Pushing to a local registry for now, while in dev loop.

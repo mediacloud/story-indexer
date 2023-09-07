@@ -65,8 +65,6 @@ class Parser(StoryWorker):
 
                 self.send_story(chan, story)
                 self.incr("parsed-stories", labels=[("method", extraction_label)])
-            except Exception as e:
-                logger.error(e)
 
 
 if __name__ == "__main__":
