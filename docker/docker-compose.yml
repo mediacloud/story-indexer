@@ -42,7 +42,8 @@ services:
       retries: 2
 
   common_worker:
-    &common_worker #Pushing to a local registry for now, while in dev loop.
+    &common_worker
+    #Pushing to a local registry for now, while in dev loop.
     image: localhost:5000/common_worker
     build:
       context: ..
