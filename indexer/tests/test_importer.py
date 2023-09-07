@@ -41,7 +41,6 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
 }
 
 test_settings: Mapping[str, Any] = {
-    "settings": {"number_of_shards": 1, "number_of_replicas": 0},
     "mappings": {
         "properties": {
             "original_url": {"type": "keyword"},

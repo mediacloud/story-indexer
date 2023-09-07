@@ -21,7 +21,6 @@ shards = int(os.environ.get("ELASTICSEARCH_SHARDS", 1))
 replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 0))
 
 es_settings = {
-    "settings": {"number_of_shards": shards, "number_of_replicas": replicas},
     "mappings": {
         "properties": {
             "original_url": {"type": "keyword"},
