@@ -40,28 +40,28 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "text_content": "Lorem ipsum dolor sit amet",
 }
 
-test_settings: Mapping[str, Any] = {
-    "mappings": {
-        "properties": {
-            "original_url": {"type": "keyword"},
-            "url": {"type": "keyword"},
-            "normalized_url": {"type": "keyword"},
-            "canonical_domain": {"type": "keyword"},
-            "publication_date": {"type": "date"},
-            "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "full_language": {"type": "keyword"},
-            "text_extraction": {"type": "keyword"},
-            "article_title": {
-                "type": "text",
-                "fields": {"keyword": {"type": "keyword"}},
-            },
-            "normalized_article_title": {
-                "type": "text",
-                "fields": {"keyword": {"type": "keyword"}},
-            },
-            "text_content": {"type": "text"},
-        }
-    },
+test_settings: Mapping[str, Any] = {"number_of_shards": 2, "number_of_replicas": 1}
+
+test_mappings: Mapping[str, Any] = {
+    "properties": {
+        "original_url": {"type": "keyword"},
+        "url": {"type": "keyword"},
+        "normalized_url": {"type": "keyword"},
+        "canonical_domain": {"type": "keyword"},
+        "publication_date": {"type": "date"},
+        "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+        "full_language": {"type": "keyword"},
+        "text_extraction": {"type": "keyword"},
+        "article_title": {
+            "type": "text",
+            "fields": {"keyword": {"type": "keyword"}},
+        },
+        "normalized_article_title": {
+            "type": "text",
+            "fields": {"keyword": {"type": "keyword"}},
+        },
+        "text_content": {"type": "text"},
+    }
 }
 
 
@@ -70,7 +70,9 @@ class TestElasticsearchConnection:
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
-        elasticsearch_client.indices.create(index=index_name, settings=test_settings)
+        elasticsearch_client.indices.create(
+            index=index_name, mappings=test_mappings, settings=test_settings
+        )
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
@@ -94,7 +96,9 @@ def elasticsearch_connector() -> ElasticsearchConnector:
     index_name = cast(str, os.environ.get("ELASTICSEARCH_INDEX_NAME"))
     if elasticsearch_host is None or index_name is None:
         pytest.skip("ELASTICSEARCH_HOST or ELASTICSEARCH_INDEX_NAME is not set")
-    connector = ElasticsearchConnector(elasticsearch_host, index_name, test_settings)
+    connector = ElasticsearchConnector(
+        elasticsearch_host, index_name, test_mappings, test_settings
+    )
     return connector
 
 
