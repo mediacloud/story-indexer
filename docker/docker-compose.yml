@@ -26,7 +26,6 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     networks:
-      - story_indexer
       - story-indexer
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -42,7 +41,7 @@ services:
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     command: bash -c "chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data /usr/share/elasticsearch/backup"
     networks:
-      - story_indexer
+      - story-indexer
 
 
   elasticsearch:
@@ -60,7 +59,7 @@ services:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     networks:
-      - story_indexer
+      - story-indexer
     ports:
       - 9200:9200
       - 9300:9300
@@ -97,7 +96,7 @@ services:
       - 9201:9200
       - 9301:9300
     networks:
-      - story_indexer
+      - story-indexer
     ulimits:
       memlock:
         soft: -1
@@ -130,7 +129,7 @@ services:
       - 9202:9200
       - 9302:9300
     networks:
-      - story_indexer
+      - story-indexer
     ulimits:
       memlock:
         soft: -1
@@ -179,8 +178,8 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=1000"
-      FETCHER_NUM_BATCHES: &NUM_BATCHES 10
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=100"
+      FETCHER_NUM_BATCHES: &NUM_BATCHES 2
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
@@ -212,7 +211,7 @@ services:
       elasticsearch:
         condition: service_healthy
     networks:
-      - story_indexer
+      - story-indexer
     environment:
       RUN: importer
       RABBITMQ_URL: *RABBITMQ_URL_
@@ -221,8 +220,6 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
-    networks:
-      - story-indexer
     restart:
         "on-failure"
 
