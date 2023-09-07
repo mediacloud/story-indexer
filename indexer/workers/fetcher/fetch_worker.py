@@ -1,7 +1,9 @@
 import argparse
 import csv
 import logging
+import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
@@ -36,6 +38,14 @@ class FetchWorker(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
 
+        ap.add_argument(
+            "-y",
+            "--yesterday",
+            action="store_true",
+            default=False,
+            help="Flag, if set, to fetch content for yesterday's date at run-time",
+        )
+
         # fetch_date
         ap.add_argument(
             "--fetch-date",
@@ -44,13 +54,13 @@ class FetchWorker(QApp):
         )
 
         # num_batches
-        num_batches_default = 20
+        num_batches_environ = os.environ.get("FETCHER_NUM_BATCHES")
         ap.add_argument(
             "--num-batches",
             dest="num_batches",
             type=int,
-            default=num_batches_default,
-            help=f"Number of batches to break stories into (default {num_batches_default})",
+            default=num_batches_environ,
+            help="Number of batches to break stories into. If not set, defaults to value of FETCHER_NUM_BATCHES environ",
         )
 
         # batch_index
@@ -77,10 +87,15 @@ class FetchWorker(QApp):
         assert self.args
         logger.info(self.args)
 
-        fetch_date = self.args.fetch_date
-        if not fetch_date:
-            logger.fatal("need fetch date")
-            sys.exit(1)
+        if self.args.yesterday:
+            logger.info("Fetching for yesterday")
+            yesterday = datetime.today() - timedelta(days=1)
+            fetch_date = yesterday.strftime("%Y-%m-%d")
+        else:
+            fetch_date = self.args.fetch_date
+            if not fetch_date:
+                logger.fatal("need fetch date")
+                sys.exit(1)
 
         self.fetch_date = fetch_date
 
@@ -94,13 +109,28 @@ class FetchWorker(QApp):
         if batch_index is None:
             logger.fatal("need batch index")
             sys.exit(1)
-        self.batch_index = batch_index
+        self.batch_index = (
+            batch_index - 1
+        )  # -1, because docker swarm .task.slot is 1-indexed
 
         self.sample_size = self.args.sample_size
 
     def scrapy_cb(self, story: BaseStory) -> None:
         # Scrapy calls this when it's finished grabbing a story
         # NB both successes and failures end up here
+        http_meta = story.http_metadata()
+
+        assert http_meta.response_code is not None
+
+        if http_meta.response_code == 200:
+            status_label = "success"
+
+        elif http_meta.response_code in (403, 404, 429):
+            status_label = f"http-{http_meta.response_code}"
+        else:
+            status_label = f"http-{http_meta.response_code//100}xx"
+
+        self.incr("fetched-stories", labels=[("status", status_label)])
         self.fetched_stories.append(story)
 
     def main_loop(self) -> None:
@@ -123,7 +153,12 @@ class FetchWorker(QApp):
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
 
             self.stories_to_fetch.append(new_story)
-            self.incr("rss-stories")
+
+        self.gauge(
+            "rss-stories",
+            len(self.stories_to_fetch),
+            labels=[("batch", self.batch_index)],
+        )
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
@@ -143,6 +178,7 @@ class FetchWorker(QApp):
         assert self.connection
         chan = self.connection.channel()
 
+        queued_stories = 0
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
 
@@ -150,14 +186,11 @@ class FetchWorker(QApp):
 
             if http_meta.response_code == 200:
                 self.send_message(chan, story.dump())
-                status_label = "success"
+                queued_stories += 1
 
-            elif http_meta.response_code in (403, 404, 429):
-                status_label = f"http-{http_meta.response_code}"
-            else:
-                status_label = f"http-{http_meta.response_code//100}xx"
-
-            self.incr("fetched-stories", labels=[("status", status_label)])
+        self.gauge(
+            "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
+        )
 
 
 if __name__ == "__main__":
