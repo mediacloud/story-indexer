@@ -166,7 +166,7 @@ class QApp(App):
             properties = BasicProperties()
 
         # Potentially stop-gap solution for oversized message handling.
-        if sys.getsizeof(data) > self.max_message_size:
+        if len(data) > self.max_message_size:
             raise QuarantineException("message too large")
 
         # persist messages on disk
@@ -377,7 +377,7 @@ class Worker(QApp):
         logger.info(f"quarantine: {e}")  # TEMP
 
         headers = self._exc_headers(e)
-        logger.warning(f"quarantine: body {len(body)}- headers {headers}")
+
         # send to quarantine via direct exchange w/ headers
         self.send_message(
             chan,
@@ -410,7 +410,7 @@ class Worker(QApp):
 
         headers = self._exc_headers(e)
         headers[RETRIES_HDR] = retries + 1
-        logger.warning(f"retry: body {len(body)}- headers {headers}")
+
         # requeue to self via direct exchange w/ new headers
         # tempting to do delayed delivery, but it's a morass!
         self.send_message(
