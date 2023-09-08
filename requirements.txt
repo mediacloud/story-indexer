@@ -19,9 +19,9 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.6
     # via mediacloud-metadata
-boto3==1.28.7
+boto3==1.28.39
     # via story-indexer (pyproject.toml)
-botocore==1.31.7
+botocore==1.31.39
     # via
     #   boto3
     #   s3transfer
@@ -39,7 +39,7 @@ charset-normalizer==3.2.0
     #   htmldate
     #   requests
     #   trafilatura
-click==8.1.6
+click==8.1.7
     # via nltk
 constantly==15.1.0
     # via twisted
@@ -65,13 +65,13 @@ elastic-transport==8.4.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
-faust-cchardet==2.1.18
+faust-cchardet==2.1.19
     # via mediacloud-metadata
 feedfinder2==0.0.4
     # via newspaper3k
 feedparser==6.0.10
     # via newspaper3k
-filelock==3.12.2
+filelock==3.12.3
     # via tldextract
 furl==2.1.3
     # via mediacloud-metadata
@@ -104,7 +104,7 @@ jmespath==1.0.1
     #   botocore
     #   itemloaders
     #   parsel
-joblib==1.3.1
+joblib==1.3.2
     # via nltk
 justext==3.0.0
     # via trafilatura
@@ -146,7 +146,7 @@ pillow==10.0.0
     # via
     #   goose3
     #   newspaper3k
-protego==0.2.1
+protego==0.3.0
     # via scrapy
 py3langid==0.2.2
     # via mediacloud-metadata
@@ -181,7 +181,7 @@ rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.1
     # via mediacloud-metadata
-regex==2023.6.3
+regex==2023.8.8
     # via
     #   dateparser
     #   nltk
@@ -196,9 +196,9 @@ requests==2.31.0
     #   tldextract
 requests-file==1.5.1
     # via tldextract
-s3transfer==0.6.1
+s3transfer==0.6.2
     # via boto3
-scrapy==2.9.0
+scrapy==2.10.1
     # via story-indexer (pyproject.toml)
 service-identity==23.1.0
     # via scrapy
@@ -211,7 +211,6 @@ six==1.16.0
     #   furl
     #   langdetect
     #   orderedmultidict
-    #   protego
     #   python-dateutil
     #   rabbitmq-admin
     #   requests-file
@@ -235,14 +234,16 @@ tldextract==3.4.4
     #   newspaper3k
     #   scrapy
     #   surt
-tqdm==4.65.0
+tqdm==4.66.1
     # via nltk
 trafilatura==1.6.1
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
 typing-extensions==4.7.1
-    # via twisted
+    # via
+    #   filelock
+    #   twisted
 tzlocal==5.0.1
     # via dateparser
 url-normalize==1.4.3
@@ -255,7 +256,7 @@ urllib3==1.26.16
     #   htmldate
     #   requests
     #   trafilatura
-w3lib==2.1.1
+w3lib==2.1.2
     # via
     #   itemloaders
     #   parsel
@@ -266,7 +267,7 @@ zope-interface==6.0
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==68.0.0
+setuptools==68.1.2
     # via
     #   scrapy
     #   supervisor

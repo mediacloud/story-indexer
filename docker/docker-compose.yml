@@ -1,4 +1,5 @@
 version: "3.8"
+version: "3.8"
 
 services:
   swarm-cronjob:
@@ -106,6 +107,11 @@ services:
           "CMD-SHELL",
           "curl --fail http://localhost:9200/_cluster/health || exit 1",
         ]
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 2
@@ -172,22 +178,19 @@ services:
       STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
     networks:
       - story-indexer
-    restart:
-        "no"
+    restart: "no"
     volumes:
-        - worker_data:/app/data/
-
+      - worker_data:/app/data/
 
   pipeline_configurator:
     <<: *common_worker
     environment:
-       RUN: configure-pipeline
-       ARGS: "configure"
-       RABBITMQ_URL: *RABBITMQ_URL_
-       STATSD_URL: statsd://stats.tarbell.mediacloud.org
-       STATSD_REALM: *STATSD_REALM_
-    restart:
-        "on-failure"
+      RUN: configure-pipeline
+      ARGS: "configure"
+      RABBITMQ_URL: *RABBITMQ_URL_
+      STATSD_URL: statsd://stats.tarbell.mediacloud.org
+      STATSD_REALM: *STATSD_REALM_
+    restart: "on-failure"
 
   fetch_worker:
     <<: *common_worker
@@ -199,8 +202,7 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
-    restart:
-        "on-failure"
+    restart: "on-failure"
     deploy:
       labels:
          swarm.cronjob.enable: "true"
@@ -217,8 +219,7 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
-    restart:
-        "on-failure"
+    restart: "on-failure"
 
   importer_worker:
     <<: *common_worker
@@ -235,6 +236,11 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
+      ELASTICSEARCH_SHARDS: 1
+      ELASTICSEARCH_REPLICAS: 0
+    networks:
+      - story-indexer
+    restart: "on-failure"
     restart:
         "on-failure"
 

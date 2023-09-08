@@ -6,7 +6,12 @@ from typing import Any, Dict, List, Mapping, Optional, Union, cast
 import pytest
 from elasticsearch import Elasticsearch
 
-from indexer.workers.importer import ElasticsearchConnector, ElasticsearchImporter
+from indexer.workers.importer import (
+    ElasticsearchConnector,
+    ElasticsearchImporter,
+    es_mappings,
+    es_settings,
+)
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -46,26 +51,9 @@ class TestElasticsearchConnection:
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         if elasticsearch_client.indices.exists(index=index_name):
             elasticsearch_client.indices.delete(index=index_name)
-
-        settings = {
-            "settings": {"number_of_shards": 1, "number_of_replicas": 0},
-            "mappings": {
-                "properties": {
-                    "original_url": {"type": "keyword"},
-                    "url": {"type": "keyword"},
-                    "normalized_url": {"type": "keyword"},
-                    "canonical_domain": {"type": "keyword"},
-                    "publication_date": {"type": "date"},
-                    "language": {"type": "keyword", "fielddata": True},
-                    "full_language": {"type": "keyword"},
-                    "text_extraction": {"type": "keyword"},
-                    "article_title": {"type": "text", "fielddata": True},
-                    "normalized_article_title": {"type": "text", "fielddata": True},
-                    "text_content": {"type": "text"},
-                }
-            },
-        }
-        elasticsearch_client.indices.create(index=index_name, body=settings)
+        elasticsearch_client.indices.create(
+            index=index_name, mappings=es_mappings, settings=es_settings
+        )
         assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
@@ -89,7 +77,9 @@ def elasticsearch_connector() -> ElasticsearchConnector:
     index_name = cast(str, os.environ.get("ELASTICSEARCH_INDEX_NAME"))
     if elasticsearch_host is None or index_name is None:
         pytest.skip("ELASTICSEARCH_HOST or ELASTICSEARCH_INDEX_NAME is not set")
-    connector = ElasticsearchConnector(elasticsearch_host, index_name)
+    connector = ElasticsearchConnector(
+        elasticsearch_host, index_name, es_mappings, es_settings
+    )
     return connector
 
 
