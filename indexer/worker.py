@@ -35,6 +35,10 @@ MAX_RETRIES = 10
 RETRIES_HDR = "x-mc-retries"
 
 
+MAX_MSG_SIZE = 536870912  # or 512 MiB
+# re: #github.com/rabbitmq/rabbitmq-server/blob/7e9ac6f9834a7c59d0c3948481f3a04e51e414b7/deps/rabbit_common/include/rabbit.hrl#L257
+
+
 class QuarantineException(AppException):
     """
     Exception to raise when a message cannot _possibly_ be processed,
@@ -134,11 +138,6 @@ class QApp(App):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
-        default_max_message_size = 1000000
-        self.max_message_size = int(
-            os.environ.get("MAX_MESSAGE_SIZE", default_max_message_size)
-        )
-
     def qconnect(self) -> None:
         """
         called from process_args if AUTO_CONNECT is True
@@ -165,9 +164,10 @@ class QApp(App):
         if properties is None:
             properties = BasicProperties()
 
-        # Potentially stop-gap solution for oversized message handling.
-        if len(data) > self.max_message_size:
-            raise QuarantineException("message too large")
+        # Don't try to enqueue messages longer than a hardcoded maximum.
+        if len(data) > MAX_MSG_SIZE:
+            logger.error("Story too large for queue: {data}")
+            return
 
         # persist messages on disk
         # (otherwise may be lost on reboot)
