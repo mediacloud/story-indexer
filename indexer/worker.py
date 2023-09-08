@@ -35,10 +35,6 @@ MAX_RETRIES = 10
 RETRIES_HDR = "x-mc-retries"
 
 
-MAX_MSG_SIZE = 536870912  # or 512 MiB
-# re: #github.com/rabbitmq/rabbitmq-server/blob/7e9ac6f9834a7c59d0c3948481f3a04e51e414b7/deps/rabbit_common/include/rabbit.hrl#L257
-
-
 class QuarantineException(AppException):
     """
     Exception to raise when a message cannot _possibly_ be processed,
@@ -163,11 +159,6 @@ class QApp(App):
 
         if properties is None:
             properties = BasicProperties()
-
-        # Don't try to enqueue messages longer than a hardcoded maximum.
-        if len(data) > MAX_MSG_SIZE:
-            logger.error("Story too large for queue, passing over")
-            return
 
         # persist messages on disk
         # (otherwise may be lost on reboot)
