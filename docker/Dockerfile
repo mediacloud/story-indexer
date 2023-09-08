@@ -36,4 +36,4 @@ COPY ../indexer ${APP_DOCKER}/indexer/
 ARG RUN
 ENV RUN=${RUN}
 
-ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/start_script.sh" ]
+ENTRYPOINT [ "/bin/sh", "-c", "${APP_DOCKER}/bin/indirect.sh" ]

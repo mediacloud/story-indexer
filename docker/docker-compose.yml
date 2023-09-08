@@ -156,7 +156,8 @@ services:
       replicas: 1
     labels:
       - swarm.cronjob.enable=true
-      - swarm.cronjob.schedule="0 0 * * *"
+      #Test taking snapshost hourly in dev
+      - swarm.cronjob.schedule="0 * * * *"
 
 
   common_worker: &common_worker
@@ -232,9 +233,6 @@ services:
       STORY_FACTORY: *STORY_FACTORY_
       ELASTICSEARCH_SHARDS: 1
       ELASTICSEARCH_REPLICAS: 0
-    networks:
-      - story-indexer
-    restart: "on-failure"
     restart:
         "on-failure"
 
