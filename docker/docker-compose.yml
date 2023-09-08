@@ -143,23 +143,6 @@ services:
       timeout: 10s
       retries: 5
 
-  es_snapshot_service:
-    image: alpine
-    environment:
-      ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
-      ELASTICSEARCH_REPOSITORY_NAME: mc_es_backup
-    command: ["sh", "-c", "curl -XPOST http://elasticsearch:9200/_snapshot/${ELASTICSEARCH_REPOSITORY_NAME}/snapshot-$(date +%Y%m%d) -H 'Content-Type: application/json' -d '{\"indices\": \"${ELASTICSEARCH_INDEX_NAME}\", \"ignore_unavailable\": true, \"wait_for_completion\": true}'"]
-    networks:
-      - story-indexer
-    deploy:
-      mode: replicated
-      replicas: 1
-    labels:
-      - swarm.cronjob.enable=true
-      #Test taking snapshost hourly in dev
-      - swarm.cronjob.schedule="0 * * * *"
-
-
   common_worker: &common_worker
     #Pushing to a local registry for now, while in dev loop.
     image: localhost:5000/common_worker
