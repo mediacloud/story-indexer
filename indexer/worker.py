@@ -166,7 +166,7 @@ class QApp(App):
 
         # Don't try to enqueue messages longer than a hardcoded maximum.
         if len(data) > MAX_MSG_SIZE:
-            logger.error("Story too large for queue: {data}")
+            logger.error("Story too large for queue, passing over")
             return
 
         # persist messages on disk
