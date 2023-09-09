@@ -10,7 +10,9 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional
 
+import pika.credentials
 import pika.exceptions
+import rabbitmq_admin
 
 # PyPI
 from pika import BasicProperties
@@ -201,6 +203,19 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
         # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
         chan.basic_publish(exchange, routing_key, data, properties)
+
+    def admin_api(self) -> rabbitmq_admin.AdminAPI:  # type: ignore[no-any-unimported]
+        args = self.args
+        assert args
+
+        par = URLParameters(args.amqp_url)
+        creds = par.credentials
+        assert isinstance(creds, pika.credentials.PlainCredentials)
+        port = 15672  # XXX par.port + 10000???
+        api = rabbitmq_admin.AdminAPI(
+            url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
+        )
+        return api
 
 
 class Worker(QApp):
