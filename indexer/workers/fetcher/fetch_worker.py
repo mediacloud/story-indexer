@@ -198,7 +198,7 @@ class FetchWorker(QApp):
                     )
                     oversized_stories += 1
                 else:
-                    self.send_message(chan, story.dump())
+                    self.send_message(chan, story_dump)
                     queued_stories += 1
 
         self.gauge(
