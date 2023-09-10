@@ -23,6 +23,29 @@ class QStats(QApp):
 
     AUTO_CONNECT = False  # never connects (uses AdminAPI)!
 
+    def g(
+        self,
+        input: Dict[str, Any],
+        input_item: str,
+        prefix: str,
+        output_item: str,
+        label: str,
+        label_value: str,
+    ) -> None:
+        """
+        shortcut for reporting a labeled gauge
+        report zeros if no values available
+        """
+
+        if input:
+            value = input.get(input_item, 0)
+        else:
+            value = 0
+
+        output = f"{prefix}.{output_item}"
+        logger.debug("%s %s=%s: %s", output, label, label_value, value)
+        self.gauge(prefix, value, [(label, label_value)])
+
     def main_loop(self) -> None:
         # XXX make a command line option?
         # _could_ use 20sec (default graphite recording period)
@@ -30,44 +53,33 @@ class QStats(QApp):
 
         api = self.admin_api()
 
-        def g(input: Dict[str, Any], item: str, prefix: str) -> None:
-            if input and item in input:
-                value = input[item]
-            else:
-                # report everything, even if missing
-                value = 0
-            path = f"{prefix}.{item}"
-            logger.debug("%s: %s", path, value)
-            self.gauge(path, value)
-
         while True:
-            # PLB: FEH!  All the bother to make AdminMixin, and the URL I want isn't included!
-            # Looks like the core of AdminAPI doesn't do pagination either!!!
+            # PLB: FEH!  All the bother to make AdminMixin, and the
+            # primary URL I want isn't included!  Looks like the core of
+            # AdminAPI doesn't do pagination either!!!
             queues = api._api_get("/api/queues")
+
             # returns List[Dict[str,Any]]
             for q in queues:
-                prefix = f"queues.{q['name']}"
-
-                g(q, "memory", prefix)
-                g(q, "messages_ready", prefix)
-                g(q, "messages_unacknowledged", prefix)
+                name = q.get("name")
+                self.g(q, "memory", "queues", "mem", "name", name)
+                self.g(q, "messages_ready", "queues", "ready", "name", name)
+                self.g(q, "messages_unacknowledged", "queues", "unacked", "name", name)
 
                 ms = q.get("message_stats", None)
-                g(ms, "ack", prefix)
-                g(ms, "deliver", prefix)
-                g(ms, "publish", prefix)
-                g(ms, "redeliver", prefix)
-                g(ms, "consumers", prefix)
+                self.g(ms, "ack", "queues", "ack", "name", name)
+                self.g(ms, "deliver", "queues", "deliver", "name", name)
+                self.g(ms, "publish", "queues", "publish", "name", name)
+                self.g(ms, "redeliver", "queues", "redeliver", "name", name)
+                self.g(ms, "consumers", "queues", "consumers", "name", name)
 
             nodes = api.list_nodes()
-            if nodes:
-                n0 = nodes[0]
-            else:
-                n0 = {}
-            prefix = "node"
-            g(n0, "fd_used", prefix)
-            g(n0, "mem_used", prefix)
-            g(n0, "sockets_used", prefix)
+            for node in nodes:  # List
+                # leading part is cluster name, split and give second part??
+                name = node.get("name").replace("@", "-")
+                self.g(node, "fd_used", "nodes", "fds", "name", name)
+                self.g(node, "mem_used", "nodes", "memory", "name", name)
+                self.g(node, "sockets_used", "nodes", "sockets", "name", name)
 
             # exchange: unroutable?? (need to skip SEMAPHORE!)
             # exchanges = api.list_exchanges()
