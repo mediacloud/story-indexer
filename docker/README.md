@@ -4,9 +4,9 @@
 
 Before you begin, ensure you have the following prerequisites in place:
 
-1. Docker: Docker must be installed on the host where you plan to set up the Swarm. You can download and install Docker from Docker's official website.
+1. Docker: Docker must be installed on the host where you plan to set up the Swarm. You can download and install Docker from Docker's [official website](https://docs.docker.com/engine/install/ubuntu/#install-from-a-package).
 
-2. Docker Compose: Make sure you have Docker Compose installed, as it's essential for managing multi-container applications. You can install Docker Compose by following the instructions in the official documentation.
+2. Docker Compose: Make sure you have Docker Compose installed, as it's essential for managing multi-container applications. You can install Docker Compose by following the instructions in the official [documentation](https://docs.docker.com/compose/install/).
 
 ### Swarm setup
 
