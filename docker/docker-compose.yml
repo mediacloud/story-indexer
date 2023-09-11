@@ -17,7 +17,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.11-management-alpine
     ports:
-      - "56720:5672"
+      - "5672:5672"
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -30,7 +30,7 @@ services:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 2
 
   elasticsearch-setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -170,8 +170,8 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=100"
-      FETCHER_NUM_BATCHES: &NUM_BATCHES 2
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=1000"
+      FETCHER_NUM_BATCHES: &NUM_BATCHES 10
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
@@ -224,3 +224,4 @@ volumes:
 
 networks:
   story-indexer:
+    driver: overlay
