@@ -50,12 +50,12 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data_content,data_hot
+      - node.roles=master,data_content
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
       - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth1_
+      - network.publish_host=_eth0_
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -69,6 +69,7 @@ services:
         soft: -1
         hard: -1
 
+    #update these based on node setup
     deploy:
       placement:
         constraints:
@@ -81,12 +82,12 @@ services:
       - cluster.name=mc_elasticsearch
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data_warm
+      - node.roles=master,data_content
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
       - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth1_
+      - network.publish_host=_eth0_
     volumes:
       - elasticsearch_data_01:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -99,6 +100,8 @@ services:
       memlock:
         soft: -1
         hard: -1
+
+    #update these based on node setup
     deploy:
       placement:
         constraints:
@@ -112,11 +115,11 @@ services:
       - bootstrap.memory_lock=true
       - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
       - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data_cold
+      - node.roles=master,data_content
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
       - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth1_
+      - network.publish_host=_eth0_
     volumes:
       - elasticsearch_data_02:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -130,6 +133,7 @@ services:
         soft: -1
         hard: -1
 
+    #update these based on node setup
     deploy:
       placement:
         constraints:
@@ -180,7 +184,6 @@ services:
          swarm.cronjob.replicas: *NUM_BATCHES
       replicas: *NUM_BATCHES
 
-
   parser_worker:
     <<: *common_worker
     environment:
@@ -210,7 +213,6 @@ services:
     restart:
         "on-failure"
 
-
 volumes:
   elasticsearch_data:
   elasticsearch_data_01:
@@ -222,4 +224,3 @@ volumes:
 
 networks:
   story-indexer:
-    driver: overlay
