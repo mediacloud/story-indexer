@@ -19,8 +19,8 @@ curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: ap
 
 ### Snapshot SLM policy
 
-Using Snapshot lifecycle management (SLM) to tregularly backup our ES cluster.
-The SLM policy automatically takes snapshosts on a prset schedule, example below takes snapshots daily at 2.30AM
+Using Snapshot lifecycle management (SLM) to regularly backup our ES cluster.
+The SLM policy automatically takes snapshosts on a preset schedule, example below takes snapshots daily at 2.30AM
 
 curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 '{
@@ -42,7 +42,7 @@ curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 
 ### Manually run SLM policy
 
-Run policy immediatly to create a snapshots, ouside the schedule
+Run policy immediately to create a snapshot, outside the SLM schedule
 
 curl X -POST "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy/_execute"
 
@@ -51,6 +51,7 @@ curl X -POST "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy/_execut
 Create the snapshot without SLM policy, from ES create snapshot API
 
 curl X -POST "http://localhost:9200/_snapshot/mc-es-backup/snapshot_{now/d}?wait_for_completion=true"
+
 
 <!-- ### Schedule snapshots
 
