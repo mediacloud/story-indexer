@@ -48,8 +48,9 @@ services:
     environment:
       - node.name=elasticsearch
       - cluster.name=mc_elasticsearch
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
+      - discovery.seed_hosts=elasticsearch,elasticsearch01
+      - cluster.initial_master_nodes=elasticsearch,elasticsearch01
+      - node.roles=master,data_content,data_hot
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
@@ -66,24 +67,30 @@ services:
       memlock:
         soft: -1
         hard: -1
+    
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail http://localhost:9200/_cluster/health || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 2
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD-SHELL",
+    #       "curl --fail http://localhost:9200/_cluster/health || exit 1",
+    #     ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 2
 
-  elasticsearch_01:
+  elasticsearch01:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch_01
+      - node.name=elasticsearch01
       - cluster.name=mc_elasticsearch
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
+      - discovery.seed_hosts=elasticsearch,elasticsearch01
+      - cluster.initial_master_nodes=elasticsearch,elasticsearch01
+      - node.roles=master,data_warm
       - bootstrap.memory_lock=true
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=false
@@ -100,48 +107,60 @@ services:
       memlock:
         soft: -1
         hard: -1
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail http://localhost:9200/_cluster/health || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 2
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
-  elasticsearch_02:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
-    environment:
-      - node.name=elasticsearch_02
-      - cluster.name=mc_elasticsearch
-      - bootstrap.memory_lock=true
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
-      - path.repo=/usr/share/elasticsearch/backup
-    volumes:
-      - elasticsearch_data_02:/usr/share/elasticsearch/data
-      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
-    ports:
-      - 9202:9200
-      - 9302:9300
-    networks:
-      - story-indexer
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail http://localhost:9200/_cluster/health || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD-SHELL",
+    #       "curl --fail http://localhost:9200/_cluster/health || exit 1",
+    #     ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 2
+
+  # elasticsearch_02:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+  #   environment:
+  #     - node.name=elasticsearch_02
+  #     - cluster.name=mc_elasticsearch
+  #     - bootstrap.memory_lock=true
+  #     - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
+  #     - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
+  #     - node.roles=master,data_cold
+  #     - ES_JAVA_OPTS=-Xms1g -Xmx1g
+  #     - xpack.security.enabled=false
+  #     - path.repo=/usr/share/elasticsearch/backup
+  #   volumes:
+  #     - elasticsearch_data_02:/usr/share/elasticsearch/data
+  #     - elasticsearch_data_backup:/usr/share/elasticsearch/backup
+  #   ports:
+  #     - 9202:9200
+  #     - 9302:9300
+  #   networks:
+  #     - story-indexer
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+    
+  #   deploy:
+  #     placement:
+  #       constraints:
+  #         - node.role == manager
+
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD-SHELL",
+    #       "curl --fail http://localhost:9200/_cluster/health || exit 1",
+    #     ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
 
   common_worker: &common_worker
     #Pushing to a local registry for now, while in dev loop.
@@ -202,8 +221,7 @@ services:
   importer_worker:
     <<: *common_worker
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      - elasticsearch
     networks:
       - story-indexer
     environment:
