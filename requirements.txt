@@ -19,33 +19,33 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.6
     # via mediacloud-metadata
-boto3==1.28.7
+boto3==1.28.44
     # via story-indexer (pyproject.toml)
-botocore==1.31.7
+botocore==1.31.44
     # via
     #   boto3
     #   s3transfer
-certifi==2023.5.7
+certifi==2023.7.22
     # via
     #   elastic-transport
     #   requests
     #   trafilatura
 cffi==1.15.1
     # via cryptography
-chardet==5.1.0
+chardet==5.2.0
     # via readability-lxml
 charset-normalizer==3.2.0
     # via
     #   htmldate
     #   requests
     #   trafilatura
-click==8.1.6
+click==8.1.7
     # via nltk
 constantly==15.1.0
     # via twisted
-courlan==0.9.3
+courlan==0.9.4
     # via trafilatura
-cryptography==41.0.2
+cryptography==41.0.3
     # via
     #   pyopenssl
     #   scrapy
@@ -63,15 +63,15 @@ dateparser==1.1.8
     #   mediacloud-metadata
 elastic-transport==8.4.0
     # via elasticsearch
-elasticsearch==8.8.2
+elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
-faust-cchardet==2.1.18
+faust-cchardet==2.1.19
     # via mediacloud-metadata
 feedfinder2==0.0.4
     # via newspaper3k
 feedparser==6.0.10
     # via newspaper3k
-filelock==3.12.2
+filelock==3.12.3
     # via tldextract
 furl==2.1.3
     # via mediacloud-metadata
@@ -104,7 +104,7 @@ jmespath==1.0.1
     #   botocore
     #   itemloaders
     #   parsel
-joblib==1.3.1
+joblib==1.3.2
     # via nltk
 justext==3.0.0
     # via trafilatura
@@ -128,7 +128,7 @@ newspaper3k==0.2.8
     # via mediacloud-metadata
 nltk==3.8.1
     # via newspaper3k
-numpy==1.25.1
+numpy==1.25.2
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -146,7 +146,7 @@ pillow==10.0.0
     # via
     #   goose3
     #   newspaper3k
-protego==0.2.1
+protego==0.3.0
     # via scrapy
 py3langid==0.2.2
     # via mediacloud-metadata
@@ -171,7 +171,7 @@ python-dateutil==2.8.2
     #   goose3
     #   htmldate
     #   newspaper3k
-pytz==2023.3
+pytz==2023.3.post1
     # via dateparser
 pyyaml==6.0.1
     # via newspaper3k
@@ -181,7 +181,7 @@ rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.1
     # via mediacloud-metadata
-regex==2023.6.3
+regex==2023.8.8
     # via
     #   dateparser
     #   nltk
@@ -196,9 +196,9 @@ requests==2.31.0
     #   tldextract
 requests-file==1.5.1
     # via tldextract
-s3transfer==0.6.1
+s3transfer==0.6.2
     # via boto3
-scrapy==2.9.0
+scrapy==2.10.1
     # via story-indexer (pyproject.toml)
 service-identity==23.1.0
     # via scrapy
@@ -211,13 +211,12 @@ six==1.16.0
     #   furl
     #   langdetect
     #   orderedmultidict
-    #   protego
     #   python-dateutil
     #   rabbitmq-admin
     #   requests-file
     #   surt
     #   url-normalize
-soupsieve==2.4.1
+soupsieve==2.5
     # via beautifulsoup4
 statsd-client==1.0.7
     # via story-indexer (pyproject.toml)
@@ -235,7 +234,7 @@ tldextract==3.4.4
     #   newspaper3k
     #   scrapy
     #   surt
-tqdm==4.65.0
+tqdm==4.66.1
     # via nltk
 trafilatura==1.6.1
     # via mediacloud-metadata
@@ -255,7 +254,7 @@ urllib3==1.26.16
     #   htmldate
     #   requests
     #   trafilatura
-w3lib==2.1.1
+w3lib==2.1.2
     # via
     #   itemloaders
     #   parsel
@@ -266,7 +265,7 @@ zope-interface==6.0
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==68.0.0
+setuptools==68.2.0
     # via
     #   scrapy
     #   supervisor
