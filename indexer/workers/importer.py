@@ -67,7 +67,8 @@ class ElasticsearchConnector:
                         mappings=self.mappings,
                         settings=self.settings,
                     )
-                self.client.indices.create(index=self.index_name)
+                else:
+                    self.client.indices.create(index=self.index_name)
 
     def index(self, id: str, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
         response: ObjectApiResponse[Any] = self.client.index(
