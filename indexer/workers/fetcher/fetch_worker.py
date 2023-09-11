@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 Story = StoryFactory()
 
-MAX_HTML_MSG_SIZE: int = (
+MAX_FETCHER_MSG_SIZE: int = (
     10000000  # 10Mb- > 99.99% of pages should fit under this limit.
 )
 
@@ -191,10 +191,10 @@ class FetchWorker(QApp):
 
             if http_meta.response_code == 200:
                 story_dump = story.dump()
-                if len(story_dump) > MAX_HTML_MSG_SIZE:
+                if len(story_dump) > MAX_FETCHER_MSG_SIZE:
                     # Just log this for now- we might want a less ephemeral record eventually.
                     logger.warn(
-                        f"Story over 10mb limit: {story.rss_entry().link}, size: {len(story_dump)}"
+                        f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story_dump)}"
                     )
                     oversized_stories += 1
                 else:
