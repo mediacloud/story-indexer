@@ -28,7 +28,7 @@ upgrade-dev:
 	pre-commit autoupdate
 	echo "--constraint $(ROOT_DIR)/requirements.txt" | \
 		python -m piptools compile \
-			 --strip-extras \
+		  --strip-extras \
 			--extra dev \
 			--output-file requirements-dev.txt \
 			pyproject.toml
