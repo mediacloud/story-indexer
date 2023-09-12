@@ -44,7 +44,7 @@ curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 
 ### Manually run SLM policy
 
-Run policy immediately to create a snapshot, outside the SLM schedule
+To run the SLM policy immediately to create a snapshot, outside the SLM schedule
 
 curl X -POST "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy/_execute"
 
