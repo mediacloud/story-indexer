@@ -10,6 +10,7 @@ Update the ES configuration to specify the snapshot repository
 
 Use the Elasticsearch API to register our snapshot repository
 
+```sh
 curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: application/json" -d '{
 "type": "fs",
 "settings": {
