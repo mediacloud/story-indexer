@@ -23,6 +23,7 @@ curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: ap
 Using Snapshot lifecycle management (SLM) to regularly backup our ES cluster.
 The SLM policy automatically takes snapshosts on a preset schedule, example below takes snapshots daily at 2.30AM
 
+```sh
 curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 '{
   "schedule": "0 30 2 * * ?",  # Cron expression for scheduling (e.g., daily at 2:30 AM)
