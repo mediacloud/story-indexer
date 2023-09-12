@@ -50,7 +50,7 @@ class Parser(StoryWorker):
             mdd["publication_date"] = mdd["publication_date"].strftime("%Y-%m-%d")
         else:
             mdd["publication_date"] = "None"
-        logger.info(mdd["publication_date"])
+
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!
             #       could copy items individually with type checking
