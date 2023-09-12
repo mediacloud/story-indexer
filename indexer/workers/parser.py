@@ -48,11 +48,11 @@ class Parser(StoryWorker):
         # Really slapdash solution for the sake of testing.
         if mdd["publication_date"] is not None:
             mdd["publication_date"] = mdd["publication_date"].strftime(
-                "%a %d %b %Y, %I:%M%p"
+                "%Y-%m-%d"
             )
         else:
             mdd["publication_date"] = "None"
-
+        logger.info(mdd["publication_date"])
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!
             #       could copy items individually with type checking
