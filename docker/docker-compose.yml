@@ -68,7 +68,6 @@ services:
       memlock:
         soft: -1
         hard: -1
-
     #update these based on node setup
     deploy:
       placement:
