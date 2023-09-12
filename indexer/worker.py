@@ -142,6 +142,7 @@ class QApp(App):
         url = self.args.amqp_url
         assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
+
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
@@ -328,7 +329,7 @@ class Worker(QApp):
 
         ret = {
             "x-mc-who": self.process_name,
-            "x-mc-what": repr(e),  # str() omits exception class name
+            "x-mc-what": repr(e)[:50],  # str() omits exception class name
             "x-mc-when": str(time.time()),
             # maybe log hostname @ time w/ full traceback
             # and include hostname in headers (to find full traceback)
