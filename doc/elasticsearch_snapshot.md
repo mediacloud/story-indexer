@@ -57,8 +57,3 @@ To create the snapshot without SLM policy using Elasticsearch snapshot API
 curl X -POST "http://localhost:9200/_snapshot/mc-es-backup/snapshot_{now/d}?wait_for_completion=true"
 
 
-<!-- ### Schedule snapshots
-
-We can use Elasticsearch's API to regularly take snapshots. We can automate this using cron jobs (leveraging on `swarm-cronjob`)
-
-curl -X PUT "http://localhost:9200/_snapshot/mc_es_backup/<my_snapshot>?wait_for_completion=true -->
