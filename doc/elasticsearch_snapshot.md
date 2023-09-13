@@ -55,5 +55,3 @@ To create the snapshot without SLM policy using Elasticsearch snapshot API
 
 ```sh
 curl X -POST "http://localhost:9200/_snapshot/mc-es-backup/snapshot_{now/d}?wait_for_completion=true"
-
-

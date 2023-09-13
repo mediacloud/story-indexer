@@ -3,8 +3,8 @@ version: "3.8"
 #common elasticsearch environment settings
 x-common-elasticsearch-environment: &common-elasticsearch-environment
   cluster.name: "mc_elasticsearch"
-  discovery.seed_hosts: elasticsearch,elasticsearch_01,elasticsearch_02
-  cluster.initial_master_nodes: elasticsearch,elasticsearch_01,elasticsearch_02
+  discovery.seed_hosts: elasticsearch1,elasticsearch2,elasticsearch3
+  cluster.initial_master_nodes: elasticsearch1,elasticsearch2,elasticsearch3
   node.roles: master,data
   bootstrap.memory_lock: "true"
   ES_JAVA_OPTS: "-Xms1g -Xmx1g"
@@ -48,21 +48,21 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     user: root
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_01:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     command: bash -c "chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data /usr/share/elasticsearch/backup"
     networks:
       - story-indexer
 
 
-  elasticsearch:
+  elasticsearch1:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
       <<: *common-elasticsearch-environment
-      node.name: "elasticsearch"
+      node.name: "elasticsearch1"
 
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_01:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     networks:
       - story-indexer
@@ -80,14 +80,14 @@ services:
         constraints:
           - node.role == manager
 
-  elasticsearch_01:
+  elasticsearch2:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
       <<: *common-elasticsearch-environment
-      node.name: "elasticsearch_01"
+      node.name: "elasticsearch2"
 
     volumes:
-      - elasticsearch_data_01:/usr/share/elasticsearch/data
+      - elasticsearch_data_02:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     ports:
       - 9201:9200
@@ -105,14 +105,14 @@ services:
         constraints:
           - node.role == manager
 
-  elasticsearch_02:
+  elasticsearch3:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
       <<: *common-elasticsearch-environment
-      node.name: "elasticsearch_02"
+      node.name: "elasticsearch3"
 
     volumes:
-      - elasticsearch_data_02:/usr/share/elasticsearch/data
+      - elasticsearch_data_03:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
     ports:
       - 9202:9200
@@ -161,8 +161,8 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=2000"
-      FETCHER_NUM_BATCHES: &NUM_BATCHES 10
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=100"
+      FETCHER_NUM_BATCHES: &NUM_BATCHES 2
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
@@ -188,7 +188,7 @@ services:
   importer_worker:
     <<: *common_worker
     depends_on:
-      - elasticsearch
+      - elasticsearch1
     networks:
       - story-indexer
     environment:
@@ -206,9 +206,9 @@ services:
 
 
 volumes:
-  elasticsearch_data:
   elasticsearch_data_01:
   elasticsearch_data_02:
+  elasticsearch_data_03:
   rabbitmq_data:
   elasticsearch_data_backup:
     #Neccesary for diskstory, ideally not used
