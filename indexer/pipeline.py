@@ -112,6 +112,7 @@ def command(func: CommandMethod) -> CommandMethod:
 
 class Pipeline(QApp):
     PIKA_LOG_DEFAULT = logging.WARNING
+    WAIT_FOR_QUEUE_CONFIGURATION = False
 
     def __init__(self, name: str, descr: str):
         self.procs: Dict[str, Process] = {}
@@ -185,11 +186,16 @@ class Pipeline(QApp):
                         dest_queue_name, ename, routing_key=DEFAULT_ROUTING_KEY
                     )
 
+        # create semaphore
+        self._set_configured(chan, True)  # MUST be last!!!
+
     @command
     def delete(self) -> None:
         """delete queues"""
         assert self.connection
         chan = self.connection.channel()
+
+        self._set_configured(chan, False)  # MUST be first!!!
 
         for name, proc in self.procs.items():
             if proc.consumer:
@@ -237,6 +243,22 @@ class Pipeline(QApp):
                     print("   ", thing)
             else:
                 print(f"no {what}")
+
+    @command
+    def test(self) -> None:
+        """test if queues configured"""
+        assert self.connection
+        if self._test_configured():
+            print("configured")
+            sys.exit(0)
+        else:
+            print("not configured")
+            sys.exit(1)
+
+    @command
+    def wait(self) -> None:
+        """wait until queues configured"""
+        self.wait_until_configured()
 
     #### utilities
     def get_command_func(self, cmd: str) -> Callable[[], None]:
