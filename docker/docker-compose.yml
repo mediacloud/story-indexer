@@ -1,5 +1,17 @@
 version: "3.8"
 
+#common elasticsearch environment settings
+x-common-elasticsearch-environment: &common-elasticsearch-environment
+  cluster.name: "mc_elasticsearch"
+  discovery.seed_hosts: elasticsearch,elasticsearch_01,elasticsearch_02
+  cluster.initial_master_nodes: elasticsearch,elasticsearch_01,elasticsearch_02
+  node.roles: master,data
+  bootstrap.memory_lock: "true"
+  ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+  xpack.security.enabled: "false"
+  path.repo: "/usr/share/elasticsearch/backup"
+  network.publish_host: _eth0_
+
 services:
   swarm-cronjob:
     image: crazymax/swarm-cronjob
@@ -46,16 +58,9 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch
-      - cluster.name=mc_elasticsearch
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data
-      - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
-      - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth0_
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch"
+
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -78,16 +83,9 @@ services:
   elasticsearch_01:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch_01
-      - cluster.name=mc_elasticsearch
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data
-      - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
-      - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth0_
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch_01"
+
     volumes:
       - elasticsearch_data_01:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
@@ -110,16 +108,9 @@ services:
   elasticsearch_02:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch_02
-      - cluster.name=mc_elasticsearch
-      - bootstrap.memory_lock=true
-      - discovery.seed_hosts=elasticsearch,elasticsearch_01,elasticsearch_02
-      - cluster.initial_master_nodes=elasticsearch,elasticsearch_01,elasticsearch_02
-      - node.roles=master,data
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
-      - path.repo=/usr/share/elasticsearch/backup
-      - network.publish_host=_eth0_
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch_02"
+
     volumes:
       - elasticsearch_data_02:/usr/share/elasticsearch/data
       - elasticsearch_data_backup:/usr/share/elasticsearch/backup
