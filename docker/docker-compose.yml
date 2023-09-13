@@ -194,7 +194,7 @@ services:
     environment:
       RUN: importer
       RABBITMQ_URL: *RABBITMQ_URL_
-      ELASTICSEARCH_HOST: http://elasticsearch:9200/
+      ELASTICSEARCH_HOST: http://elasticsearch1:9200/
       ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
