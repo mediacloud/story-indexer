@@ -154,10 +154,11 @@ echo "================"
 # push tag to upstream repos
 for REMOTE in $PUSH_TAG_TO; do
     echo pushing tag $TAG to $REMOTE
-    #git push $REMOTE $TAG
+    git push $REMOTE $TAG
     echo "================"
 done
 
+# export vars used in docker-compose.yml:
 export STATSD_REALM
 export DOCKER_REGISTRY
 
