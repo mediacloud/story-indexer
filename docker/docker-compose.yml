@@ -1,15 +1,51 @@
 version: "3.8"
 
-services:
+# NOTE!! All environment sections are in "dict" format,
+# and items are in alphabetical order!
 
+# common service settings for workers
+x-common-worker-service: &common-worker-service
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+
+  #Pushing to a local registry for now, while in dev loop.
+  image: localhost:5000/common_worker
+
+  networks:
+    - story-indexer
+  restart: "on-failure"
+  volumes:
+    - worker_data:/app/data/
+
+# common environment settings for all containers
+# Log everything in GMT!!!
+x-common-environment: &common-environment
+    TZ: "GMT"
+
+x-common-worker-environment: &common-worker-environment
+    <<: *common-environment
+    # RUN and ARGS should be set per-worker
+
+    LOG_LEVEL: "info"
+    RABBITMQ_URL: amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
+    # STATSD_REALM *MUST* be available in evironment when running
+    # "docker stack deploy".
+    # can ignore multiple complaints from "docker compose build"
+    STATSD_REALM: "${STATSD_REALM}"
+    # depends on proxy running on tarbell:
+    STATSD_URL: statsd://stats.tarbell.mediacloud.org
+    STORY_FACTORY: "BaseStory"
+
+services:
   swarm-cronjob:
     image: crazymax/swarm-cronjob
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
     environment:
-      - "LOG_LEVEL=info"
-      - "LOG_JSON=false"
-      - "TZ=GMT"
+      <<: *common-environment
+      LOG_LEVEL: "info"
+      LOG_JSON: "false"
     deploy:
       placement:
         constraints:
@@ -21,6 +57,7 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
+      <<: *common-environment
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     networks:
@@ -34,10 +71,11 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
+      <<: *common-environment
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      discovery.type: "single-node"
+      node.name: "elasticsearch"
+      xpack.security.enabled: "false"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     ports:
@@ -55,45 +93,20 @@ services:
       timeout: 10s
       retries: 2
 
-  common_worker:
-    &common_worker
-    #Pushing to a local registry for now, while in dev loop.
-    image: localhost:5000/common_worker
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    environment:
-      RABBITMQ_URL: &RABBITMQ_URL_ amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
-      RUN: ${RUN}
-      STATSD_REALM: &STATSD_REALM_ pgulley
-      STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
-    networks:
-      - story-indexer
-    restart: "no"
-    volumes:
-      - worker_data:/app/data/
-
   pipeline_configurator:
-    <<: *common_worker
+    <<: *common-worker-service
     environment:
+      <<: *common-worker-environment
       RUN: configure-pipeline
       ARGS: "configure"
-      RABBITMQ_URL: *RABBITMQ_URL_
-      STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATSD_REALM_
-    restart: "on-failure"
 
   fetch_worker:
-    <<: *common_worker
+    <<: *common-worker-service
     environment:
+      <<: *common-worker-environment
       RUN: fetcher
       ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=2000"
       FETCHER_NUM_BATCHES: &NUM_BATCHES 10
-      RABBITMQ_URL: *RABBITMQ_URL_
-      STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATSD_REALM_
-      STORY_FACTORY: *STORY_FACTORY_
-    restart: "on-failure"
     deploy:
       labels:
          swarm.cronjob.enable: "true"
@@ -101,32 +114,22 @@ services:
          swarm.cronjob.replicas: *NUM_BATCHES
       replicas: *NUM_BATCHES
 
-
   parser_worker:
-    <<: *common_worker
+    <<: *common-worker-service
     environment:
+      <<: *common-worker-environment
       RUN: parser
-      RABBITMQ_URL: *RABBITMQ_URL_
-      STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATSD_REALM_
-      STORY_FACTORY: *STORY_FACTORY_
-    restart: "on-failure"
 
   importer_worker:
-    <<: *common_worker
+    <<: *common-worker-service
     environment:
+      <<: *common-worker-environment
       RUN: importer
-      RABBITMQ_URL: *RABBITMQ_URL_
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
       ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
-      STATSD_URL: statsd://stats.tarbell.mediacloud.org
-      STATSD_REALM: *STATSD_REALM_
-      STORY_FACTORY: *STORY_FACTORY_
       ELASTICSEARCH_SHARDS: 1
       ELASTICSEARCH_REPLICAS: 0
-    networks:
-      - story-indexer
-    restart: "on-failure"
+
 
 
 volumes:
