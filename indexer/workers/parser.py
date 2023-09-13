@@ -4,8 +4,6 @@ metadata parser pipeline worker
 
 import logging
 
-import chardet
-
 # PyPI:
 import mcmetadata
 from pika.adapters.blocking_connection import BlockingChannel
@@ -63,8 +61,8 @@ class Parser(StoryWorker):
                 if hasattr(cmd, key):  # avoid hardwired exceptions list?!
                     setattr(cmd, key, val)
 
-                self.send_story(chan, story)
-                self.incr("parsed-stories", labels=[("method", extraction_label)])
+            self.send_story(chan, story)
+            self.incr("parsed-stories", labels=[("method", extraction_label)])
 
 
 if __name__ == "__main__":
