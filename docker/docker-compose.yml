@@ -69,6 +69,7 @@ services:
     ports:
       - 9200:9200
       - 9300:9300
+    # Memory lock check:allocate unlimited amount of locked memory to ES
     ulimits:
       memlock:
         soft: -1
