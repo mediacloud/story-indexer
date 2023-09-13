@@ -8,8 +8,9 @@ Update the ES configuration to specify the snapshot repository
 
 ### Register Snapshot
 
-Use the Elasticsearch APi to register our snapshot repository
+Use the Elasticsearch API to register our snapshot repository
 
+```sh
 curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: application/json" -d '{
 "type": "fs",
 "settings": {
@@ -22,6 +23,7 @@ curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: ap
 Using Snapshot lifecycle management (SLM) to regularly backup our ES cluster.
 The SLM policy automatically takes snapshosts on a preset schedule, example below takes snapshots daily at 2.30AM
 
+```sh
 curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 '{
   "schedule": "0 30 2 * * ?",  # Cron expression for scheduling (e.g., daily at 2:30 AM)
@@ -42,7 +44,7 @@ curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
 
 ### Manually run SLM policy
 
-Run policy immediately to create a snapshot, outside the SLM schedule
+To run the SLM policy immediately to create a snapshot, outside the SLM schedule
 
 curl X -POST "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy/_execute"
 
