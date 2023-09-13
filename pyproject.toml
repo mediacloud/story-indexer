@@ -6,18 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "story-indexer"
 version = "0.0.1"
 dependencies = [
-  "boto3",
-  "elasticsearch",
-  "mediacloud-metadata",
-  "pika",
-  "rabbitmq-admin",
-  "statsd_client",
-  "supervisor",
-  "scrapy",
+  "boto3 ~= 1.28.44",
+  "elasticsearch ~= 8.9.0",
+  "mediacloud-metadata ~= 0.9.4",
+  "pika ~= 1.3.2",
+  "rabbitmq-admin ~= 0.2",
+  "statsd_client ~= 1.0.7",
+  "scrapy ~= 2.10.1",
+  "supervisor ~= 4.2.5",
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit", "types-pika", "types-requests", "mypy", "pytest"]
+dev = [
+  "mypy ~= 1.5.1",
+  "pre-commit ~= 3.4.0",
+  "pytest ~= 7.4.2",
+  "types-pika ~= 1.2.0b1",
+  "types-requests ~=2.31.0.2",
+]
 
 
 [tool.isort]

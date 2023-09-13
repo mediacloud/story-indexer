@@ -10,6 +10,8 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional
 
+import pika.exceptions
+
 # PyPI
 from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
@@ -26,6 +28,10 @@ logger = logging.getLogger(__name__)
 MIME_TYPE_PICKLE = "application/python-pickle"
 
 DEFAULT_ROUTING_KEY = "default"
+
+# semaphore in the sense of railway signal tower!
+# an exchange rather than a queue to avoid crocks to not monitor it!
+_CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
 
 # default consumer timeout (for ack) is 30 minutes:
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
@@ -88,6 +94,9 @@ class QApp(App):
     # this default can be overridden with "--log-level pika:info"
     PIKA_LOG_DEFAULT: Optional[int] = None
 
+    # override to False to avoid waiting until configuration done
+    WAIT_FOR_QUEUE_CONFIGURATION = True
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -134,6 +143,30 @@ class QApp(App):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
+    def _test_configured(self) -> bool:
+        try:
+            assert self.connection
+            chan = self.connection.channel()
+            chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE, passive=True)
+            chan.close()
+            return True
+        except pika.exceptions.ChannelClosedByBroker:
+            # grumble: pika logs Warning
+            # would need to wack pika.channel logger to suppress???
+            return False
+
+    def wait_until_configured(self) -> None:
+        """for use by QApps that set WAIT_FOR_QUEUE_CONFIGURATION = False"""
+        while not self._test_configured():
+            time.sleep(5)
+
+    def _set_configured(self, chan: BlockingChannel, set_true: bool) -> None:
+        """INTERNAL: for use by indexer.pipeline"""
+        if set_true:
+            chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE)
+        else:
+            chan.exchange_delete(_CONFIGURED_SEMAPHORE_EXCHANGE)
+
     def qconnect(self) -> None:
         """
         called from process_args if AUTO_CONNECT is True
@@ -142,8 +175,12 @@ class QApp(App):
         url = self.args.amqp_url
         assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
+
         assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
+
+        if self.WAIT_FOR_QUEUE_CONFIGURATION:
+            self.wait_until_configured()
 
     def send_message(
         self,
@@ -199,9 +236,6 @@ class Worker(QApp):
 
         # number of messages retried in a row
         self.retries = 0
-
-        # stopgap so that the configurator has run before we start the main loop
-        time.sleep(120)
 
     def main_loop(self) -> None:
         """
@@ -328,7 +362,7 @@ class Worker(QApp):
 
         ret = {
             "x-mc-who": self.process_name,
-            "x-mc-what": repr(e),  # str() omits exception class name
+            "x-mc-what": repr(e)[:50],  # str() omits exception class name
             "x-mc-when": str(time.time()),
             # maybe log hostname @ time w/ full traceback
             # and include hostname in headers (to find full traceback)

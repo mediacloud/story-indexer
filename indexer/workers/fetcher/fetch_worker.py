@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 Story = StoryFactory()
 
+MAX_FETCHER_MSG_SIZE: int = (
+    10000000  # 10Mb- > 99.99% of pages should fit under this limit.
+)
+
 
 class FetchWorker(QApp):
     AUTO_CONNECT: bool = False
@@ -89,7 +93,7 @@ class FetchWorker(QApp):
 
         if self.args.yesterday:
             logger.info("Fetching for yesterday")
-            yesterday = datetime.today() - timedelta(days=1)
+            yesterday = datetime.today() - timedelta(days=2)
             fetch_date = yesterday.strftime("%Y-%m-%d")
         else:
             fetch_date = self.args.fetch_date
@@ -179,14 +183,27 @@ class FetchWorker(QApp):
         chan = self.connection.channel()
 
         queued_stories = 0
+        oversized_stories = 0
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
 
             assert http_meta.response_code is not None
 
             if http_meta.response_code == 200:
-                self.send_message(chan, story.dump())
-                queued_stories += 1
+                story_dump = story.dump()
+                if len(story_dump) > MAX_FETCHER_MSG_SIZE:
+                    # Just log this for now- we might want a less ephemeral record eventually.
+                    logger.warn(
+                        f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story_dump)}"
+                    )
+                    oversized_stories += 1
+                else:
+                    self.send_message(chan, story_dump)
+                    queued_stories += 1
+
+        self.gauge(
+            "oversized-stories", oversized_stories, labels=[("batch", self.batch_index)]
+        )
 
         self.gauge(
             "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
