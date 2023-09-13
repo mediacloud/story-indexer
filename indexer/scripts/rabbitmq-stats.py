@@ -7,6 +7,7 @@ Report RabbitMQ stats
 # which uses
 # https://github.com/KristjanTammekivi/rabbitmq-admin
 
+import argparse
 import time
 from logging import getLogger
 from typing import Any, Dict
@@ -22,6 +23,12 @@ class QStats(QApp):
     """
 
     AUTO_CONNECT = False  # never connects (uses AdminAPI)!
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--interval", type=float, help="reporting interval in seconds", default=60.0
+        )
 
     def g(
         self,
@@ -47,9 +54,8 @@ class QStats(QApp):
         self.gauge(prefix, value, [(label, label_value)])
 
     def main_loop(self) -> None:
-        # XXX make a command line option?
-        # _could_ use 20sec (default graphite recording period)
-        seconds = 60
+        assert self.args
+        seconds = self.args.interval
 
         api = self.admin_api()
 
