@@ -161,8 +161,8 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=100"
-      FETCHER_NUM_BATCHES: &NUM_BATCHES 2
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=2000"
+      FETCHER_NUM_BATCHES: &NUM_BATCHES 10
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
