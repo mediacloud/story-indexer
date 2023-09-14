@@ -65,7 +65,7 @@ services:
     environment:
       RABBITMQ_URL: &RABBITMQ_URL_ amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
       RUN: ${RUN}
-      STATSD_REALM: &STATSD_REALM_ pgulley
+      STATSD_REALM: &STATSD_REALM_ staging
       STORY_FACTORY: &STORY_FACTORY_ "BaseStory"
     networks:
       - story-indexer
@@ -87,7 +87,7 @@ services:
     <<: *common_worker
     environment:
       RUN: fetcher
-      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}} --sample-size=2000"
+      ARGS: "--log-level=info --yesterday --batch-index={{.Task.Slot}}"
       FETCHER_NUM_BATCHES: &NUM_BATCHES 10
       RABBITMQ_URL: *RABBITMQ_URL_
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
@@ -97,7 +97,7 @@ services:
     deploy:
       labels:
          swarm.cronjob.enable: "true"
-         swarm.cronjob.schedule: "*/10 * * * *"
+         swarm.cronjob.schedule: "0 0 * * *"
          swarm.cronjob.replicas: *NUM_BATCHES
       replicas: *NUM_BATCHES
 
