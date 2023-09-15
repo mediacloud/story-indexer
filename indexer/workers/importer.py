@@ -108,7 +108,7 @@ class ElasticsearchImporter(StoryWorker):
         determine the routing index bashed on publication year
         """
         year = (
-            datetime.strptime(publication_date_str, "%a %d %b %Y, %I:%M%p").year
+            datetime.strptime(publication_date_str, "%Y-%m-%d").year
             if publication_date_str
             else None
         )
