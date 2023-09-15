@@ -7,10 +7,20 @@ x-common-elasticsearch-environment: &common-elasticsearch-environment
   cluster.initial_master_nodes: elasticsearch1,elasticsearch2,elasticsearch3
   node.roles: master,data
   bootstrap.memory_lock: "true"
-  ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+  ES_JAVA_OPTS: "-Xms20g -Xmx20g"
   xpack.security.enabled: "false"
   path.repo: "/var/backups/elasticsearch"
   network.publish_host: _eth0_
+
+x-indexer-deployment-constraints: &indexer-deployment-constraints
+    placement:
+      constraints:
+        - node.labels.role_indexer == true
+
+x-es-deployment-constraints: &es-deployment-constraints
+    placement:
+      constraints:
+        - node.labels.role_es == true
 
 services:
   swarm-cronjob:
@@ -43,6 +53,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 2
+    deploy:
+      <<: *indexer-deployment-constraints
 
   elasticsearch-setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -75,9 +87,7 @@ services:
         hard: -1
     #update these based on node setup
     deploy:
-      placement:
-        constraints:
-          - node.role == manager
+      <<: *es-deployment-constraints
 
   elasticsearch2:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -100,9 +110,7 @@ services:
 
     #update these based on node setup
     deploy:
-      placement:
-        constraints:
-          - node.role == manager
+      <<: *es-deployment-constraints
 
   elasticsearch3:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
@@ -125,9 +133,7 @@ services:
 
     #update these based on node setup
     deploy:
-      placement:
-        constraints:
-          - node.role == manager
+      <<: *es-deployment-constraints
 
   common_worker: &common_worker
     #Pushing to a local registry for now, while in dev loop.
@@ -145,6 +151,8 @@ services:
     restart: "no"
     volumes:
       - worker_data:/app/data/
+    deploy:
+      <<: *indexer-deployment-constraints
 
   pipeline_configurator:
     <<: *common_worker
@@ -155,6 +163,8 @@ services:
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
     restart: "on-failure"
+    deploy:
+      <<: *indexer-deployment-constraints
 
   fetch_worker:
     <<: *common_worker
@@ -168,6 +178,7 @@ services:
       STORY_FACTORY: *STORY_FACTORY_
     restart: "on-failure"
     deploy:
+      <<: *indexer-deployment-constraints
       labels:
          swarm.cronjob.enable: "true"
          swarm.cronjob.schedule: "0 0 * * *"
@@ -183,6 +194,8 @@ services:
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
     restart: "on-failure"
+    deploy:
+      <<: *indexer-deployment-constraints
 
   importer_worker:
     <<: *common_worker
@@ -202,6 +215,8 @@ services:
       ELASTICSEARCH_REPLICAS: 0
     restart:
         "on-failure"
+    deploy:
+      <<: *indexer-deployment-constraints
 
   rabbitmq_stats:
     <<: *common_worker
@@ -213,6 +228,8 @@ services:
     networks:
       - story-indexer
     restart: "on-failure"
+    deploy:
+      <<: *indexer-deployment-constraints
 
 volumes:
   elasticsearch_data_01:
