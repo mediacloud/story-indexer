@@ -9,7 +9,7 @@ x-common-elasticsearch-environment: &common-elasticsearch-environment
   bootstrap.memory_lock: "true"
   ES_JAVA_OPTS: "-Xms1g -Xmx1g"
   xpack.security.enabled: "false"
-  path.repo: "/usr/share/elasticsearch/backup"
+  path.repo: "/var/backups/elasticsearch"
   network.publish_host: _eth0_
 
 services:
@@ -48,9 +48,8 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     user: root
     volumes:
-      - elasticsearch_data_01:/usr/share/elasticsearch/data
-      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
-    command: bash -c "chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data /usr/share/elasticsearch/backup"
+      - elasticsearch_data_backup:/var/backups/elasticsearch
+    command: bash -c "chown -R elasticsearch:elasticsearch /var/backups/elasticsearch"
     networks:
       - story-indexer
 
@@ -63,7 +62,7 @@ services:
 
     volumes:
       - elasticsearch_data_01:/usr/share/elasticsearch/data
-      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
+      - elasticsearch_data_backup:/var/backups/elasticsearch
     networks:
       - story-indexer
     ports:
@@ -88,7 +87,7 @@ services:
 
     volumes:
       - elasticsearch_data_02:/usr/share/elasticsearch/data
-      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
+      - elasticsearch_data_backup:/var/backups/elasticsearch
     ports:
       - 9201:9200
       - 9301:9300
@@ -113,7 +112,7 @@ services:
 
     volumes:
       - elasticsearch_data_03:/usr/share/elasticsearch/data
-      - elasticsearch_data_backup:/usr/share/elasticsearch/backup
+      - elasticsearch_data_backup:/var/backups/elasticsearch
     ports:
       - 9202:9200
       - 9302:9300
