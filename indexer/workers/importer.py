@@ -107,14 +107,17 @@ class ElasticsearchImporter(StoryWorker):
         """
         determine the routing index bashed on publication year
         """
-        if publication_date_str:
-            publication_date = datetime.strptime(
-                publication_date_str, "%a %d %b %Y, %I:%M%p"
-            )
-            year = publication_date.year
-            routing_index = f"mediacloud_search_text_{year}"
-        else:
-            routing_index = "mediacloud_search_text_other"
+        year = (
+            datetime.strptime(publication_date_str, "%a %d %b %Y, %I:%M%p").year
+            if publication_date_str
+            else None
+        )
+
+        routing_index = (
+            f"mediacloud_search_text_{year}"
+            if year in [2021, 2022, 2023]
+            else "mediacloud_search_text_other"
+        )
 
         return routing_index
 

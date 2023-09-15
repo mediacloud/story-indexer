@@ -122,6 +122,16 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        publication_date_str = "Tue 27 Jun 2023, 12:00AM"
-        routing_index = importer.index_routing(publication_date_str)
-        assert routing_index == "mediacloud_search_text_2023"
+        assert (
+            importer.index_routing("Tue 27 Jun 2023, 12:00AM")
+            == "mediacloud_search_text_2023"
+        )
+        assert importer.index_routing(None) == "mediacloud_search_text_other"
+        assert (
+            importer.index_routing("Tue 27 Jun 2022, 12:00AM")
+            == "mediacloud_search_text_2022"
+        )
+        assert (
+            importer.index_routing("Tue 27 Jun 2020, 12:00AM")
+            == "mediacloud_search_text_other"
+        )
