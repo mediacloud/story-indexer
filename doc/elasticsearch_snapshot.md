@@ -17,7 +17,7 @@ curl -X PUT "http://localhost:9200/\_snapshot/mc-es-backup" -H "Content-Type: ap
 "location": "/usr/share/elasticsearch/backup",
 }
 }'
-
+```
 ### Snapshot SLM policy
 
 Using Snapshot lifecycle management (SLM) to regularly backup our ES cluster.
@@ -41,6 +41,7 @@ curl -X PUT "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy
   }
 }'
 "
+```
 
 ### Manually run SLM policy
 
@@ -48,6 +49,7 @@ To run the SLM policy immediately to create a snapshot, outside the SLM schedule
 
 ```sh
 curl X -POST "http://localhost:9200/_slm/policy/mc_daily_snapshot_policy/_execute"
+```
 
 ### Manually create snapshots
 
@@ -55,3 +57,4 @@ To create the snapshot without SLM policy using Elasticsearch snapshot API
 
 ```sh
 curl X -POST "http://localhost:9200/_snapshot/mc-es-backup/snapshot_{now/d}?wait_for_completion=true"
+```
