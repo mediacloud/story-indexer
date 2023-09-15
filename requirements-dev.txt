@@ -64,6 +64,7 @@ dateparser==1.1.8
     #   htmldate
     #   mediacloud-metadata
 distlib==0.3.7
+distlib==0.3.7
     # via virtualenv
 elastic-transport==8.4.0
     # via elasticsearch
@@ -198,6 +199,7 @@ python-dateutil==2.8.2
     #   newspaper3k
 pytz==2023.3.post1
     # via dateparser
+pyyaml==6.0.1
 pyyaml==6.0.1
     # via
     #   newspaper3k

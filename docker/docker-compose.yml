@@ -1,7 +1,18 @@
 version: "3.8"
 
-services:
+#common elasticsearch environment settings
+x-common-elasticsearch-environment: &common-elasticsearch-environment
+  cluster.name: "mc_elasticsearch"
+  discovery.seed_hosts: elasticsearch1,elasticsearch2,elasticsearch3
+  cluster.initial_master_nodes: elasticsearch1,elasticsearch2,elasticsearch3
+  node.roles: master,data
+  bootstrap.memory_lock: "true"
+  ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+  xpack.security.enabled: "false"
+  path.repo: "/var/backups/elasticsearch"
+  network.publish_host: _eth0_
 
+services:
   swarm-cronjob:
     image: crazymax/swarm-cronjob
     volumes:
@@ -20,6 +31,8 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -31,32 +44,92 @@ services:
       timeout: 10s
       retries: 2
 
-  elasticsearch:
+  elasticsearch-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    user: root
+    volumes:
+      - elasticsearch_data_backup:/var/backups/elasticsearch
+    command: bash -c "chown -R elasticsearch:elasticsearch /var/backups/elasticsearch"
+    networks:
+      - story-indexer
+
+
+  elasticsearch1:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
     environment:
-      - node.name=elasticsearch
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch1"
+
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_01:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/var/backups/elasticsearch
+    networks:
+      - story-indexer
     ports:
       - 9200:9200
       - 9300:9300
+    # Memory lock check:allocate unlimited amount of locked memory to ES
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    #update these based on node setup
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  elasticsearch2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    environment:
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch2"
+
+    volumes:
+      - elasticsearch_data_02:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/var/backups/elasticsearch
+    ports:
+      - 9201:9200
+      - 9301:9300
     networks:
       - story-indexer
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail http://localhost:9200/_cluster/health || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
 
-  common_worker:
-    &common_worker
+    #update these based on node setup
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  elasticsearch3:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    environment:
+      <<: *common-elasticsearch-environment
+      node.name: "elasticsearch3"
+
+    volumes:
+      - elasticsearch_data_03:/usr/share/elasticsearch/data
+      - elasticsearch_data_backup:/var/backups/elasticsearch
+    ports:
+      - 9202:9200
+      - 9302:9300
+    networks:
+      - story-indexer
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+    #update these based on node setup
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  common_worker: &common_worker
     #Pushing to a local registry for now, while in dev loop.
     image: localhost:5000/common_worker
     build:
@@ -101,7 +174,6 @@ services:
          swarm.cronjob.replicas: *NUM_BATCHES
       replicas: *NUM_BATCHES
 
-
   parser_worker:
     <<: *common_worker
     environment:
@@ -114,19 +186,22 @@ services:
 
   importer_worker:
     <<: *common_worker
+    depends_on:
+      - elasticsearch1
+    networks:
+      - story-indexer
     environment:
       RUN: importer
       RABBITMQ_URL: *RABBITMQ_URL_
-      ELASTICSEARCH_HOST: http://elasticsearch:9200/
+      ELASTICSEARCH_HOST: http://elasticsearch1:9200/
       ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_
       ELASTICSEARCH_SHARDS: 1
       ELASTICSEARCH_REPLICAS: 0
-    networks:
-      - story-indexer
-    restart: "on-failure"
+    restart:
+        "on-failure"
 
   rabbitmq_stats:
     <<: *common_worker
@@ -140,8 +215,12 @@ services:
     restart: "on-failure"
 
 volumes:
-  elasticsearch_data:
-  #Neccesary for diskstory, ideally not used
+  elasticsearch_data_01:
+  elasticsearch_data_02:
+  elasticsearch_data_03:
+  rabbitmq_data:
+  elasticsearch_data_backup:
+    #Neccesary for diskstory, ideally not used
   worker_data:
 
 networks:

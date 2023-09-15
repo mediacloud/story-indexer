@@ -82,6 +82,7 @@ class ElasticsearchImporter(StoryWorker):
         super().define_options(ap)
         elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
         index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
+
         ap.add_argument(
             "--elasticsearch-host",
             dest="elasticsearch_host",
@@ -90,7 +91,6 @@ class ElasticsearchImporter(StoryWorker):
         )
         ap.add_argument(
             "--index-name",
-            "-I",
             dest="index_name",
             type=str,
             default=index_name,
@@ -134,7 +134,8 @@ class ElasticsearchImporter(StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    raise ValueError(f"Value for key '{key}' is not provided.")
+                    logger.error(f"Value for key '{key}' is not provided.")
+                    continue
 
             url = content_metadata.get("url")
             assert isinstance(url, str)
