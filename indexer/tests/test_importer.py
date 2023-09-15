@@ -28,8 +28,22 @@ def elasticsearch_client() -> Any:
     assert hosts is not None, "ELASTICSEARCH_HOST is not set"
     client = Elasticsearch(hosts=hosts)
     assert client.ping(), "Failed to connect to Elasticsearch"
+    index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
+    assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
+    index_names = index_names_str.split(",")
 
-    return client
+    for index_name in index_names:
+        if client.indices.exists(index=index_name):
+            client.indices.delete(index=index_name)
+        client.indices.create(
+            index=index_name, mappings=es_mappings, settings=es_settings
+        )
+
+    yield client
+
+    for index_name in index_names:
+        if client.indices.exists(index=index_name):
+            client.indices.delete(index=index_name)
 
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
@@ -49,36 +63,16 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
 
 class TestElasticsearchConnection:
     def test_create_index(self, elasticsearch_client: Any) -> None:
-        index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
-        assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
-        index_names = index_names_str.split(",")
+        index_names = elasticsearch_client.indices.get_alias().keys()
         for index_name in index_names:
-            if elasticsearch_client.indices.exists(index=index_name):
-                elasticsearch_client.indices.delete(index=index_name)
-            elasticsearch_client.indices.create(
-                index=index_name, mappings=es_mappings, settings=es_settings
-            )
             assert elasticsearch_client.indices.exists(index=index_name)
 
     def test_index_document(self, elasticsearch_client: Any) -> None:
-        index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
-        assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
-        index_names = index_names_str.split(",")
+        index_names = elasticsearch_client.indices.get_alias().keys()
         for index_name in index_names:
             response = elasticsearch_client.index(index=index_name, document=test_data)
             assert response["result"] == "created"
             assert "_id" in response
-
-    @classmethod
-    def teardown_class(cls) -> None:
-        elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
-        index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
-        assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
-        index_names = index_names_str.split(",")
-        elasticsearch_client = Elasticsearch(hosts=[elasticsearch_host])
-        for index_name in index_names:
-            if elasticsearch_client.indices.exists(index=index_name):
-                elasticsearch_client.indices.delete(index=index_name)
 
 
 @pytest.fixture(scope="class")
@@ -97,20 +91,16 @@ class TestElasticsearchImporter:
     def importer(self) -> ElasticsearchImporter:
         return ElasticsearchImporter("test_importer", "elasticsearch import worker")
 
-    target_indexes = ["test_mediacloud_search_text", "test_mediacloud_search_text_2023"]
-
-    @pytest.mark.parametrize("target_index", target_indexes)
     def test_import_story_success(
         self,
         importer: ElasticsearchImporter,
         elasticsearch_connector: ElasticsearchConnector,
-        target_index: str,
     ) -> None:
         importer.connector = elasticsearch_connector
         url = test_data.get("url")
         assert isinstance(url, str)
         id = hashlib.sha256(url.encode("utf-8")).hexdigest()
-        response = importer.import_story(id, test_data, target_index=target_index)
+        response = importer.import_story(id, test_data)
         if response is not None:
             assert response.get("result") == "created"
         else:

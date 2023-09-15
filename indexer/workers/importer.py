@@ -138,7 +138,6 @@ class ElasticsearchImporter(StoryWorker):
             logger.fatal("need --index-name defined")
             sys.exit(1)
         self.index_names = index_names
-        print(f"MY INDEX NAMES :{index_names}")
 
         self.connector = ElasticsearchConnector(
             self.elasticsearch_host,
@@ -168,22 +167,20 @@ class ElasticsearchImporter(StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            publication_date_str = content_metadata.get("publication_date")
-            target_index = self.index_routing(publication_date_str)
-
-            self.import_story(url_hash, data, target_index)
+            self.import_story(url_hash, data)
 
     def import_story(
         self,
         url_hash: str,
         data: Mapping[str, Optional[Union[str, bool]]],
-        target_index: str,
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
         """
         response = None
         if data:
+            publication_date = str(data.get("publication_date"))
+            target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
                 if response.get("result") == "created":
