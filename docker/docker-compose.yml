@@ -118,7 +118,7 @@ services:
       RUN: importer
       RABBITMQ_URL: *RABBITMQ_URL_
       ELASTICSEARCH_HOST: http://elasticsearch:9200/
-      ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
+      ELASTICSEARCH_INDEX_NAMES: mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023
       STATSD_URL: statsd://stats.tarbell.mediacloud.org
       STATSD_REALM: *STATSD_REALM_
       STORY_FACTORY: *STORY_FACTORY_

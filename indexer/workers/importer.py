@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import sys
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
@@ -51,28 +52,34 @@ class ElasticsearchConnector:
         hosts: Union[
             str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
         ],
-        index_name: str,
+        index_names: str,
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
         self.client = Elasticsearch(hosts)
-        self.index_name = index_name
+        self.index_names = index_names
         self.mappings = mappings
         self.settings = settings
-        if self.client and self.index_name:
-            if not self.client.indices.exists(index=self.index_name):
+        if self.client and self.index_names:
+            self.create_indices()
+
+    def create_indices(self) -> None:
+        for index_name in self.index_names.split(","):
+            if not self.client.indices.exists(index=index_name):
                 if self.mappings and self.settings:
                     self.client.indices.create(
-                        index=self.index_name,
+                        index=index_name,
                         mappings=self.mappings,
                         settings=self.settings,
                     )
                 else:
-                    self.client.indices.create(index=self.index_name)
+                    self.client.indices.create(index=index_name)
 
-    def index(self, id: str, document: Mapping[str, Any]) -> ObjectApiResponse[Any]:
+    def index(
+        self, id: str, index_name: str, document: Mapping[str, Any]
+    ) -> ObjectApiResponse[Any]:
         response: ObjectApiResponse[Any] = self.client.index(
-            index=self.index_name, id=id, document=document
+            index=index_name, id=id, document=document
         )
         return response
 
@@ -81,7 +88,7 @@ class ElasticsearchImporter(StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
-        index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
+        index_names = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
         ap.add_argument(
             "--elasticsearch-host",
             dest="elasticsearch_host",
@@ -89,13 +96,27 @@ class ElasticsearchImporter(StoryWorker):
             help="override ELASTICSEARCH_HOST",
         )
         ap.add_argument(
-            "--index-name",
-            "-I",
-            dest="index_name",
+            "--index-names",
+            dest="index_names",
             type=str,
-            default=index_name,
-            help=f"Elasticsearch index name, default {index_name}",
+            default=index_names,
+            help=f"Elasticsearch index name, default {index_names}",
         )
+
+    def index_routing(self, publication_date_str: Optional[str]) -> str:
+        """
+        determine the routing index bashed on publication year
+        """
+        if publication_date_str:
+            publication_date = datetime.strptime(
+                publication_date_str, "%a %d %b %Y, %I:%M%p"
+            )
+            year = publication_date.year
+            routing_index = f"mediacloud_search_text_{year}"
+        else:
+            routing_index = "mediacloud_search_text_other"
+
+        return routing_index
 
     def process_args(self) -> None:
         super().process_args()
@@ -109,15 +130,16 @@ class ElasticsearchImporter(StoryWorker):
 
         self.elasticsearch_host = elasticsearch_host
 
-        index_name = self.args.index_name
-        if index_name is None:
+        index_names = self.args.index_names
+        if index_names is None:
             logger.fatal("need --index-name defined")
             sys.exit(1)
-        self.index_name = index_name
+        self.index_names = index_names
+        print(f"MY INDEX NAMES :{index_names}")
 
         self.connector = ElasticsearchConnector(
             self.elasticsearch_host,
-            self.index_name,
+            self.index_names,
             mappings=es_mappings,
             settings=es_settings,
         )
@@ -143,10 +165,16 @@ class ElasticsearchImporter(StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(url_hash, data)
+            publication_date_str = content_metadata.get("publication_date")
+            target_index = self.index_routing(publication_date_str)
+
+            self.import_story(url_hash, data, target_index)
 
     def import_story(
-        self, url_hash: str, data: Mapping[str, Optional[Union[str, bool]]]
+        self,
+        url_hash: str,
+        data: Mapping[str, Optional[Union[str, bool]]],
+        target_index: str,
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
@@ -154,9 +182,11 @@ class ElasticsearchImporter(StoryWorker):
         response = None
         if data:
             try:
-                response = self.connector.index(url_hash, data)
+                response = self.connector.index(url_hash, target_index, data)
                 if response.get("result") == "created":
-                    logger.info("Story has been successfully imported.")
+                    logger.info(
+                        f"Story has been successfully imported. to index {target_index}"
+                    )
                     import_status_label = "success"
                 else:
                     # Log no imported stories
