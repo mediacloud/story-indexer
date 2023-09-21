@@ -1,0 +1,261 @@
+{# docker-compose.yml.j2 -- a Jinja2 template
+ # see https://jinja.palletsprojects.com/en/
+ #
+ # conventions:
+ # services/anchors lower-case and hyphen-delimited (services are prefixed with stack_)
+ # jinja variables lower-case and underscore_delimited
+ # dictionary keys in ASCII sort order,
+ # avoiding extra whitespace inside double-curlies with plain variables
+-#}
+version: "3.8"
+# https://docs.docker.com/compose/compose-file/compose-file-v3/
+# https://github.com/compose-spec/compose-spec/blob/master/spec.md
+{#
+ # The compose-file-v3 spec above says the following options are
+ # ignored with "docker stack deploy" in swarm mode: cap_add,
+ # cap_drop, container_name, cgroup_parent, devices, *depends_on*,
+ # external_links, links, network_mode, *restart* (use
+ # deploy.restart_policy), security_opt, userns_mode as well as IPv6
+ # options.
+ #
+ # NOTE! Specifying a (dict) key/value overwrites any previously
+ # existing value under that key (ie; for keys set in a "<<:" merge)
+ # which crushes sub-dicts (like environment in a service).  So each
+ # family of settings (base/elasticsearch/worker) has (at least) two
+ # groups of default settings: "foo-service-settings" for keys in a
+ # service dict "foo-environment-vars" for environment variables
+ # (declared inline under foo-service-settings)
+ #}
+
+################ common settings for all services
+
+x-base-service-settings: &base-service-settings
+  environment: &base-environment-vars
+    # Log everything in GMT!!!
+    TZ: "GMT"
+
+  networks:
+    - {{network_name}}
+
+################ Elastic Search settings
+
+x-es-image: &es-image "docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
+
+x-es-node-names: &es-node-names elasticsearch1{% for i in range(2,(elastic_num_nodes | int)+1) %},elasticsearch{{i}}{% endfor %}
+
+# common service settings for all elasticsearch containers
+x-es-service-settings: &es-service-settings
+  <<: *base-service-settings
+  deploy: &es-deploy-settings
+    placement:
+      constraints:
+{% if placement_constraints %}
+        - node.labels.role_es == true
+{% else %}
+        - node.role == manager
+{% endif %}
+
+  environment: &es-environment-vars
+    <<: *base-environment-vars
+{% if (elastic_num_nodes|int) > 1 %}
+    ES_JAVA_OPTS: "-Xms20g -Xmx20g"
+    bootstrap.memory_lock: "true"
+    cluster.initial_master_nodes: *es-node-names
+    cluster.name: {{elastic_cluster_name}}
+    discovery.seed_hosts: *es-node-names
+    network.publish_host: _eth0_
+    node.roles: master,data
+{% else %}
+    ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    discovery.type: single-node
+{% endif %}
+    path.repo: "/var/backups/elasticsearch"
+    xpack.security.enabled: "false"
+
+  image: *es-image
+
+  ulimits:
+    # Memory lock check:allocate unlimited amount of locked memory to ES
+    memlock:
+      soft: -1
+      hard: -1
+
+# common volume for elasticsearch containers
+x-es-backup-volume: &es-backup-volume "elasticsearch_data_backup:/var/backups/elasticsearch"
+
+################ Worker settings
+
+# worker common service settings
+x-worker-service-settings: &worker-service-settings
+  <<: *base-service-settings
+  deploy: &worker-deploy-settings
+    placement:
+      constraints:
+{% if placement_constraints %}
+        - node.labels.role_indexer == true
+{% else %}
+        - node.role == manager
+{% endif %}
+
+  environment: &worker-environment-vars
+    <<: *base-environment-vars
+    LOG_LEVEL: "info"
+    RABBITMQ_URL: amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
+    STATSD_REALM: {{statsd_realm}}
+    STATSD_URL: {{statsd_url}}
+    STORY_FACTORY: "BaseStory"
+
+  image: {{worker_image_full}}
+
+  volumes:
+    - worker_data:/app/data/
+
+# end of aliases
+################################################################
+
+services:
+  {{worker_image_name}}:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+
+    deploy:
+      # entry for "build" only
+      replicas: 0
+
+    image: {{worker_image_full}}
+
+  swarm-cronjob:
+    <<: *base-service-settings
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+      <<: *base-environment-vars
+      LOG_JSON: "false"
+      LOG_LEVEL: info
+    image: crazymax/swarm-cronjob
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  rabbitmq:
+    <<: *base-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *base-environment-vars
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+    image: rabbitmq:3.11-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  es-setup:
+    <<: *es-service-settings
+    command: bash -c "chown -R elasticsearch:elasticsearch /var/backups/elasticsearch"
+    deploy:
+      <<: *es-deploy-settings
+      # run once, on stack deploy
+      restart_policy:
+        condition: none
+    image: *es-image
+    user: root
+    volumes:
+      - *es-backup-volume
+
+# PB: until/unless ES running outside Docker, tie to specific node
+# (check es_node_number == N)??
+{% for i in range(1,(elastic_num_nodes | int)+1) %}
+  elasticsearch{{i}}:
+    <<: *es-service-settings
+    environment:
+      <<: *es-environment-vars
+      node.name: elasticsearch{{i}}
+    ports:
+      {% set port9200mapping = 9200 + i - 1 -%}
+      - {{port9200mapping}}:9200
+      - {{port9200mapping+100}}:9300
+    volumes:
+      - *es-backup-volume
+      - elasticsearch_data_{{"%02d" % i}}:/usr/share/elasticsearch/data
+{% endfor %}
+
+  ################ pipeline workers
+
+  configure-pipeline:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: configure-pipeline
+      ARGS: "configure"
+    deploy:
+      <<: *worker-deploy-settings
+      # run once on stack deploy
+      restart_policy:
+        condition: none
+
+  fetcher-worker:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      labels:
+         swarm.cronjob.enable: "true"
+         swarm.cronjob.schedule: "0 0 * * *"
+         swarm.cronjob.replicas: {{fetcher_num_batches}}
+      replicas: {{fetcher_num_batches}}
+    environment:
+      <<: *worker-environment-vars
+      RUN: fetcher
+      ARGS: "--yesterday --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
+
+  parser-worker:
+    <<: *worker-service-settings
+    # run multiple replicas?
+    environment:
+      <<: *worker-environment-vars
+      RUN: parser
+      # restrict (numpy/openblas??) threads? w/ OPENBLAS_NUM_THREADS: n??
+
+  # PB: if running rabbitmq cluster (process on each ES node) w/ Docker
+  # have numbered service instances: importer-workerN,
+  # each tied to corresponding storage node?
+  importer-worker:
+    <<: *worker-service-settings
+    # run multiple replicas? on es nodes??
+    environment:
+      <<: *worker-environment-vars
+      RUN: importer
+      ELASTICSEARCH_HOST: http://elasticsearch1:9200/
+      ELASTICSEARCH_INDEX_NAME: mediacloud_search_text
+      ELASTICSEARCH_REPLICAS: 0
+      ELASTICSEARCH_SHARDS: 1
+
+  # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
+  # run a copy on each RabbitMQ cluster node (for node stats & redundancy)?
+  rabbitmq-stats:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: rabbitmq-stats
+
+volumes:
+{% for i in range(1,(elastic_num_nodes | int)+1) %}
+  elasticsearch_data_{{"%02d" % i}}:
+{%- endfor %}
+  elasticsearch_data_backup:
+  rabbitmq_data:
+  # Neccesary for diskstory, ideally not used:
+  worker_data:
+
+networks:
+  {{network_name}}:
+    driver: overlay
