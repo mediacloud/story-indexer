@@ -10,7 +10,11 @@ Report RabbitMQ stats
 import argparse
 import time
 from logging import getLogger
+from socket import gaierror  # DNS errors
 from typing import Any, Dict
+
+# PyPI
+from requests.exceptions import ConnectionError
 
 from indexer.worker import QApp
 
@@ -59,6 +63,16 @@ class QStats(QApp):
 
         api = self.admin_api()
 
+        # on startup, wait until a request succeeds
+        while True:
+            try:
+                api.overview()
+                break
+            except (ConnectionError, gaierror) as e:
+                logger.info("startup: %r", e)
+                time.sleep(30)
+
+        logger.info("ready")
         while True:
             # PLB: FEH!  All the bother to make AdminMixin, and the
             # primary URL I want isn't included!  Looks like the core of
