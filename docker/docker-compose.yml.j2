@@ -34,9 +34,6 @@ x-base-service-settings: &base-service-settings
     # Log everything in GMT!!!
     TZ: "GMT"
 
-  networks:
-    - {{network_name}}
-
 ################ Elastic Search settings
 
 x-es-image: &es-image "docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
@@ -59,7 +56,7 @@ x-es-service-settings: &es-service-settings
     cluster.initial_master_nodes: *es-node-names
     cluster.name: {{elastic_cluster_name}}
     discovery.seed_hosts: *es-node-names
-    network.publish_host: _eth1_
+    network.publish_host: _eth0_
     node.roles: master,data
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
@@ -268,8 +265,9 @@ volumes:
       o: bind
       device: {{volume_device_prefix}}worker_data
 
-# XXX @thepsalmist's staging compose file has network as "external: true"
-# (use externally created network??)
+# network created by deploy.sh for web_collection_search API to attach to.
+# make web_collection_search a "git subtree" and build/launch in this file??
 networks:
-  {{network_name}}:
-    driver: overlay
+  default:
+    name: {{network_name}}
+    external: true

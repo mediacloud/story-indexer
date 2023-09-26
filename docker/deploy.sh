@@ -318,6 +318,22 @@ if [ $STATUS != 0 ]; then
     exit 1
 fi
 
+# "external" network in docker-compose for web_collection_search attach
+# see questions in docker-compose.yml.j2
+if docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
+    echo found docker network $NETWORK_NAME
+else
+    set -x
+    docker network create --attachable --driver overlay $NETWORK_NAME
+    STATUS=$?
+    if [ $STATUS = 0 ]; then
+	echo created docker network $NETWORK_NAME
+    else
+	echo error creating docker network $NETWORK_NAME: $STATUS 1>&2
+	exit 1
+    fi
+fi
+
 echo docker stack deploy:
 docker stack deploy -c docker-compose.yml $STACK_NAME
 STATUS=$?
@@ -325,7 +341,7 @@ if [ $STATUS != 0 ]; then
     echo docker stack deploy failed: $STATUS 1>&2
     exit 1
 fi
-echo deployed.
+echo deployed stack $STACK
 
 # keep (private) record of deploys:
 if [ "x$IS_DIRTY" = x ]; then
