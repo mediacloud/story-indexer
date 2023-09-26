@@ -49,11 +49,7 @@ x-es-service-settings: &es-service-settings
   deploy: &es-deploy-settings
     placement:
       constraints:
-{% if placement_constraints %}
-        - node.labels.role_es == true
-{% else %}
-        - node.role == manager
-{% endif %}
+        - {{elastic_placement_constraint}}
 
   environment: &es-environment-vars
     <<: *base-environment-vars
@@ -63,7 +59,7 @@ x-es-service-settings: &es-service-settings
     cluster.initial_master_nodes: *es-node-names
     cluster.name: {{elastic_cluster_name}}
     discovery.seed_hosts: *es-node-names
-    network.publish_host: _eth0_
+    network.publish_host: _eth1_
     node.roles: master,data
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
@@ -91,11 +87,7 @@ x-worker-service-settings: &worker-service-settings
   deploy: &worker-deploy-settings
     placement:
       constraints:
-{% if placement_constraints %}
-        - node.labels.role_indexer == true
-{% else %}
-        - node.role == manager
-{% endif %}
+        - {{worker_placement_constraint}}
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
@@ -250,12 +242,34 @@ services:
 volumes:
 {% for i in range(1,(elastic_num_nodes | int)+1) %}
   elasticsearch_data_{{"%02d" % i}}:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}elasticsearch_data_{{"%02d" % i}}
 {%- endfor %}
   elasticsearch_data_backup:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}elasticsearch_data_backup
   rabbitmq_data:
-  # Neccesary for diskstory, ideally not used:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}rabbitmq
   worker_data:
+    # Neccesary for diskstory, ideally not used:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}worker_data
 
+# XXX @thepsalmist's staging compose file has network as "external: true"
+# (use externally created network??)
 networks:
   {{network_name}}:
     driver: overlay
