@@ -16,7 +16,6 @@ from typing import Any, Callable, Dict, List, Set, Union, cast
 # PyPI
 import pika
 from pika.exchange_type import ExchangeType
-from rabbitmq_admin import AdminAPI
 
 # local:
 from indexer.worker import (
@@ -268,23 +267,7 @@ class Pipeline(QApp):
         return cast(Callable[[], None], meth)
 
     def get_definitions(self) -> Dict:
-        """
-        use rabbitmq_admin package to get server config via RabbitMQ admin API.
-        Uses pika (AMQP) parsed URL for connection params
-        """
-        args = self.args
-        assert args
-
-        # maybe put this in a function (in worker.py??)
-        # for use by other modules?
-        par = pika.connection.URLParameters(args.amqp_url)
-        creds = par.credentials
-        assert isinstance(creds, pika.credentials.PlainCredentials)
-        port = 15672  # XXX par.port + 10000???
-        api = AdminAPI(
-            url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
-        )
-
+        api = self.admin_api()
         defns = api.get_definitions()
         assert isinstance(defns, dict)
         return defns

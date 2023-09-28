@@ -7,6 +7,9 @@
 
 . bin/func.sh
 
+# debug: display environment
+env
+
 fatal() {
     log -p error "$0: $*"
     # avoid hard looping
