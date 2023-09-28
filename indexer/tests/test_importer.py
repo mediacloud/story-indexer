@@ -1,7 +1,7 @@
 import dataclasses
 import hashlib
 import os
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
 
 import pytest
