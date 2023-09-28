@@ -40,8 +40,18 @@ def elasticsearch_client() -> Any:
     hosts = os.environ.get("ELASTICSEARCH_HOSTS")
     assert hosts is not None, "ELASTICSEARCH_HOSTS is not set"
 
-    host_urls: Any = [host_url.strip() for host_url in hosts.split(",")]
-    client = Elasticsearch(hosts=host_urls)
+    host_urls: Any = [host_url for host_url in hosts.split(",")]
+    host_configs: Any = []
+    for host_url in host_urls:
+        parsed_url = urlparse(str(host_url))
+        host = parsed_url.hostname
+        scheme = parsed_url.scheme
+        port = parsed_url.port
+        if host and scheme and port:
+            node_config = NodeConfig(scheme=scheme, host=host, port=port)
+            host_configs.append(node_config)
+
+    client = Elasticsearch(hosts=host_configs)
     assert client.ping(), "Failed to connect to Elasticsearch"
     index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
     assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
