@@ -1,9 +1,11 @@
 import dataclasses
 import hashlib
 import os
-from typing import Any, Dict, List, Mapping, Optional, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
+from urllib.parse import urlparse
 
 import pytest
+from elastic_transport import NodeConfig
 from elasticsearch import Elasticsearch
 
 from indexer.workers.importer import (
@@ -16,22 +18,15 @@ from indexer.workers.importer import (
 
 @pytest.fixture(scope="class", autouse=True)
 def set_env() -> None:
-    os.environ["ELASTICSEARCH_HOST"] = "http://localhost:9200"
+    os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
+        ["http://localhost:9200", "http://localhost:9201", "http://localhost:9202"]
+    )
     os.environ["ELASTICSEARCH_INDEX_NAMES"] = ",".join(
         ["test_mediacloud_search_text", "test_mediacloud_search_text_2023"]
     )
 
 
-@pytest.fixture(scope="class")
-def elasticsearch_client() -> Any:
-    hosts = os.environ.get("ELASTICSEARCH_HOST")
-    assert hosts is not None, "ELASTICSEARCH_HOST is not set"
-    client = Elasticsearch(hosts=hosts)
-    assert client.ping(), "Failed to connect to Elasticsearch"
-    index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
-    assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
-    index_names = index_names_str.split(",")
-
+def create_and_delete_indices(client: Elasticsearch, index_names: list) -> None:
     for index_name in index_names:
         if client.indices.exists(index=index_name):
             client.indices.delete(index=index_name)
@@ -39,11 +34,22 @@ def elasticsearch_client() -> Any:
             index=index_name, mappings=es_mappings, settings=es_settings
         )
 
-    yield client
 
-    for index_name in index_names:
-        if client.indices.exists(index=index_name):
-            client.indices.delete(index=index_name)
+@pytest.fixture(scope="class")
+def elasticsearch_client() -> Any:
+    hosts = os.environ.get("ELASTICSEARCH_HOSTS")
+    assert hosts is not None, "ELASTICSEARCH_HOSTS is not set"
+
+    host_urls: Any = [host_url.strip() for host_url in hosts.split(",")]
+    client = Elasticsearch(hosts=host_urls)
+    assert client.ping(), "Failed to connect to Elasticsearch"
+    index_names_str = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
+    assert index_names_str is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
+    index_names = index_names_str.split(",")
+
+    create_and_delete_indices(client, index_names)
+
+    yield client
 
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
@@ -77,11 +83,11 @@ class TestElasticsearchConnection:
 
 @pytest.fixture(scope="class")
 def elasticsearch_connector() -> ElasticsearchConnector:
-    elasticsearch_host = cast(str, os.environ.get("ELASTICSEARCH_HOST"))
+    elasticsearch_hosts = cast(str, os.environ.get("ELASTICSEARCH_HOSTS"))
     index_names = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
     assert index_names is not None, "ELASTICSEARCH_INDEX_NAMES is not set"
     connector = ElasticsearchConnector(
-        elasticsearch_host, index_names, es_mappings, es_settings
+        elasticsearch_hosts, index_names, es_mappings, es_settings
     )
     return connector
 

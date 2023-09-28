@@ -8,6 +8,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
+from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
@@ -19,7 +20,7 @@ from indexer.worker import StoryWorker, run
 logger = logging.getLogger(__name__)
 
 shards = int(os.environ.get("ELASTICSEARCH_SHARDS", 1))
-replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 0))
+replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 1))
 
 es_settings = {"number_of_shards": shards, "number_of_replicas": replicas}
 
@@ -41,7 +42,7 @@ es_mappings = {
             "type": "text",
             "fields": {"keyword": {"type": "keyword"}},
         },
-        "text_content": {"type": "text"},
+        "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
     }
 }
 
@@ -56,7 +57,17 @@ class ElasticsearchConnector:
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
-        self.client = Elasticsearch(hosts)
+        assert isinstance(hosts, str)
+        host_configs: Any = []
+        for host_url in hosts.split(","):
+            parsed_url = urlparse(str(host_url))
+            host = parsed_url.hostname
+            scheme = parsed_url.scheme
+            port = parsed_url.port
+            if host and scheme and port:
+                node_config = NodeConfig(scheme=scheme, host=host, port=port)
+                host_configs.append(node_config)
+        self.client = Elasticsearch(host_configs)
         self.index_names = index_names
         self.mappings = mappings
         self.settings = settings
@@ -87,13 +98,13 @@ class ElasticsearchConnector:
 class ElasticsearchImporter(StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        elasticsearch_host = os.environ.get("ELASTICSEARCH_HOST")
+        elasticsearch_hosts = os.environ.get("ELASTICSEARCH_HOSTS")
         index_names = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
         ap.add_argument(
             "--elasticsearch-host",
             dest="elasticsearch_host",
-            default=elasticsearch_host,
-            help="override ELASTICSEARCH_HOST",
+            default=elasticsearch_hosts,
+            help="override ELASTICSEARCH_HOSTS",
         )
         ap.add_argument(
             "--index-names",
@@ -126,12 +137,12 @@ class ElasticsearchImporter(StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        elasticsearch_host = self.args.elasticsearch_host
-        if not elasticsearch_host:
+        elasticsearch_hosts = self.args.elasticsearch_hosts
+        if not elasticsearch_hosts:
             logger.fatal("need --elasticsearch-host defined")
             sys.exit(1)
 
-        self.elasticsearch_host = elasticsearch_host
+        self.elasticsearch_hosts = elasticsearch_hosts
 
         index_names = self.args.index_names
         if index_names is None:
@@ -140,7 +151,7 @@ class ElasticsearchImporter(StoryWorker):
         self.index_names = index_names
 
         self.connector = ElasticsearchConnector(
-            self.elasticsearch_host,
+            self.elasticsearch_hosts,
             self.index_names,
             mappings=es_mappings,
             settings=es_settings,
