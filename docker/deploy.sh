@@ -4,12 +4,14 @@
 # Phil Budne, 9/2023
 # (from rss-fetcher/dokku-scripts/push.sh 9/2022!)
 
-# deploys from currently checked out branch
+# Deploys from currently checked out branch: branches staging and prod are special.
 
-# PLB: add -u (untagged deploy, allow unclean repo, from dev branches only)????
+# Normally requires clean repo (all changes checked in), applies a git
+# tag, and pushes the tag to github.  That way, the deploy.sh script
+# and jinja2 template used are covered by the tag.
 
 # stack name (suffix if not production)
-# NOTE! indicates application for peaceful coexistence!!
+# indicates application for peaceful coexistence!!
 BASE_STACK_NAME=indexer
 
 SCRIPT=$0
@@ -31,18 +33,20 @@ fi
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
+    echo "  -a  allow-dirty; no dirty/push checks; no tags applied (for dev)"
     echo "  -d  enable debug output (on jinja2 invocation)"
     echo "  -h  output this help and exit"
-    echo "  -n  dry-run: creates docker-compose.yml but does not invoke docker (implies -u)"
+    echo "  -n  dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u  allow running as non-root user"
     exit 1
 }
-while getopts dhnu OPT; do
+while getopts adhnu OPT; do
    case "$OPT" in
+   a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    d) DEBUG=1;;
-   h|'?') usage;;
-   n) NO_ACTION=1; AS_USER=1;;
-   u) AS_USER=1;;
+   n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
+   u) AS_USER=1;;	# untested: _may_ work if user in docker group
+   ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
 # XXX complain if anything remaining?
@@ -63,24 +67,21 @@ if [ "x$LOGIN_USER" = x ]; then
     exit 1
 fi
 
-if [ "x$NO_ACTION" = x ] && ! git diff --quiet; then
-    echo 'local changes not checked in' 1>&2
-    # XXX display diffs, or list dirty files??
-    exit 1
-fi
-
 BRANCH=$(git branch --show-current)
-GIT_HASH=$(git rev-parse --short HEAD)
+#GIT_HASH=$(git rev-parse --short HEAD)
 
 dirty() {
-    if [ "x$NO_ACTION" = x ]; then
+    if [ "x$INDEXER_ALLOW_DIRTY" = x ]; then
 	echo "$*" 1>&2
 	exit 1
     fi
+    echo "ignored: $*" 1>&2
+    IS_DIRTY=1
 }
 
-# PUSH_TAG_TO: git remotes to push tag to
-PUSH_TAG_TO="origin"
+if ! git diff --quiet; then
+    dirty 'local changes not checked in' 1>&2
+fi
 
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
@@ -89,60 +90,53 @@ ELASTIC_NUM_NODES=1
 
 FETCHER_NUM_BATCHES=10
 
-PLACEMENT_CONSTRAINTS=
-
 STATSD_REALM="$BRANCH"
 
-# XXX run local instance if developer (don't clutter tarbell disk)??
+# XXX run local instance in stack if developer (don't clutter tarbell disk)??
 # depends on proxy running on tarbell
 STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
-# TEMP! set registry differently based on BRANCH?!
 # Pushing to a local registry for now, while in dev loop.
-WORKER_IMAGE_REGISTRY=localhost:5000
+# set registry differently based on BRANCH?!
+WORKER_IMAGE_REGISTRY=$HOSTNAME:5000
 
 WORKER_IMAGE_NAME=indexer-worker
 
 # set DEPLOY_TIME, check remotes up to date
 case "$BRANCH" in
 prod|staging)
+    if [ "x$INDEXER_ALLOW_DIRTY" != x ]; then
+	echo "dirty/notag not allowed on $BRANCH branch: ignoring" 1>&2
+	INDEXER_ALLOW_DIRTY=
+    fi
     DEPLOY_TYPE="$BRANCH"
 
     # check if corresponding branch in mediacloud acct up to date
 
     # get remote for mediacloud account
     # ONLY match ssh remote, since will want to push tag.
-    MCREMOTE=$(git remote -v | awk '/github\.com:mediacloud\// { print $1; exit }')
-    if [ "x$MCREMOTE" = x ]; then
-	echo could not find an ssh git remote for mediacloud org repo
+    REMOTE=$(git remote -v | awk '/github\.com:mediacloud\// { print $1; exit }')
+    if [ "x$REMOTE" = x ]; then
+	echo could not find an ssh git remote for mediacloud org repo 1>&2
 	exit 1
     fi
-
-    # XXX need "git fetch" to be sure of remote status?
-    # check if MCREMOTE up to date.
-    if git diff --quiet $BRANCH $MCREMOTE/$BRANCH --; then
-	echo "$MCREMOTE $BRANCH branch up to date."
-    else
-	# pushing to mediacloud repo should NOT be optional
-	# for production or staging!!!
-	dirty "$MCREMOTE $BRANCH branch not up to date. run 'git push' first!!"
-    fi
-    # push tag back to JUST github mediacloud branch
-    # (might be "origin", might not)
-    PUSH_TAG_TO="$MCREMOTE"
     ;;
 *)
     DEPLOY_TYPE=dev
     STATSD_REALM=$LOGIN_USER
-    # check if origin (ie; user github fork) not up to date
-    # XXX need "git fetch" to be sure of remote status?
-    if git diff --quiet origin/$BRANCH --; then
-	echo "origin/$BRANCH up to date"
-    else
-	dirty "origin/$BRANCH not up to date.  push!"
-    fi
+    REMOTE=origin
     ;;
 esac
+
+# check if in sync with remote
+# (send stderr to /dev/null in case remote branch does not exist)
+git fetch $REMOTE $BRANCH 2>/dev/null
+if git diff --quiet $BRANCH $REMOTE/$BRANCH -- 2>/dev/null; then
+    echo "$REMOTE $BRANCH branch up to date."
+else
+    dirty "$REMOTE $BRANCH branch not up to date. Run 'git push' first!!"
+    # note: push could herald unwelcome news if repos have diverged!
+fi
 
 DATE_TIME=$(date -u '+%F-%H-%M-%S')
 TAG=$DATE_TIME-$HOSTNAME-$BRANCH
@@ -150,34 +144,66 @@ case $DEPLOY_TYPE in
 prod)
     STACK_NAME=$BASE_STACK_NAME
     ELASTIC_NUM_NODES=3
-    PLACEMENT_CONSTRAINTS=1
+
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
     TAG=$DATE_TIME-$BRANCH
+    MULTI_NODE_DEPLOYMENT=1
+    # use the ones being created by staging,
+    # and give staging new directories????
+    echo "need VOLUME_DEVICE_PREFIX!!!!" 1>&2
+    exit 1
     ;;
 staging)
     STACK_NAME=staging-$BASE_STACK_NAME
+    MULTI_NODE_DEPLOYMENT=1
+    # correct for ramos 2023-09-23 staging deployment:
+    # NOTE: **SHOULD** contain indexer-staging!!!
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/
     ;;
 dev)
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
+    MULTI_NODE_DEPLOYMENT=
+    # default volume storage location!
+    VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
     ;;
 esac
 
-WORKER_IMAGE_TAG=$TAG
+if [ "x$MULTI_NODE_DEPLOYMENT" != x ]; then
+    # saw problems with fetcher queuing?
+    #ELASTIC_PLACEMENT_CONSTRAINT='node.labels.role_es == true'
+    #WORKER_PLACEMENT_CONSTRAINT='node.labels.role_indexer == true'
+
+    # TEMP: run everything on ramos:
+    ELASTIC_PLACEMENT_CONSTRAINT='node.labels.node_name==ramos'
+    WORKER_PLACEMENT_CONSTRAINT='node.labels.node_name==ramos'
+else
+    # default to placement on manager for (single node) developement
+    ELASTIC_PLACEMENT_CONSTRAINT="node.role == manager"
+    WORKER_PLACEMENT_CONSTRAINT="node.role == manager"
+fi
+
+if [ "x$IS_DIRTY" = x ]; then
+    # use git tag for image tag.
+    # in development this means old tagged images will pile up until removed
+    # maybe have an option to prune old images?
+    WORKER_IMAGE_TAG=$TAG
+else
+    # _could_ include DATE_TIME
+    WORKER_IMAGE_TAG=$LOGIN_USER-dirty
+fi
+
 WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY/$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
-# base on stack name, if needed??
-NETWORK_NAME=story-indexer
+# allow multiple deploys on same swarm/cluster:
+NETWORK_NAME=$STACK_NAME
 
-# base on stack name, if needed??
 ELASTIC_CLUSTER_NAME=mc_elasticsearch
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
 
 echo creating docker-compose.yml
-# NOTE! All variables (lower_case) in sorted order,
-# set from shell UPPER_CASE shell variables of the same name.
 (
   echo '# generated by jinja2: EDITING IS FUTILE'
   echo '# edit docker-compose.yml.j2 and run deploy.sh'
@@ -185,21 +211,27 @@ echo creating docker-compose.yml
       # display jinja2 command:
       set -x
   fi
+
   # NOTE! COULD pass -Ddeploy_type=$DEPLOY_TYPE, but would rather
   # pass multiple variables that effect specific outcomes
   # (keep decision making in this file, and not template;
   #  don't ifdef based on platform name, but on features)
 
+  # NOTE! All variables (lower_case) in sorted order,
+  # set from shell UPPER_CASE shell variables of the same name.
+
   # from jinja2-cli package:
   jinja2 \
       -Delastic_cluster_name=$ELASTIC_CLUSTER_NAME \
+      -Delastic_placement_constraint="$ELASTIC_PLACEMENT_CONSTRAINT" \
       -Delastic_num_nodes=$ELASTIC_NUM_NODES \
       -Dfetcher_num_batches=$FETCHER_NUM_BATCHES \
       -Dnetwork_name=$NETWORK_NAME \
-      -Dplacement_constraints=$PLACEMENT_CONSTRAINTS \
       -Dstack_name=$STACK_NAME \
       -Dstatsd_realm=$STATSD_REALM \
       -Dstatsd_url=$STATSD_URL \
+      -Dvolume_device_prefix=$VOLUME_DEVICE_PREFIX \
+      -Dworker_placement_constraint="$WORKER_PLACEMENT_CONSTRAINT" \
       -Dworker_image_full=$WORKER_IMAGE_FULL \
       -Dworker_image_name=$WORKER_IMAGE_NAME \
       docker-compose.yml.j2
@@ -216,22 +248,28 @@ rm -f docker-compose.yml.dump
 docker stack config -c docker-compose.yml > docker-compose.yml.dump
 STATUS=$?
 if [ $STATUS != 0 ]; then
+    # fails w/ older versions
     echo "docker stack config status: $STATUS" 1>&2
-    # here with old version of docker? try to continue...
-    #exit 3
+    exit 3
 else
+    # maybe only keep if $DEBUG set??
     echo "output (with merges expanded) in docker-compose.yml.dump" 1>&2
 fi
 
-# XXX check if on suitable server (right stack) for prod/staging??
-
-# XXX display all commits not currently deployed?
-echo "Last commit:"
-git log -n1
+# XXX check if on suitable server (right swarm?) for prod/staging??
 
 if [ "x$NO_ACTION" != x ]; then
     echo 'dry run: quitting' 1>&2
     exit 0
+fi
+
+if [ "x$IS_DIRTY" = x ]; then
+    # XXX display all commits not currently deployed?
+    # use docker image tag running on stack as base??
+    echo "Last commit:"
+    git log -n1
+else
+    echo "dirty repo"
 fi
 
 echo ''
@@ -243,34 +281,26 @@ case "$CONFIRM" in
 esac
 
 if [ "x$BRANCH" = xprod ]; then
-    # XXX check if pushed to $MCREMOTE?? for staging too??
-
     echo -n "This is production! Type YES to confirm: "
     read CONFIRM
     if [ "x$CONFIRM" != 'xYES' ]; then
        echo '[cancelled]'
-       exit
+       exit 0
     fi
 fi
 
 echo ''
-echo adding local git tag $TAG
-git tag $TAG
-# XXX check status?
 
-# NOTE: push will complain if you (developer) switch branches
-# (or your branch has been perturbed upstream, ie; by a force push)
-# so add script option to enable --force to push to dokku git repo?
+if [ "x$IS_DIRTY" != x ]; then
+    echo adding local git tag $TAG
+    git tag $TAG
+    # XXX check status?
 
-echo "================"
-
-# push tag to upstream repos
-for REMOTE in $PUSH_TAG_TO; do
-    echo pushing git tag $TAG to $REMOTE
+    # push tag to upstream repos
+    echo pushing git tag to $REMOTE
     git push $REMOTE $TAG
     # XXX check status?
-    echo "================"
-done
+fi
 
 echo compose build:
 docker compose build
@@ -288,6 +318,22 @@ if [ $STATUS != 0 ]; then
     exit 1
 fi
 
+# "external" network in docker-compose for web_collection_search attach
+# see questions in docker-compose.yml.j2
+if docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
+    echo found docker network $NETWORK_NAME
+else
+    set -x
+    docker network create --attachable --driver overlay $NETWORK_NAME
+    STATUS=$?
+    if [ $STATUS = 0 ]; then
+	echo created docker network $NETWORK_NAME
+    else
+	echo error creating docker network $NETWORK_NAME: $STATUS 1>&2
+	exit 1
+    fi
+fi
+
 echo docker stack deploy:
 docker stack deploy -c docker-compose.yml $STACK_NAME
 STATUS=$?
@@ -295,7 +341,13 @@ if [ $STATUS != 0 ]; then
     echo docker stack deploy failed: $STATUS 1>&2
     exit 1
 fi
+echo deployed stack $STACK
 
 # keep (private) record of deploys:
-echo "$DATE_TIME $HOSTNAME $STACK_NAME $REMOTE $TAG" >> deploy.log
+if [ "x$IS_DIRTY" = x ]; then
+    NOTE="$REMOTE $TAG"
+else
+    NOTE="(dirty)"
+fi
+echo "$DATE_TIME $HOSTNAME $STACK_NAME $NOTE" >> deploy.log
 # XXX chown to LOGIN_USER?

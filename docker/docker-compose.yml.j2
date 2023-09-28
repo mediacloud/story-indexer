@@ -34,9 +34,6 @@ x-base-service-settings: &base-service-settings
     # Log everything in GMT!!!
     TZ: "GMT"
 
-  networks:
-    - {{network_name}}
-
 ################ Elastic Search settings
 
 x-es-image: &es-image "docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
@@ -49,11 +46,7 @@ x-es-service-settings: &es-service-settings
   deploy: &es-deploy-settings
     placement:
       constraints:
-{% if placement_constraints %}
-        - node.labels.role_es == true
-{% else %}
-        - node.role == manager
-{% endif %}
+        - {{elastic_placement_constraint}}
 
   environment: &es-environment-vars
     <<: *base-environment-vars
@@ -91,11 +84,7 @@ x-worker-service-settings: &worker-service-settings
   deploy: &worker-deploy-settings
     placement:
       constraints:
-{% if placement_constraints %}
-        - node.labels.role_indexer == true
-{% else %}
-        - node.role == manager
-{% endif %}
+        - {{worker_placement_constraint}}
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
@@ -250,12 +239,35 @@ services:
 volumes:
 {% for i in range(1,(elastic_num_nodes | int)+1) %}
   elasticsearch_data_{{"%02d" % i}}:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}elasticsearch_data_{{"%02d" % i}}
 {%- endfor %}
   elasticsearch_data_backup:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}elasticsearch_data_backup
   rabbitmq_data:
-  # Neccesary for diskstory, ideally not used:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}rabbitmq
   worker_data:
+    # Neccesary for diskstory, ideally not used:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}worker_data
 
+# network created by deploy.sh for web_collection_search API to attach to.
+# make web_collection_search a "git subtree" and build/launch in this file??
 networks:
-  {{network_name}}:
-    driver: overlay
+  default:
+    name: {{network_name}}
+    external: true
