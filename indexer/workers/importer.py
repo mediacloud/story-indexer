@@ -47,48 +47,59 @@ es_mappings = {
 }
 
 
+def create_elasticsearch_client(
+    hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]]],
+) -> Elasticsearch:
+    if isinstance(hosts, str):
+        host_urls = hosts.split(",")
+
+    host_configs: Any = []
+    for host_url in host_urls:
+        parsed_url = urlparse(host_url)
+        host = parsed_url.hostname
+        scheme = parsed_url.scheme
+        port = parsed_url.port
+        if host and scheme and port:
+            node_config = NodeConfig(scheme=scheme, host=host, port=port)
+            host_configs.append(node_config)
+
+    return Elasticsearch(host_configs)
+
+
 class ElasticsearchConnector:
     def __init__(
         self,
         hosts: Union[
             str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
         ],
-        index_names: str,
+        index_name: str,
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
         assert isinstance(hosts, str)
-        host_configs: Any = []
-        for host_url in hosts.split(","):
-            parsed_url = urlparse(str(host_url))
-            host = parsed_url.hostname
-            scheme = parsed_url.scheme
-            port = parsed_url.port
-            if host and scheme and port:
-                node_config = NodeConfig(scheme=scheme, host=host, port=port)
-                host_configs.append(node_config)
-        self.client = Elasticsearch(host_configs)
-        self.index_names = index_names
+        print(f"Hosts : {hosts}")
+        self.client = create_elasticsearch_client(hosts)
+        self.index_name = index_name
         self.mappings = mappings
         self.settings = settings
-        if self.client and self.index_names:
-            self.create_indices()
+        if self.client and self.index_name:
+            self.create_index(self.index_name)
 
-    def create_indices(self) -> None:
-        for index_name in self.index_names.split(","):
-            if not self.client.indices.exists(index=index_name):
-                if self.mappings and self.settings:
-                    self.client.indices.create(
-                        index=index_name,
-                        mappings=self.mappings,
-                        settings=self.settings,
-                    )
-                else:
-                    self.client.indices.create(index=index_name)
+    def create_index(self, index_name: str) -> None:
+        if not self.client.indices.exists(index=index_name):
+            if self.mappings and self.settings:
+                self.client.indices.create(
+                    index=index_name,
+                    mappings=self.mappings,
+                    settings=self.settings,
+                )
+            else:
+                self.client.indices.create(index=index_name)
 
     def index(
         self, id: str, index_name: str, document: Mapping[str, Any]
     ) -> ObjectApiResponse[Any]:
+        self.create_index(index_name)
         response: ObjectApiResponse[Any] = self.client.index(
             index=index_name, id=id, document=document
         )
@@ -99,19 +110,43 @@ class ElasticsearchImporter(StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         elasticsearch_hosts = os.environ.get("ELASTICSEARCH_HOSTS")
-        index_names = os.environ.get("ELASTICSEARCH_INDEX_NAMES")
+        index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         ap.add_argument(
-            "--elasticsearch-host",
-            dest="elasticsearch_host",
+            "--elasticsearch-hosts",
+            dest="elasticsearch_hosts",
             default=elasticsearch_hosts,
             help="override ELASTICSEARCH_HOSTS",
         )
         ap.add_argument(
-            "--index-names",
-            dest="index_names",
+            "--index-name",
+            dest="index_name",
             type=str,
-            default=index_names,
-            help=f"Elasticsearch index name, default {index_names}",
+            default=index_name,
+            help=f"Elasticsearch index name, default {index_name}",
+        )
+
+    def process_args(self) -> None:
+        super().process_args()
+        assert self.args
+        logger.info(self.args)
+
+        elasticsearch_hosts = self.args.elasticsearch_hosts
+        if not elasticsearch_hosts:
+            logger.fatal("need --elasticsearch-host defined")
+            sys.exit(1)
+        self.elasticsearch_hosts = elasticsearch_hosts
+
+        index_name = self.args.index_name
+        if index_name is None:
+            logger.fatal("need --index-name defined")
+            sys.exit(1)
+        self.index_name = index_name
+
+        self.connector = ElasticsearchConnector(
+            self.elasticsearch_hosts,
+            self.index_name,
+            mappings=es_mappings,
+            settings=es_settings,
         )
 
     def index_routing(self, publication_date_str: Optional[str]) -> str:
@@ -123,39 +158,13 @@ class ElasticsearchImporter(StoryWorker):
             if publication_date_str
             else None
         )
-
-        routing_index = (
-            f"mediacloud_search_text_{year}"
-            if year in [2021, 2022, 2023]
-            else "mediacloud_search_text_other"
-        )
+        index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
+        if year and year >= 2021:
+            routing_index = f"{index_name_prefix}_{year}"
+        else:
+            routing_index = f"{index_name_prefix}_older"
 
         return routing_index
-
-    def process_args(self) -> None:
-        super().process_args()
-        assert self.args
-        logger.info(self.args)
-
-        elasticsearch_hosts = self.args.elasticsearch_hosts
-        if not elasticsearch_hosts:
-            logger.fatal("need --elasticsearch-host defined")
-            sys.exit(1)
-
-        self.elasticsearch_hosts = elasticsearch_hosts
-
-        index_names = self.args.index_names
-        if index_names is None:
-            logger.fatal("need --index-name defined")
-            sys.exit(1)
-        self.index_names = index_names
-
-        self.connector = ElasticsearchConnector(
-            self.elasticsearch_hosts,
-            self.index_names,
-            mappings=es_mappings,
-            settings=es_settings,
-        )
 
     def process_story(
         self,
