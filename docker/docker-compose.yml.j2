@@ -56,7 +56,7 @@ x-es-service-settings: &es-service-settings
     cluster.initial_master_nodes: *es-node-names
     cluster.name: {{elastic_cluster_name}}
     discovery.seed_hosts: *es-node-names
-    network.publish_host: _eth0_
+    network.publish_host: _eth1_
     node.roles: master,data
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
@@ -85,6 +85,8 @@ x-worker-service-settings: &worker-service-settings
     placement:
       constraints:
         - {{worker_placement_constraint}}
+    restart_policy:
+      condition: on-failure
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
@@ -186,11 +188,7 @@ services:
       <<: *worker-environment-vars
       RUN: configure-pipeline
       ARGS: "configure"
-    deploy:
-      <<: *worker-deploy-settings
-      # run once on stack deploy
-      restart_policy:
-        condition: none
+      # exits successfully, won't be restarted
 
   fetcher-worker:
     <<: *worker-service-settings

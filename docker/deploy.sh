@@ -34,15 +34,17 @@ usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
     echo "  -a  allow-dirty; no dirty/push checks; no tags applied (for dev)"
+    echo "  -b  build image but do not deploy"
     echo "  -d  enable debug output (on jinja2 invocation)"
     echo "  -h  output this help and exit"
     echo "  -n  dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u  allow running as non-root user"
     exit 1
 }
-while getopts adhnu OPT; do
+while getopts abdhnu OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
+   b) BUILD_ONLY=1;;
    d) DEBUG=1;;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
@@ -66,6 +68,14 @@ if [ "x$LOGIN_USER" = x ]; then
     echo could not find login user 1>&2
     exit 1
 fi
+
+run_as_login_user() {
+    if [ $(whoami) = root ]; then
+	su $LOGIN_USER -c "$*"
+    else
+	$*
+    fi
+}
 
 BRANCH=$(git branch --show-current)
 #GIT_HASH=$(git rev-parse --short HEAD)
@@ -98,7 +108,7 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
 # Pushing to a local registry for now, while in dev loop.
 # set registry differently based on BRANCH?!
-WORKER_IMAGE_REGISTRY=$HOSTNAME:5000
+WORKER_IMAGE_REGISTRY=localhost:5000
 
 WORKER_IMAGE_NAME=indexer-worker
 
@@ -130,7 +140,7 @@ esac
 
 # check if in sync with remote
 # (send stderr to /dev/null in case remote branch does not exist)
-git fetch $REMOTE $BRANCH 2>/dev/null
+run_as_login_user git fetch $REMOTE $BRANCH 2>/dev/null
 if git diff --quiet $BRANCH $REMOTE/$BRANCH -- 2>/dev/null; then
     echo "$REMOTE $BRANCH branch up to date."
 else
@@ -156,6 +166,7 @@ prod)
     ;;
 staging)
     STACK_NAME=staging-$BASE_STACK_NAME
+    ELASTIC_NUM_NODES=3
     MULTI_NODE_DEPLOYMENT=1
     # correct for ramos 2023-09-23 staging deployment:
     # NOTE: **SHOULD** contain indexer-staging!!!
@@ -248,9 +259,13 @@ rm -f docker-compose.yml.dump
 docker stack config -c docker-compose.yml > docker-compose.yml.dump
 STATUS=$?
 if [ $STATUS != 0 ]; then
-    # fails w/ older versions
     echo "docker stack config status: $STATUS" 1>&2
-    exit 3
+    # fails w/ older versions
+    if [ $STATUS = 125 ]; then
+	echo 'failed due to old version of docker??'
+    else
+	exit 3
+    fi
 else
     # maybe only keep if $DEBUG set??
     echo "output (with merges expanded) in docker-compose.yml.dump" 1>&2
@@ -272,33 +287,34 @@ else
     echo "dirty repo"
 fi
 
-echo ''
-echo -n "Deploy branch $BRANCH as stack $STACK_NAME? [no] "
-read CONFIRM
-case "$CONFIRM" in
-[yY]|[yY][eE][sS]) ;;
-*) echo '[cancelled]'; exit;;
-esac
-
-if [ "x$BRANCH" = xprod ]; then
-    echo -n "This is production! Type YES to confirm: "
+if [ "x$BUILD_ONLY" = x ]; then
+    echo ''
+    echo -n "Deploy branch $BRANCH as stack $STACK_NAME? [no] "
     read CONFIRM
-    if [ "x$CONFIRM" != 'xYES' ]; then
-       echo '[cancelled]'
-       exit 0
+    case "$CONFIRM" in
+    [yY]|[yY][eE][sS]) ;;
+    *) echo '[cancelled]'; exit;;
+    esac
+
+    if [ "x$BRANCH" = xprod ]; then
+	echo -n "This is production! Type YES to confirm: "
+	read CONFIRM
+	if [ "x$CONFIRM" != 'xYES' ]; then
+	   echo '[cancelled]'
+	   exit 0
+	fi
     fi
+    echo ''
 fi
 
-echo ''
-
-if [ "x$IS_DIRTY" != x ]; then
+if [ "x$IS_DIRTY" = x ]; then
     echo adding local git tag $TAG
-    git tag $TAG
+    run_as_login_user git tag $TAG
     # XXX check status?
 
     # push tag to upstream repos
     echo pushing git tag to $REMOTE
-    git push $REMOTE $TAG
+    run_as_login_user git push $REMOTE $TAG
     # XXX check status?
 fi
 
@@ -310,11 +326,17 @@ if [ $STATUS != 0 ]; then
     exit 1
 fi
 
+if [ "x$BUILD_ONLY" != x ]; then
+    echo 'build done'
+    exit 0
+fi
+
+# TEMP OFF (only run if repo not localhost?)
 echo docker compose push:
 docker compose push
 STATUS=$?
 if [ $STATUS != 0 ]; then
-    echo docker compose build failed: $STATUS 1>&2
+    echo docker compose push failed: $STATUS 1>&2
     exit 1
 fi
 
@@ -323,7 +345,6 @@ fi
 if docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
     echo found docker network $NETWORK_NAME
 else
-    set -x
     docker network create --attachable --driver overlay $NETWORK_NAME
     STATUS=$?
     if [ $STATUS = 0 ]; then
@@ -334,7 +355,8 @@ else
     fi
 fi
 
-echo docker stack deploy:
+echo 'docker stack deploy (ignore "Ignoring unsupported options: build"):'
+# add --prune to remove old services?
 docker stack deploy -c docker-compose.yml $STACK_NAME
 STATUS=$?
 if [ $STATUS != 0 ]; then

@@ -20,5 +20,7 @@ run_python() {
     shift
     log -p debug "invoking $MODULE $*"
     python3 -m$MODULE "$@"
-    log -p debug "$MODULE $* exit status $?"
+    STATUS=$?
+    log -p debug "$MODULE $* exit status $STATUS"
+    return $STATUS
 }
