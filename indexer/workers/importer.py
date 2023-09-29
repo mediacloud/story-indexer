@@ -109,20 +109,18 @@ class ElasticsearchConnector:
 class ElasticsearchImporter(StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        elasticsearch_hosts = os.environ.get("ELASTICSEARCH_HOSTS")
-        index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
         ap.add_argument(
             "--elasticsearch-hosts",
             dest="elasticsearch_hosts",
-            default=elasticsearch_hosts,
+            default=os.environ.get("ELASTICSEARCH_HOSTS"),
             help="override ELASTICSEARCH_HOSTS",
         )
         ap.add_argument(
             "--index-name",
             dest="index_name",
             type=str,
-            default=index_name,
-            help=f"Elasticsearch index name, default {index_name}",
+            default=os.environ.get("ELASTICSEARCH_INDEX_NAME"),
+            help="Elasticsearch index name",
         )
 
     def process_args(self) -> None:
