@@ -55,7 +55,7 @@ class QStats(QApp):
 
         output = f"{prefix}.{output_item}"
         logger.debug("%s %s=%s: %s", output, label, label_value, value)
-        self.gauge(prefix, value, [(label, label_value)])
+        self.gauge(output, value, [(label, label_value)])
 
     def main_loop(self) -> None:
         assert self.args
