@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
 from indexer.story import BaseStory, StoryFactory, uuid_by_link
@@ -135,7 +136,12 @@ class FetchWorker(QApp):
             status_label = f"http-{http_meta.response_code//100}xx"
 
         self.incr("fetched-stories", labels=[("status", status_label)])
-        self.fetched_stories.append(story)
+
+        assert http_meta.final_url is not None
+        if any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
+            self.incr("non-news-stories")
+        else:
+            self.fetched_stories.append(story)
 
     def main_loop(self) -> None:
         # Fetch and batch rss
