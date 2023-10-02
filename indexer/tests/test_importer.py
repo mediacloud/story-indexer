@@ -26,7 +26,7 @@ def set_env() -> None:
     os.environ["ELASTICSEARCH_INDEX_NAME_PREFIX"] = "test_mediacloud_search_text"
 
 
-def create_and_delete_indices(client: Elasticsearch, index_name: str) -> None:
+def recreate_indices(client: Elasticsearch, index_name: str) -> None:
     if client.indices.exists(index=index_name):
         client.indices.delete(index=index_name)
     client.indices.create(index=index_name, mappings=es_mappings, settings=es_settings)
@@ -41,11 +41,11 @@ def elasticsearch_client() -> Any:
     index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
     assert index_name is not None, "ELASTICSEARCH_INDEX_NAME is not set"
 
-    create_and_delete_indices(client, index_name)
+    recreate_indices(client, index_name)
 
     yield client
 
-    create_and_delete_indices(client, index_name)
+    recreate_indices(client, index_name)
 
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
