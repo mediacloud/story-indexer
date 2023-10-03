@@ -39,15 +39,23 @@ _CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT = 30 * 60
 
-MAX_RETRIES = 10
 RETRIES_HDR = "x-mc-retries"
+
+# MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
+# before quarantine:
+MAX_RETRIES = 10
+RETRY_DELAY_MINUTES = 60
+
+MS_PER_MINUTE = 60 * 1000
 
 
 class QuarantineException(AppException):
     """
     Exception to raise when a message cannot _possibly_ be processed,
     and the message should be sent directly to jail
-    (do not pass go, do not collect $200)
+    (do not pass go, do not collect $200).
+
+    Constructor argument should be a description, or repr(exception)
     """
 
 
@@ -82,6 +90,22 @@ def quarantine_queue_name(procname: str) -> str:
     return procname + "-quar"
 
 
+def retry_queue_name(procname: str) -> str:
+    """take process name, return retry delay queue name"""
+    # might be possible to have a single queue,
+    # but having a retry queue per worker queue
+    # makes it clear where the problem is, and
+    # avoids having to chew through a mess of messages.
+    return procname + "-retry"
+
+
+def base_queue_name(qname: str) -> str:
+    """
+    take a queue name, and return base (app) name
+    """
+    return qname.rsplit("-", maxsplit=1)[0]
+
+
 class QApp(App):
     """
     Base class for AMQP/pika based App.
@@ -107,6 +131,7 @@ class QApp(App):
         # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
+        self.retry_queue_name = retry_queue_name(self.process_name)
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -234,13 +259,6 @@ class Worker(QApp):
     # (INPUT_BATCH_SECS + BATCH_PROCESSING_SECS) > CONSUMER_TIMEOUT
     BATCH_PROCESSING_SECS = 60
 
-    # number of messages requeued for retry in a row before taking a rest
-    RETRIES_PAUSE_COUNT = 10
-
-    # time to delay when more than RETRIES_PAUSE_COUNT messages
-    # requeued in a row (should not exceed CONSUMER_TIMEOUT)
-    RETRIES_PAUSE_SECONDS = 60
-
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self.input_msgs: List[InputMessage] = []
@@ -350,25 +368,6 @@ class Worker(QApp):
 
         sys.stdout.flush()  # for redirection, supervisord
 
-        # After ack/tx_commit.  Large numbers of retries in a row are
-        # likely due to an external dependancy being down, or an
-        # unexpected condition (or bug) causing the worker code to
-        # crash.  Avoid spinning through the queue doing retries until
-        # everything ends up in qurantine.  (PLB: I initially wanted
-        # to use delayed delivery for requeued work, but it just got
-        # too complicated)
-
-        # too many retries in a row?
-        if self.retries >= self.RETRIES_PAUSE_COUNT:
-            # NOTE! rabbitmq server will queue "prefetch_count"
-            # messages, so RETRIES_PAUSE_SECONDS should not
-            # exceed the consumer timeout
-
-            # XXX use setproctitle to indicate state?
-            logger.info(f"{self.retries} retries, sleeping...")  # XXX notice??
-            assert self.connection
-            self.connection.sleep(self.RETRIES_PAUSE_SECONDS)
-
     def _exc_headers(self, e: Exception) -> Dict:
         """
         return dict of headers to add to a message
@@ -450,11 +449,23 @@ class Worker(QApp):
         headers = self._exc_headers(e)
         headers[RETRIES_HDR] = retries + 1
 
-        # requeue to self via direct exchange w/ new headers
-        # tempting to do delayed delivery, but it's a morass!
-        self.send_message(
-            chan, body, "", self.input_queue_name, BasicProperties(headers=headers)
-        )
+        # Would like exponential backoff (BASE << retries),
+        # but https://www.rabbitmq.com/ttl.html says:
+        #    When setting per-message TTL expired messages can queue
+        #    up behind non-expired ones until the latter are consumed
+        #    or expired.
+        # So it's dicey to queue messages with individual expiration
+        # times.  _COULD_ have multiple delay queues with different
+        # message-ttl values, queuing messages to queues(s) with
+        # longer ttl(s) depending on retry count.
+
+        # "message-ttl" can be specified via policy, but doing it here
+        # for greater transparency.
+        expiration_ms_str = str(RETRY_DELAY_MINUTES * MS_PER_MINUTE)
+        props = BasicProperties(headers=headers, expiration=expiration_ms_str)
+
+        # send to retry queue via default exchange (routing key is queue name)
+        self.send_message(chan, body, "", self.retry_queue_name, props)
 
     def process_message(
         self,

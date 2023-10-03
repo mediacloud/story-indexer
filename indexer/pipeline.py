@@ -21,9 +21,11 @@ from pika.exchange_type import ExchangeType
 from indexer.worker import (
     DEFAULT_ROUTING_KEY,
     QApp,
+    base_queue_name,
     input_queue_name,
     output_exchange_name,
     quarantine_queue_name,
+    retry_queue_name,
 )
 
 COMMANDS: List[str] = []
@@ -143,29 +145,87 @@ class Pipeline(QApp):
         """Add a Process with no output"""
         return Consumer(self, name)
 
-    #### Commands (in alphabetical order)
-    @command
-    def configure(self) -> None:
-        """configure queues"""
+    def _configure(self, create: bool) -> None:
+        """
+        create queues etc if create is True; remove if False.
+        (so only one routine to modify)
+        """
+
         assert self.connection
         chan = self.connection.channel()
+        api = self.admin_api()
+
+        # nested helper functions to avoid need to pass api, chan, create:
+
+        def policy(name: str, defn: Dict, pat: str, apply_to: str) -> None:
+            vhost = "/"
+            prio = 0
+            if create:
+                logger.debug(f" creating policy {name} for {apply_to}")
+                api.create_policy_for_vhost(vhost, name, defn, pat, prio, apply_to)
+            else:
+                logger.debug(f" deleting policy {name}")
+                api.delete_policy_for_vhost(vhost, name)
+
+        def queue(qname: str, retry: bool = False) -> None:
+            if create:
+                logger.debug(f"creating queue {qname}")
+
+                # durable means queue survives reboot,
+                # NOT default delivery mode!
+                # see https://www.rabbitmq.com/queues.html#durability
+
+                # XXX if using cluster, use quorum queues:
+                # arguments={"x-queue-type": "quorum"}
+                chan.queue_declare(qname, durable=True)
+            else:
+                logger.debug(f"deleting queue {qname}")
+                chan.queue_delete(qname)
+
+            if retry:
+                # policy settings preferable to creating queue with x-... params
+                # which cannot be changed after queue creation.
+                pname = qname + "-policy"  # policy name
+
+                # route delayed retry messages back to input queue via
+                # default exchange after expiration. Message timeout
+                # set via "expiration" message property in
+                # Worker._retry, instead of here using "message-ttl"
+                input_queue = input_queue_name(base_queue_name(qname))
+                defn = {
+                    "dead-letter-exchange": "",  # default exchange
+                    "dead-letter-routing-key": input_queue,
+                }
+                policy(pname, defn, f"^{qname}$", "queues")
+
+        def exchange(ename: str) -> None:
+            if create:
+                logger.debug(f"creating {etype} exchange {ename}")
+                chan.exchange_declare(ename, etype)
+            else:
+                logger.debug(f"deleting exchange {ename}")
+                chan.exchange_delete(ename)
+
+        def qbind(dest_queue: str, ename: str, routing_key: str) -> None:
+            # XXX make routing_key optional?
+            if create:
+                logger.debug(f" binding queue {dest_queue_name} to exchange {ename}")
+                chan.queue_bind(dest_queue_name, ename, routing_key=routing_key)
+            else:
+                logger.debug(f" unbinding queue {dest_queue_name} to exchange {ename}")
+                chan.queue_unbind(dest_queue_name, ename, routing_key=routing_key)
+
+        #### _configure function body:
+
+        if not create:
+            self._set_configured(chan, False)  # MUST be first!!!
 
         # create queues and exchanges
         for name, proc in self.procs.items():
             if proc.consumer:
-                qname = input_queue_name(name)
-                logger.debug(f"declaring queue {qname}")
-                # durable means queue survives reboot,
-                # NOT default delivery mode!
-                # see https://www.rabbitmq.com/queues.html#durability
-                chan.queue_declare(qname, durable=True)
-
-                qname = quarantine_queue_name(name)
-                logger.debug(f"declaring queue {qname}")
-                # durable means queue survives reboot,
-                # NOT default delivery mode!
-                # see https://www.rabbitmq.com/queues.html#durability
-                chan.queue_declare(qname, durable=True)
+                queue(input_queue_name(name))
+                queue(quarantine_queue_name(name))
+                queue(retry_queue_name(name), retry=True)
 
             if proc.outputs:
                 ename = output_exchange_name(proc.name)
@@ -173,52 +233,26 @@ class Pipeline(QApp):
                     etype = ExchangeType.direct
                 else:
                     etype = ExchangeType.fanout
-                logger.debug(f"declaring {etype} exchange {ename}")
-                chan.exchange_declare(ename, etype)
+                exchange(ename)
 
                 for outproc in proc.outputs:
                     dest_queue_name = input_queue_name(outproc.name)
-                    logger.debug(
-                        f" binding queue {dest_queue_name} to exchange {ename}"
-                    )
-                    chan.queue_bind(
-                        dest_queue_name, ename, routing_key=DEFAULT_ROUTING_KEY
-                    )
+                    qbind(dest_queue_name, ename, DEFAULT_ROUTING_KEY)
 
-        # create semaphore
-        self._set_configured(chan, True)  # MUST be last!!!
+        if create:
+            # create semaphore
+            self._set_configured(chan, True)  # MUST be last!!!
+
+    #### Commands (in alphabetical order)
+    @command
+    def configure(self) -> None:
+        """configure queues etc."""
+        self._configure(True)
 
     @command
     def delete(self) -> None:
-        """delete queues"""
-        assert self.connection
-        chan = self.connection.channel()
-
-        self._set_configured(chan, False)  # MUST be first!!!
-
-        for name, proc in self.procs.items():
-            if proc.consumer:
-                qname = input_queue_name(name)
-                logger.debug(f"deleting queue {qname}")
-                chan.queue_delete(qname)
-
-                qname = quarantine_queue_name(name)
-                logger.debug(f"deleting queue {qname}")
-                chan.queue_delete(qname)
-
-            if proc.outputs:
-                ename = output_exchange_name(name)
-                logger.debug(f"deleting exchange {ename}")
-                chan.exchange_delete(ename)
-
-                for outproc in proc.outputs:
-                    dest_queue_name = input_queue_name(outproc.name)
-                    logger.debug(
-                        f" deleting binding {dest_queue_name} queue to exchange {ename}"
-                    )
-                    chan.queue_unbind(
-                        dest_queue_name, ename, routing_key=DEFAULT_ROUTING_KEY
-                    )
+        """delete queues etc."""
+        self._configure(False)
 
     @command
     def help(self) -> None:
