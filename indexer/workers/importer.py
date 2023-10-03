@@ -151,11 +151,12 @@ class ElasticsearchImporter(StoryWorker):
         """
         determine the routing index bashed on publication year
         """
-        year = (
-            datetime.strptime(publication_date_str, "%Y-%m-%d").year
-            if publication_date_str
-            else None
-        )
+        if publication_date_str:
+            try:
+                year = datetime.strptime(publication_date_str, "%Y-%m-%d").year
+            except ValueError:
+                year = -1
+
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         if year and year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
@@ -202,17 +203,18 @@ class ElasticsearchImporter(StoryWorker):
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
-                if response.get("result") == "created":
-                    logger.info(
-                        f"Story has been successfully imported. to index {target_index}"
-                    )
-                    import_status_label = "success"
-                else:
-                    # Log no imported stories
-                    logger.info("Story was not imported.")
-                    import_status_label = "failed"
             except Exception as e:
+                response = None
                 logger.error(f"Elasticsearch exception: {str(e)}")
+
+            if response and response.get("result") == "created":
+                logger.info(
+                    f"Story has been successfully imported. to index {target_index}"
+                )
+                import_status_label = "success"
+            else:
+                # Log no imported stories
+                logger.info("Story was not imported.")
                 import_status_label = "failed"
 
         self.incr("imported-stories", labels=[("status", import_status_label)])
