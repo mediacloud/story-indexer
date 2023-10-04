@@ -67,6 +67,10 @@ class InputMessage(NamedTuple):
     body: bytes
 
 
+# NOTE!! base_queue_name depends on the following
+# functions adding ONLY a hyphen and a single word!
+
+
 def input_queue_name(procname: str) -> str:
     """take process name, return input queue name"""
     # Every consumer has an an input queue NAME-in.
@@ -90,13 +94,9 @@ def quarantine_queue_name(procname: str) -> str:
     return procname + "-quar"
 
 
-def retry_queue_name(procname: str) -> str:
+def delay_queue_name(procname: str) -> str:
     """take process name, return retry delay queue name"""
-    # might be possible to have a single queue,
-    # but having a retry queue per worker queue
-    # makes it clear where the problem is, and
-    # avoids having to chew through a mess of messages.
-    return procname + "-retry"
+    return procname + "-delay"
 
 
 def base_queue_name(qname: str) -> str:
@@ -131,7 +131,7 @@ class QApp(App):
         # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
-        self.retry_queue_name = retry_queue_name(self.process_name)
+        self.delay_queue_name = delay_queue_name(self.process_name)
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -228,6 +228,12 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
         # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
         chan.basic_publish(exchange, routing_key, data, properties)
+
+        if exchange:
+            dest = exchange
+        else:
+            dest = routing_key  # using default exchange
+        self.incr("sent-msgs", labels=[("dest", dest)])
 
     def admin_api(self) -> rabbitmq_admin.AdminAPI:  # type: ignore[no-any-unimported]
         args = self.args
@@ -458,14 +464,11 @@ class Worker(QApp):
         # times.  _COULD_ have multiple delay queues with different
         # message-ttl values, queuing messages to queues(s) with
         # longer ttl(s) depending on retry count.
-
-        # "message-ttl" can be specified via policy, but doing it here
-        # for greater transparency.
-        expiration_ms_str = str(RETRY_DELAY_MINUTES * MS_PER_MINUTE)
+        expiration_ms_str = str(int(RETRY_DELAY_MINUTES * MS_PER_MINUTE))
         props = BasicProperties(headers=headers, expiration=expiration_ms_str)
 
-        # send to retry queue via default exchange (routing key is queue name)
-        self.send_message(chan, body, "", self.retry_queue_name, props)
+        # send to retry delay queue via default exchange
+        self.send_message(chan, body, "", self.delay_queue_name, props)
 
     def process_message(
         self,

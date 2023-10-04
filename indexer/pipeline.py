@@ -22,10 +22,10 @@ from indexer.worker import (
     DEFAULT_ROUTING_KEY,
     QApp,
     base_queue_name,
+    delay_queue_name,
     input_queue_name,
     output_exchange_name,
     quarantine_queue_name,
-    retry_queue_name,
 )
 
 COMMANDS: List[str] = []
@@ -153,21 +153,10 @@ class Pipeline(QApp):
 
         assert self.connection
         chan = self.connection.channel()
-        api = self.admin_api()
 
         # nested helper functions to avoid need to pass api, chan, create:
 
-        def policy(name: str, defn: Dict, pat: str, apply_to: str) -> None:
-            vhost = "/"
-            prio = 0
-            if create:
-                logger.debug(f" creating policy {name} for {apply_to}")
-                api.create_policy_for_vhost(vhost, name, defn, pat, prio, apply_to)
-            else:
-                logger.debug(f" deleting policy {name}")
-                api.delete_policy_for_vhost(vhost, name)
-
-        def queue(qname: str, retry: bool = False) -> None:
+        def queue(qname: str, delay: bool = False) -> None:
             if create:
                 logger.debug(f"creating queue {qname}")
 
@@ -175,33 +164,37 @@ class Pipeline(QApp):
                 # NOT default delivery mode!
                 # see https://www.rabbitmq.com/queues.html#durability
 
-                # XXX if using cluster, use quorum queues:
-                # arguments={"x-queue-type": "quorum"}
-                chan.queue_declare(qname, durable=True)
+                arguments = {}
+
+                if delay:
+                    # policy settings preferable to creating queue
+                    # with x-... params which cannot be changed after
+                    # queue creation, BUT unlikely to change, and RMQ
+                    # documentation makes it unclear whether policies
+                    # are (or can be made) durable.  An answer might
+                    # be to have this code generate a config file for
+                    # RabbitMQ....
+
+                    # Use default exchange to route msgs back to input
+                    # queue after TTL expires.  TTL set via
+                    # "expiration" message property in Worker._retry
+                    arguments["x-dead-letter-exchange"] = ""  # default exchange
+                    arguments["x-dead-letter-routing-key"] = input_queue_name(
+                        base_queue_name(qname)
+                    )
+
+                # XXX if using cluster, use quorum queues, setting:
+                # arguments["x-queue-type"] = "quorum"
+
+                chan.queue_declare(qname, durable=True, arguments=arguments)
             else:
                 logger.debug(f"deleting queue {qname}")
                 chan.queue_delete(qname)
 
-            if retry:
-                # policy settings preferable to creating queue with x-... params
-                # which cannot be changed after queue creation.
-                pname = qname + "-policy"  # policy name
-
-                # route delayed retry messages back to input queue via
-                # default exchange after expiration. Message timeout
-                # set via "expiration" message property in
-                # Worker._retry, instead of here using "message-ttl"
-                input_queue = input_queue_name(base_queue_name(qname))
-                defn = {
-                    "dead-letter-exchange": "",  # default exchange
-                    "dead-letter-routing-key": input_queue,
-                }
-                policy(pname, defn, f"^{qname}$", "queues")
-
         def exchange(ename: str) -> None:
             if create:
                 logger.debug(f"creating {etype} exchange {ename}")
-                chan.exchange_declare(ename, etype)
+                chan.exchange_declare(ename, etype, durable=True)
             else:
                 logger.debug(f"deleting exchange {ename}")
                 chan.exchange_delete(ename)
@@ -225,7 +218,7 @@ class Pipeline(QApp):
             if proc.consumer:
                 queue(input_queue_name(name))
                 queue(quarantine_queue_name(name))
-                queue(retry_queue_name(name), retry=True)
+                queue(delay_queue_name(name), delay=True)
 
             if proc.outputs:
                 ename = output_exchange_name(proc.name)
