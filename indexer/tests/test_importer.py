@@ -51,7 +51,7 @@ def elasticsearch_client() -> Any:
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
     "normalized_url": "http://example.com",
-    "url": "http://example6.com",
+    "url": "http://example.com",
     "canonical_domain": "example.com",
     "publication_date": "2023-06-27",
     "language": "en",
