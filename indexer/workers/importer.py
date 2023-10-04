@@ -30,7 +30,7 @@ es_mappings = {
         "url": {"type": "keyword"},
         "normalized_url": {"type": "keyword"},
         "canonical_domain": {"type": "keyword"},
-        "publication_date": {"type": "date"},
+        "publication_date": {"type": "date", "ignore_malformed": True},
         "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
         "full_language": {"type": "keyword"},
         "text_extraction": {"type": "keyword"},
@@ -77,7 +77,6 @@ class ElasticsearchConnector:
         settings: Mapping[str, Any],
     ) -> None:
         assert isinstance(hosts, str)
-        print(f"Hosts : {hosts}")
         self.client = create_elasticsearch_client(hosts)
         self.index_name = index_name
         self.mappings = mappings
@@ -151,6 +150,7 @@ class ElasticsearchImporter(StoryWorker):
         """
         determine the routing index bashed on publication year
         """
+        year = -1
         if publication_date_str:
             try:
                 year = datetime.strptime(publication_date_str, "%Y-%m-%d").year
