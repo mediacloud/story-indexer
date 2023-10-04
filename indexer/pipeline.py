@@ -8,6 +8,11 @@ the default pipeline.... It's a floor wax AND a desert topping!
 https://www.nbc.com/saturday-night-live/video/shimmer-floor-wax/2721424
 """
 
+# PLB: Maybe this should write out RabbitMQ configuration file
+# (instead of configuring queues) so that RabbitMQ comes up configured
+# on restart?!!! *BUT* this assumes there is ONE true configuration
+# (ie; that any queues for backfill processing are included).
+
 import argparse
 import logging
 import sys
