@@ -135,13 +135,15 @@ class FetchWorker(QApp):
         else:
             status_label = f"http-{http_meta.response_code//100}xx"
 
-        self.incr("fetched-stories", labels=[("status", status_label)])
-
         assert http_meta.final_url is not None
         if any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
             self.incr("non-news-stories")
+            status_label = "non-news"
+
         else:
             self.fetched_stories.append(story)
+
+        self.incr("fetched-stories", labels=[("status", status_label)])
 
     def main_loop(self) -> None:
         # Fetch and batch rss
