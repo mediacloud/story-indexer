@@ -151,7 +151,15 @@ class FetchWorker(QApp):
         all_rss_records = fetch_daily_rss(self.fetch_date, self.sample_size)
         batches, batch_map = batch_rss(all_rss_records, num_batches=self.num_batches)
         self.rss_batch = batches[self.batch_index]
-        logger.info(f"Found {len(self.rss_batch)} entries for batch {self.batch_index}")
+
+        # Logging batch information:
+        for i in range(self.num_batches):
+            batch = batches[i]
+            batch_size = len(batch[i])
+            domains = len(set([s["domain"] for s in batch]))
+            logger.info(
+                f"Batch {i}:  {batch_size} stories, from {domains} domains (~{batch_size / domains} stories per domain"
+            )
 
         # Initialize stories
         logger.info(f"Initializing stories for {self.batch_index} on {self.fetch_date}")
