@@ -455,19 +455,19 @@ class Worker(QApp):
         headers = self._exc_headers(e)
         headers[RETRIES_HDR] = retries + 1
 
+        # Queue message to -delay queue, which has no consumers with
+        # an expiration/TTL; when messages expire, they are routed
+        # back to the -in queue via dead-letter-{exchange,routing-key}.
+
         # Would like exponential backoff (BASE << retries),
         # but https://www.rabbitmq.com/ttl.html says:
         #    When setting per-message TTL expired messages can queue
         #    up behind non-expired ones until the latter are consumed
         #    or expired.
-        # So it's dicey to queue messages with individual expiration
-        # times.  _COULD_ have multiple delay queues with different
-        # message-ttl values, queuing messages to queues(s) with
-        # longer ttl(s) depending on retry count.
         expiration_ms_str = str(int(RETRY_DELAY_MINUTES * MS_PER_MINUTE))
-        props = BasicProperties(headers=headers, expiration=expiration_ms_str)
 
         # send to retry delay queue via default exchange
+        props = BasicProperties(headers=headers, expiration=expiration_ms_str)
         self.send_message(chan, body, "", self.delay_queue_name, props)
 
     def process_message(
