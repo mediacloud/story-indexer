@@ -154,8 +154,8 @@ class ElasticsearchImporter(StoryWorker):
         if publication_date_str:
             try:
                 year = datetime.strptime(publication_date_str, "%Y-%m-%d").year
-            except ValueError:
-                year = -1
+            except ValueError as e:
+                logger.error(f"Error parsing date: {str(e)}")
 
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         if year and year >= 2021:
