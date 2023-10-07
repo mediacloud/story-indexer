@@ -76,6 +76,17 @@ class TestElasticsearchConnection:
         assert response["result"] == "created"
         assert "_id" in response
 
+    def test_index_document_with_none_date(self, elasticsearch_client: Any) -> None:
+        index_names = list(elasticsearch_client.indices.get_alias().keys())
+        index_name = index_names[0]
+        test_data_with_none_date = dict(test_data).copy()
+        test_data_with_none_date["publication_date"] = None
+        response = elasticsearch_client.index(
+            index=index_name, document=test_data_with_none_date
+        )
+        assert response["result"] == "created"
+        assert "_id" in response
+
 
 @pytest.fixture(scope="class")
 def elasticsearch_connector() -> ElasticsearchConnector:
