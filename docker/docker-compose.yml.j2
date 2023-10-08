@@ -237,6 +237,24 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
+  ################ news search api (built elsewhere)
+
+  # NOTE! Not building Docker image here (yet)
+  # until version/revision control issues worked out.
+
+  news-search-api:
+    image: colsearch
+    ports:
+      - 8000:8000
+
+  news-search-ui:
+    command: streamlit run ui.py
+    environment:
+      APIURL: http://news-search-api:8000/v1
+    image: colsearch
+    ports:
+      - 8001:8501
+
 volumes:
 {% for i in range(1,(elastic_num_nodes | int)+1) %}
   elasticsearch_data_{{"%02d" % i}}:

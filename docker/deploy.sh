@@ -89,6 +89,15 @@ dirty() {
     IS_DIRTY=1
 }
 
+# news-search-api sources in separate repo, by popular opinion,
+# but deploying from our docker-compose file for network access.
+# but not yet/currently building it from there.
+echo looking for news-search-api docker image:
+if ! docker images | grep colsearch; then
+    echo news-search-api docker image not found. 1>&2
+    echo 'run "docker compose build" in news-search-api repo' 1>&2
+fi
+
 if ! git diff --quiet; then
     dirty 'local changes not checked in' 1>&2
 fi
