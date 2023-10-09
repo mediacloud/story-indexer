@@ -243,7 +243,7 @@ services:
   # until version/revision control issues worked out.
 
   news-search-api:
-    image: colsearch
+    image: {{image_registry}}colsearch
     ports:
       - 8000:8000
 
@@ -251,7 +251,7 @@ services:
     command: streamlit run ui.py
     environment:
       APIURL: http://news-search-api:8000/v1
-    image: colsearch
+    image: {{image_registry}}colsearch
     ports:
       - 8001:8501
 

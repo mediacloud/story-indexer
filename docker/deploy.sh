@@ -118,7 +118,8 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
 # Pushing to a local registry for now, while in dev loop.
 # set registry differently based on BRANCH?!
-WORKER_IMAGE_REGISTRY=localhost:5000
+# MUST have trailing slash unless empty
+IMAGE_REGISTRY=localhost:5000/
 
 WORKER_IMAGE_NAME=indexer-worker
 
@@ -184,7 +185,7 @@ staging)
     ;;
 dev)
     # fetch limited articles under development
-    FETCHER_OPTIONS="$FETCHER_OPTIONS --num-batches 50000"
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --num-batches 5000"
     FETCHER_NUM_BATCHES=10
     MULTI_NODE_DEPLOYMENT=
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
@@ -217,7 +218,7 @@ else
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
 fi
 
-WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY/$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
+WORKER_IMAGE_FULL=$IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
@@ -251,6 +252,7 @@ echo creating docker-compose.yml
       -Delastic_num_nodes=$ELASTIC_NUM_NODES \
       -Dfetcher_num_batches=$FETCHER_NUM_BATCHES \
       -Dfetcher_options="$FETCHER_OPTIONS" \
+      -Dimage_registry=$IMAGE_REGISTRY \
       -Dnetwork_name=$NETWORK_NAME \
       -Dstack_name=$STACK_NAME \
       -Dstatsd_realm=$STATSD_REALM \
