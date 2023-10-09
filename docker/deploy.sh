@@ -89,6 +89,15 @@ dirty() {
     IS_DIRTY=1
 }
 
+# news-search-api sources in separate repo, by popular opinion,
+# but deploying from our docker-compose file for network access.
+# but not yet/currently building it from there.
+echo looking for news-search-api docker image:
+if ! docker images | grep colsearch; then
+    echo news-search-api docker image not found. 1>&2
+    echo 'run "docker compose build" in news-search-api repo' 1>&2
+fi
+
 if ! git diff --quiet; then
     dirty 'local changes not checked in' 1>&2
 fi
@@ -98,7 +107,8 @@ fi
 
 ELASTIC_NUM_NODES=1
 
-FETCHER_NUM_BATCHES=10
+FETCHER_NUM_BATCHES=20
+FETCHER_OPTIONS="--yesterday"
 
 STATSD_REALM="$BRANCH"
 
@@ -173,8 +183,11 @@ staging)
     VOLUME_DEVICE_PREFIX=/srv/data/docker/
     ;;
 dev)
-    STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
+    # fetch limited articles under development
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --num-batches 50000"
+    FETCHER_NUM_BATCHES=10
     MULTI_NODE_DEPLOYMENT=
+    STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     # default volume storage location!
     VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
     ;;
@@ -237,6 +250,7 @@ echo creating docker-compose.yml
       -Delastic_placement_constraint="$ELASTIC_PLACEMENT_CONSTRAINT" \
       -Delastic_num_nodes=$ELASTIC_NUM_NODES \
       -Dfetcher_num_batches=$FETCHER_NUM_BATCHES \
+      -Dfetcher_options="$FETCHER_OPTIONS" \
       -Dnetwork_name=$NETWORK_NAME \
       -Dstack_name=$STACK_NAME \
       -Dstatsd_realm=$STATSD_REALM \
@@ -253,6 +267,7 @@ if [ $STATUS != 0 ]; then
     exit 2
 fi
 mv -f docker-compose.yml.new docker-compose.yml
+chmod -w docker-compose.yml
 
 echo "checking docker-compose.yml syntax" 1>&2
 rm -f docker-compose.yml.dump
