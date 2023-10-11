@@ -22,7 +22,6 @@ def set_env() -> None:
     os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
         ["http://localhost:9200", "http://localhost:9201", "http://localhost:9202"]
     )
-    # os.environ["ELASTICSEARCH_INDEX_NAME"] = "test_mediacloud_search_text_older"
     os.environ["ELASTICSEARCH_INDEX_NAME_PREFIX"] = "test_mediacloud_search_text"
 
 
