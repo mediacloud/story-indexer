@@ -13,20 +13,14 @@ from typing import Any, Dict
 from elastic_transport import ConnectionError, ConnectionTimeout
 
 from indexer.app import App
-from indexer.elastic import (
-    add_elasticsearch_hosts,
-    check_elasticsearch_hosts,
-    create_elasticsearch_client,
-)
+from indexer.elastic import ElasticMixin
 
 logger = getLogger("elastic-stats")
 
 
-class ElasticStats(App):
+class ElasticStats(App, ElasticMixin):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-
-        add_elasticsearch_hosts(ap)
 
         ap.add_argument(
             "--interval", type=float, help="reporting interval in seconds", default=60.0
@@ -36,8 +30,7 @@ class ElasticStats(App):
         assert self.args
         seconds = self.args.interval
 
-        hosts = self.args.elasticsearch_hosts
-        es = create_elasticsearch_client(check_elasticsearch_hosts(hosts))
+        es = self.elasticsearch_client()
 
         while True:
             try:

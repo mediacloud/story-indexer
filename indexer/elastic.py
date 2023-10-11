@@ -14,28 +14,30 @@ from urllib.parse import urlparse
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
 
+from indexer.app import ArgsProtocol
+
 logger = getLogger("elastic-stats")
 
-# would prefer to have an ElasticMixin for Apps, but would need a
-# "protocol" to inherit from, so a bunch of functions to call
-# from App methods.
 
+class ElasticMixin:
+    """
+    mixin class for Apps that use Elastic Search API
+    """
 
-def add_elasticsearch_hosts(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
-        "--elasticsearch-hosts",
-        dest="elasticsearch_hosts",
-        default=os.environ.get("ELASTICSEARCH_HOSTS"),
-        help="override ELASTICSEARCH_HOSTS",
-    )
+    def define_options(self: ArgsProtocol, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
 
+        ap.add_argument(
+            "--elasticsearch-hosts",
+            dest="elasticsearch_hosts",
+            default=os.environ.get("ELASTICSEARCH_HOSTS"),
+            help="comma separated list of ES server URLs",
+        )
 
-def check_elasticsearch_hosts(hosts: Optional[str]) -> str:
-    if not hosts:
-        logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
-        sys.exit(1)
-    return hosts
-
-
-def create_elasticsearch_client(hosts_str: str) -> Elasticsearch:
-    return Elasticsearch(hosts_str.split(","))  # type: ignore[arg-type]
+    def elasticsearch_client(self: ArgsProtocol) -> Elasticsearch:
+        assert self.args
+        hosts = self.args.elasticsearch_hosts
+        if not hosts:
+            logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
+            sys.exit(1)
+        return Elasticsearch(hosts.split(","))

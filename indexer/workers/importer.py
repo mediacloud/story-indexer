@@ -10,13 +10,10 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
+from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.elastic import (
-    add_elasticsearch_hosts,
-    check_elasticsearch_hosts,
-    create_elasticsearch_client,
-)
+from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
 from indexer.worker import StoryWorker, run
 
@@ -53,14 +50,12 @@ es_mappings = {
 class ElasticsearchConnector:
     def __init__(
         self,
-        hosts: Union[
-            str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
-        ],
+        client: Elasticsearch,
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
         assert isinstance(hosts, str)
-        self.client = create_elasticsearch_client(hosts)
+        self.client = client
         self.mappings = mappings
         self.settings = settings
 
@@ -88,10 +83,9 @@ class ElasticsearchConnector:
         return response
 
 
-class ElasticsearchImporter(StoryWorker):
+class ElasticsearchImporter(StoryWorker, ElasticMixin):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        add_elasticsearch_hosts(ap)
         ap.add_argument(
             "--index-name-prefix",
             dest="index_name_prefix",
@@ -105,10 +99,6 @@ class ElasticsearchImporter(StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        self.elasticsearch_hosts = check_elasticsearch_hosts(
-            self.args.elasticsearch_hosts
-        )
-
         index_name_prefix = self.args.index_name_prefix
         if index_name_prefix is None:
             logger.fatal("need --index-name-prefix defined")
@@ -116,7 +106,7 @@ class ElasticsearchImporter(StoryWorker):
         self.index_name_prefix = index_name_prefix
 
         self.connector = ElasticsearchConnector(
-            self.elasticsearch_hosts,
+            self.elasticsearch_client(),
             mappings=es_mappings,
             settings=es_settings,
         )

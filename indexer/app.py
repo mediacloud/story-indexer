@@ -9,7 +9,7 @@ import sys
 import time
 import urllib.parse
 from types import TracebackType
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Protocol, Tuple
 
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
@@ -297,6 +297,20 @@ class _TimingContext:
         logger.debug("%s: %g ms", self.name, ms)
         self.app.timing(self.name, ms)
         self.t0 = -1.0
+
+
+class ArgsProtocol(Protocol):
+    """
+    class for "self" in App mixins that declare options
+    """
+
+    args: Optional[argparse.Namespace]
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        ...
+
+    def process_args(self) -> None:
+        ...
 
 
 if __name__ == "__main__":
