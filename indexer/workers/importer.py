@@ -8,12 +8,15 @@ import os
 import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
-from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
-from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
+from indexer.elastic import (
+    add_elasticsearch_hosts,
+    check_elasticsearch_hosts,
+    create_elasticsearch_client,
+)
 from indexer.story import BaseStory
 from indexer.worker import StoryWorker, run
 
@@ -45,25 +48,6 @@ es_mappings = {
         "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
     }
 }
-
-
-def create_elasticsearch_client(
-    hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]]],
-) -> Elasticsearch:
-    if isinstance(hosts, str):
-        host_urls = hosts.split(",")
-
-    host_configs: Any = []
-    for host_url in host_urls:
-        parsed_url = urlparse(host_url)
-        host = parsed_url.hostname
-        scheme = parsed_url.scheme
-        port = parsed_url.port
-        if host and scheme and port:
-            node_config = NodeConfig(scheme=scheme, host=host, port=port)
-            host_configs.append(node_config)
-
-    return Elasticsearch(host_configs)
 
 
 class ElasticsearchConnector:
@@ -107,12 +91,7 @@ class ElasticsearchConnector:
 class ElasticsearchImporter(StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        ap.add_argument(
-            "--elasticsearch-hosts",
-            dest="elasticsearch_hosts",
-            default=os.environ.get("ELASTICSEARCH_HOSTS"),
-            help="override ELASTICSEARCH_HOSTS",
-        )
+        add_elasticsearch_hosts(ap)
         ap.add_argument(
             "--index-name-prefix",
             dest="index_name_prefix",
@@ -126,11 +105,9 @@ class ElasticsearchImporter(StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        elasticsearch_hosts = self.args.elasticsearch_hosts
-        if not elasticsearch_hosts:
-            logger.fatal("need --elasticsearch-host defined")
-            sys.exit(1)
-        self.elasticsearch_hosts = elasticsearch_hosts
+        self.elasticsearch_hosts = check_elasticsearch_hosts(
+            self.args.elasticsearch_hosts
+        )
 
         index_name_prefix = self.args.index_name_prefix
         if index_name_prefix is None:
