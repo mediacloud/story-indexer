@@ -40,11 +40,11 @@ def elasticsearch_client() -> Any:
     index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
     assert index_name_prefix is not None, "ELASTICSEARCH_INDEX_NAME_PREFIX is not set"
 
-    recreate_indices(client, index_name_prefix)
+    recreate_indices(client, f"{index_name_prefix}_older")
 
     yield client
 
-    recreate_indices(client, index_name_prefix)
+    recreate_indices(client, f"{index_name_prefix}_older")
 
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
