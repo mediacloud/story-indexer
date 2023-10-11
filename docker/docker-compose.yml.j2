@@ -88,6 +88,7 @@ x-worker-service-settings: &worker-service-settings
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
+    ELASTICSEARCH_HOSTS: "http://elasticsearch1:9200/{% for i in range(2,(elastic_num_nodes | int)+1) %},http://elasticsearch{{i}}:{{9200 + i - 1}}/{% endfor %}"
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
     STATSD_REALM: {{statsd_realm}}
@@ -236,6 +237,12 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
+
+  elastic-stats:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-stats
 
   ################ news search api (built elsewhere)
 
