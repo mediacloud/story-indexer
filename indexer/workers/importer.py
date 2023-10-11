@@ -83,7 +83,7 @@ class ElasticsearchConnector:
         return response
 
 
-class ElasticsearchImporter(StoryWorker, ElasticMixin):
+class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
