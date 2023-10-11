@@ -22,7 +22,7 @@ def set_env() -> None:
     os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
         ["http://localhost:9200", "http://localhost:9201", "http://localhost:9202"]
     )
-    os.environ["ELASTICSEARCH_INDEX_NAME"] = "test_mediacloud_search_text_older"
+    # os.environ["ELASTICSEARCH_INDEX_NAME"] = "test_mediacloud_search_text_older"
     os.environ["ELASTICSEARCH_INDEX_NAME_PREFIX"] = "test_mediacloud_search_text"
 
 
@@ -38,14 +38,14 @@ def elasticsearch_client() -> Any:
     assert hosts is not None, "ELASTICSEARCH_HOSTS is not set"
     client = create_elasticsearch_client(hosts=hosts)
     assert client.ping(), "Failed to connect to Elasticsearch"
-    index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
-    assert index_name is not None, "ELASTICSEARCH_INDEX_NAME is not set"
+    index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
+    assert index_name_prefix is not None, "ELASTICSEARCH_INDEX_NAME_PREFIX is not set"
 
-    recreate_indices(client, index_name)
+    recreate_indices(client, index_name_prefix)
 
     yield client
 
-    recreate_indices(client, index_name)
+    recreate_indices(client, index_name_prefix)
 
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
@@ -91,11 +91,7 @@ class TestElasticsearchConnection:
 @pytest.fixture(scope="class")
 def elasticsearch_connector() -> ElasticsearchConnector:
     elasticsearch_hosts = cast(str, os.environ.get("ELASTICSEARCH_HOSTS"))
-    index_name = os.environ.get("ELASTICSEARCH_INDEX_NAME")
-    assert index_name is not None, "ELASTICSEARCH_INDEX_NAME is not set"
-    connector = ElasticsearchConnector(
-        elasticsearch_hosts, index_name, es_mappings, es_settings
-    )
+    connector = ElasticsearchConnector(elasticsearch_hosts, es_mappings, es_settings)
     return connector
 
 
@@ -128,6 +124,6 @@ class TestElasticsearchImporter:
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         assert index_name_prefix is not None
         assert importer.index_routing("2023-06-27") == f"{index_name_prefix}_2023"
-        assert importer.index_routing(None) == f"{index_name_prefix}_older"
+        assert importer.index_routing(None) == f"{index_name_prefix}_other"
         assert importer.index_routing("2022-06-27") == f"{index_name_prefix}_2022"
         assert importer.index_routing("2020-06-27") == f"{index_name_prefix}_older"
