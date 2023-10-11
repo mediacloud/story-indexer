@@ -34,11 +34,8 @@ x-base-service-settings: &base-service-settings
     # Log everything in GMT!!!
     TZ: "GMT"
 
+{% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
-
-x-es-image: &es-image "docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
-
-x-es-node-names: &es-node-names elasticsearch1{% for i in range(2,(elastic_num_nodes | int)+1) %},elasticsearch{{i}}{% endfor %}
 
 # common service settings for all elasticsearch containers
 x-es-service-settings: &es-service-settings
@@ -46,16 +43,16 @@ x-es-service-settings: &es-service-settings
   deploy: &es-deploy-settings
     placement:
       constraints:
-        - {{elastic_placement_constraint}}
+        - {{elasticsearch_placement_constraint}}
 
   environment: &es-environment-vars
     <<: *base-environment-vars
-{% if (elastic_num_nodes|int) > 1 %}
+{% if elasticsearch_containers > 1 %}
     ES_JAVA_OPTS: "-Xms20g -Xmx20g"
     bootstrap.memory_lock: "true"
-    cluster.initial_master_nodes: *es-node-names
-    cluster.name: {{elastic_cluster_name}}
-    discovery.seed_hosts: *es-node-names
+    cluster.initial_master_nodes: {{elasticsearch_nodes}}
+    cluster.name: {{elasticsearch_cluster}}
+    discovery.seed_hosts: {{elasticsearch__nodes}}
     network.publish_host: _eth1_
     node.roles: master,data
 {% else %}
@@ -65,7 +62,7 @@ x-es-service-settings: &es-service-settings
     path.repo: "/var/backups/elasticsearch"
     xpack.security.enabled: "false"
 
-  image: *es-image
+  image: {{elasticsearch_image}}
 
   ulimits:
     # Memory lock check:allocate unlimited amount of locked memory to ES
@@ -75,6 +72,7 @@ x-es-service-settings: &es-service-settings
 
 # common volume for elasticsearch containers
 x-es-backup-volume: &es-backup-volume "elasticsearch_data_backup:/var/backups/elasticsearch"
+{% endif %}
 
 ################ Worker settings
 
@@ -91,7 +89,7 @@ x-worker-service-settings: &worker-service-settings
   environment: &worker-environment-vars
     <<: *base-environment-vars
     LOG_LEVEL: "info"
-    RABBITMQ_URL: amqp://rabbitmq:5672/?connection_attempts=10&retry_delay=5
+    RABBITMQ_URL: {{rabbitmq_url}}
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
@@ -130,6 +128,7 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
 
+{% if rabbitmq_containers > 0 %}
   rabbitmq:
     <<: *base-service-settings
     deploy:
@@ -151,7 +150,9 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+{% endif %}
 
+{% if elasticsearch_containers > 0 %}
   es-setup:
     <<: *es-service-settings
     command: bash -c "chown -R elasticsearch:elasticsearch /var/backups/elasticsearch"
@@ -160,14 +161,12 @@ services:
       # run once, on stack deploy
       restart_policy:
         condition: none
-    image: *es-image
+    image: {{elasticsearch_image}}
     user: root
     volumes:
       - *es-backup-volume
 
-# PB: until/unless ES running outside Docker, tie to specific node
-# (check es_node_number == N)??
-{% for i in range(1,(elastic_num_nodes | int)+1) %}
+{% for i in range(1,elasticsearch_containers+1) %}
   elasticsearch{{i}}:
     <<: *es-service-settings
     environment:
@@ -181,6 +180,7 @@ services:
       - *es-backup-volume
       - elasticsearch_data_{{"%02d" % i}}:/usr/share/elasticsearch/data
 {% endfor %}
+{% endif %}
 
   ################ pipeline workers
 
@@ -197,7 +197,7 @@ services:
     deploy:
       <<: *worker-deploy-settings
       labels:
-         swarm.cronjob.enable: "true"
+         swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
          swarm.cronjob.schedule: "0 0 * * *"
          swarm.cronjob.replicas: {{fetcher_num_batches}}
       replicas: {{fetcher_num_batches}}
@@ -223,11 +223,11 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
-      ELASTICSEARCH_HOSTS: "http://elasticsearch1:9200/{% for i in range(2,(elastic_num_nodes | int)+1) %},http://elasticsearch{{i}}:{{9200 + i - 1}}/{% endfor %}"
+      ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
       ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
       ELASTICSEARCH_INDEX_NAME: is_this_still_needed
-      ELASTICSEARCH_REPLICAS: 0
-      ELASTICSEARCH_SHARDS: 1
+      ELASTICSEARCH_REPLICAS: {{elasticsearch_replicas}}
+      ELASTICSEARCH_SHARDS: {{elasticsearch_shards}}
 
   # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
   # run a copy on each RabbitMQ cluster node (for node stats & redundancy)?
@@ -243,7 +243,7 @@ services:
   # until version/revision control issues worked out.
 
   news-search-api:
-    image: {{image_registry}}colsearch
+    image: {{news_search_image}}
     ports:
       - 8000:8000
 
@@ -251,12 +251,13 @@ services:
     command: streamlit run ui.py
     environment:
       APIURL: http://news-search-api:8000/v1
-    image: {{image_registry}}colsearch
+    image: {{news_search_image}}
     ports:
       - 8001:8501
 
 volumes:
-{% for i in range(1,(elastic_num_nodes | int)+1) %}
+{% if elasticsearch_containers > 0 %}
+{% for i in range(1,elasticsearch_containers+1) %}
   elasticsearch_data_{{"%02d" % i}}:
     driver: local
     driver_opts:
@@ -270,12 +271,15 @@ volumes:
       type: none
       o: bind
       device: {{volume_device_prefix}}elasticsearch_data_backup
+{% endif %}
+{% if rabbitmq_containers > 0 %}
   rabbitmq_data:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: {{volume_device_prefix}}rabbitmq
+{% endif %}
   worker_data:
     # Neccesary for diskstory, ideally not used:
     driver: local
@@ -284,9 +288,6 @@ volumes:
       o: bind
       device: {{volume_device_prefix}}worker_data
 
-# network created by deploy.sh for web_collection_search API to attach to.
-# make web_collection_search a "git subtree" and build/launch in this file??
 networks:
   default:
     name: {{network_name}}
-    external: true

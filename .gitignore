@@ -9,6 +9,7 @@ test_data/*
 supervisord.log
 venv/*
 env/*
+docker/config.json
 docker/deploy.log
 docker/docker-compose.yml
 docker/docker-compose.yml.dump
