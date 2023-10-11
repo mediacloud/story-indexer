@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, cast
 # PyPI
 from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from pika.spec import Basic
+from pika.spec import Basic, Queue
 
 from indexer.worker import QApp
 
@@ -99,7 +99,24 @@ class QUtil(QApp):
             descr = self.get_command_func(cmd).__doc__
             print(f"{cmd:12.12} {descr}")
 
+    @command
+    def purge(self) -> None:
+        """purge messages from queue"""
+
+        queue = self.get_queue()
+        chan = self.get_channel()
+        resp = chan.queue_purge(queue)
+        rname = resp.NAME
+        if rname == Queue.PurgeOk.NAME:
+            logger.info("purged %s", queue)
+        else:
+            logger.warning("purge %s failed: %s", queue, rname)  # XXX detail?
+
     #### utilities
+
+    def get_channel(self) -> BlockingChannel:
+        assert self.connection
+        return self.connection.channel()
 
     def get_command_func(self, cmd: str) -> Callable[[], None]:
         """returns command function as a bound method"""
@@ -146,8 +163,7 @@ class QUtil(QApp):
                 # cancel basic_consume
                 chan.basic_cancel(consumer_tag)
 
-        assert self.connection
-        chan = self.connection.channel()
+        chan = self.get_channel()
         consumer_tag = chan.basic_consume(queue, on_message)
         chan.start_consuming()  # enter pika main loop; calls on_message
 
