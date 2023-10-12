@@ -262,7 +262,11 @@ echo creating docker-compose.yml
 
 CONFIG=config.json
 COMPOSE=docker-compose.yml.new
-#trap "rm -f $CONFIG" 0
+
+# remove config.json file on exit unless debugging
+if [ "x$DEBUG" = x ]; then
+    trap "rm -f $CONFIG" 0
+fi
 
 # function to add a parameter to JSON CONFIG file
 add() {
