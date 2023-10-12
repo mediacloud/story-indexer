@@ -88,8 +88,12 @@ class ElasticsearchConnector:
                     mappings=self.mappings,
                     settings=self.settings,
                 )
+                logger.info(f"Index '{index_name}' created successfully.")
             else:
                 self.client.indices.create(index=index_name)
+                logger.info(f"Index '{index_name}' created successfully.")
+        else:
+            logger.warning(f"Index '{index_name}' already exists. Skipping creation.")
 
     def index(
         self, id: str, index_name: str, document: Mapping[str, Any]
@@ -152,11 +156,12 @@ class ElasticsearchImporter(StoryWorker):
                 current_year = datetime.now().year
 
                 if year > current_year:
-                    raise QuarantineException(
-                        "Publication year cannot be in the future."
+                    year = -1
+                    logger.warning(
+                        f"Publication date greater than current year: {current_year}"
                     )
             except ValueError as e:
-                logger.error(f"Error parsing date: {str(e)}")
+                logger.warning(f"Error parsing date: {str(e)}")
 
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         if 2021 <= year <= current_year:
