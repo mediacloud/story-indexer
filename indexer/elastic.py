@@ -16,7 +16,7 @@ from elasticsearch import Elasticsearch
 
 from indexer.app import ArgsProtocol
 
-logger = getLogger("elastic-stats")
+logger = getLogger(__name__)
 
 
 class ElasticMixin:
