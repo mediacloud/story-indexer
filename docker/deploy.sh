@@ -35,13 +35,13 @@ fi
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
-    echo "  -a  allow-dirty; no dirty/push checks; no tags applied (for dev)"
-    echo "  -b  build image but do not deploy"
-    echo "  -B BR -- dry run for specific branch (staging or prod)"
-    echo "  -d  enable debug output (for template parameters)"
-    echo "  -h  output this help and exit"
-    echo "  -n  dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
-    echo "  -u  allow running as non-root user"
+    echo "  -a      allow-dirty; no dirty/push checks; no tags applied (for dev)"
+    echo "  -b      build image but do not deploy"
+    echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
+    echo "  -d      enable debug output (for template parameters)"
+    echo "  -h      output this help and exit"
+    echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
+    echo "  -u      allow running as non-root user"
     exit 1
 }
 while getopts B:abdhnu OPT; do
