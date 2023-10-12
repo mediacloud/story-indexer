@@ -33,6 +33,7 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
         "AUTOTHROTTLE_TARGET_CONCURRENCY": 10,
         # donut bother with retrying on 500s
         "RETRY_HTTP_CODES": [502, 503, 504, 522, 524, 408, 429],
+        "USER_AGENT": "mediacloud bot for open academic research (+https://mediacloud.org)",
     }
 
     def __init__(
