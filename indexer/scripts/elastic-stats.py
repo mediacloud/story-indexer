@@ -13,24 +13,19 @@ from typing import Any, Dict, List, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
 
-from indexer.app import App
+from indexer.app import App, IntervalMixin
 from indexer.elastic import ElasticMixin
+
+# Reporting unit for storage.
+# Changing this will cause a discontinuity in graphs!!!
+# But here for clarity, and for reference in comments!
+BYTES = "mb"
 
 logger = getLogger("elastic-stats")
 
 
-class ElasticStats(ElasticMixin, App):
-    def define_options(self, ap: argparse.ArgumentParser) -> None:
-        super().define_options(ap)
-
-        ap.add_argument(
-            "--interval", type=float, help="reporting interval in seconds", default=60.0
-        )
-
+class ElasticStats(ElasticMixin, IntervalMixin, App):
     def main_loop(self) -> None:
-        assert self.args
-        seconds = self.args.interval
-
         es = self.elasticsearch_client()
 
         while True:
@@ -38,7 +33,7 @@ class ElasticStats(ElasticMixin, App):
                 # limit to columns of interest?
                 indices = cast(
                     List[Dict[str, str]],
-                    es.cat.indices(bytes="mb", pri=True, format="json"),
+                    es.cat.indices(bytes=BYTES, pri=True, format="json"),
                 )
                 health: Counter[str] = Counter()
                 for index in indices:
@@ -48,11 +43,13 @@ class ElasticStats(ElasticMixin, App):
                     def by_index(input: str, out: str) -> None:
                         val = int(index[input])
                         logger.debug(" %s %s %d", input, out, val)
-                        self.gauge("indices." + out, val, labels=[("index", name)])
+                        self.gauge(
+                            f"indices.stats.{out}", val, labels=[("index", name)]
+                        )
 
                     by_index("docs.count", "docs")
                     by_index("docs.deleted", "deleted")
-                    by_index("pri.store.size", "pri-size")
+                    by_index("pri.store.size", "pri-size")  # in BYTES
                     health[index["health"]] += 1
 
                 # report totals for each health state
@@ -65,9 +62,7 @@ class ElasticStats(ElasticMixin, App):
                 logger.debug("indices: %r", e)
 
             # sleep until top of next period:
-            sleep_sec = seconds - time.time() % seconds
-            logger.debug("sleep %.6g", sleep_sec)
-            time.sleep(sleep_sec)
+            self.interval_sleep()
 
 
 if __name__ == "__main__":

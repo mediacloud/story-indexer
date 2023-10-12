@@ -31,7 +31,18 @@ class AppException(RuntimeError):
     """
 
 
-class App:
+class ArgsProtocol(Protocol):
+    """
+    class for "self" in App mixins that declare & access command line args
+    """
+
+    args: Optional[argparse.Namespace]
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        ...
+
+
+class App(ArgsProtocol):
     """
     Base class for command line applications (ie; Worker)
     """
@@ -299,18 +310,30 @@ class _TimingContext:
         self.t0 = -1.0
 
 
-class ArgsProtocol(Protocol):
+class IntervalMixin(ArgsProtocol):
     """
-    class for "self" in App mixins that declare options
+    Mixin for Apps that report stats at a fixed interval
     """
-
-    args: Optional[argparse.Namespace]
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
-        ...
+        super().define_options(ap)
 
-    def process_args(self) -> None:
-        ...
+        default = 60
+        ap.add_argument(
+            "--interval",
+            type=int,
+            help=f"reporting interval in seconds (default {default})",
+            default=default,
+        )
+
+    def interval_sleep(self) -> None:
+        assert self.args
+
+        # sleep until top of next interval
+        seconds = self.args.interval
+        sleep_sec = seconds - time.time() % seconds
+        logger.debug("sleep %.6g", sleep_sec)
+        time.sleep(sleep_sec)
 
 
 if __name__ == "__main__":

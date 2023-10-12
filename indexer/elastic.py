@@ -1,5 +1,5 @@
 """
-Elastic Search App utilities
+Elastic Search App Mixin
 """
 
 # from indexer.workers.importer
@@ -30,7 +30,7 @@ class ElasticMixin:
         ap.add_argument(
             "--elasticsearch-hosts",
             dest="elasticsearch_hosts",
-            default=os.environ.get("ELASTICSEARCH_HOSTS"),
+            default=os.environ.get("ELASTICSEARCH_HOSTS") or "",
             help="comma separated list of ES server URLs",
         )
 
@@ -40,4 +40,6 @@ class ElasticMixin:
         if not hosts:
             logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
             sys.exit(1)
+
+        # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
