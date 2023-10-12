@@ -15,7 +15,7 @@ from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
 from indexer.story import BaseStory
-from indexer.worker import QuarantineException, StoryWorker, run
+from indexer.worker import StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
