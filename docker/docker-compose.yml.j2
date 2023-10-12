@@ -52,7 +52,7 @@ x-es-service-settings: &es-service-settings
     bootstrap.memory_lock: "true"
     cluster.initial_master_nodes: {{elasticsearch_nodes}}
     cluster.name: {{elasticsearch_cluster}}
-    discovery.seed_hosts: {{elasticsearch__nodes}}
+    discovery.seed_hosts: {{elasticsearch_nodes}}
     network.publish_host: _eth1_
     node.roles: master,data
 {% else %}
