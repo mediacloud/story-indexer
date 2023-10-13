@@ -88,10 +88,9 @@ class ElasticsearchConnector:
                     mappings=self.mappings,
                     settings=self.settings,
                 )
-                logger.info("Index '%s' created successfully." % index_name)
             else:
                 self.client.indices.create(index=index_name)
-                logger.info("Index '%s' created successfully." % index_name)
+            logger.info("Index '%s' created successfully." % index_name)
         else:
             logger.debug("Index '%s' already exists. Skipping creation." % index_name)
 
