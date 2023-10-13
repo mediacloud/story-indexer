@@ -6,7 +6,7 @@ import hashlib
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -88,12 +88,12 @@ class ElasticsearchConnector:
                     mappings=self.mappings,
                     settings=self.settings,
                 )
-                logger.info(f"Index '{index_name}' created successfully.")
+                logger.info("Index '%s' created successfully." % index_name)
             else:
                 self.client.indices.create(index=index_name)
-                logger.info(f"Index '{index_name}' created successfully.")
+                logger.info("Index '%s' created successfully." % index_name)
         else:
-            logger.warning(f"Index '{index_name}' already exists. Skipping creation.")
+            logger.debug("Index '%s' already exists. Skipping creation." % index_name)
 
     def index(
         self, id: str, index_name: str, document: Mapping[str, Any]
@@ -152,19 +152,16 @@ class ElasticsearchImporter(StoryWorker):
         year = -1
         if publication_date_str:
             try:
-                year = datetime.strptime(publication_date_str, "%Y-%m-%d").year
-                current_year = datetime.now().year
-
-                if year > current_year:
+                pub_date = datetime.strptime(publication_date_str, "%Y-%m-%d")
+                year = pub_date.year
+                # check for exceptions of future dates just in case gets past mcmetadata
+                if pub_date > datetime.now() + timedelta(days=+90):
                     year = -1
-                    logger.warning(
-                        f"Publication date greater than current year: {current_year}"
-                    )
             except ValueError as e:
-                logger.warning(f"Error parsing date: {str(e)}")
+                logger.warning("Error parsing date: '%s" % str(e))
 
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        if 2021 <= year <= current_year:
+        if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
         elif 2008 <= year <= 2020:
             routing_index = f"{index_name_prefix}_older"

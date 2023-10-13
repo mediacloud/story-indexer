@@ -126,3 +126,4 @@ class TestElasticsearchImporter:
         assert importer.index_routing(None) == f"{index_name_prefix}_other"
         assert importer.index_routing("2022-06-27") == f"{index_name_prefix}_2022"
         assert importer.index_routing("2020-06-27") == f"{index_name_prefix}_older"
+        assert importer.index_routing("2026-06-27") == f"{index_name_prefix}_other"
