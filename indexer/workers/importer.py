@@ -164,7 +164,7 @@ class ElasticsearchImporter(StoryWorker):
                 logger.warning(f"Error parsing date: {str(e)}")
 
         index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        if 2021 <= year <= current_year:
+        if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
         elif 2008 <= year <= 2020:
             routing_index = f"{index_name_prefix}_older"
