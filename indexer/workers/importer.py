@@ -154,7 +154,7 @@ class ElasticsearchImporter(StoryWorker):
                 pub_date = datetime.strptime(publication_date_str, "%Y-%m-%d")
                 year = pub_date.year
                 # check for exceptions of future dates just in case gets past mcmetadata
-                if pub_date > datetime.now() + timedelta(days=+90):
+                if pub_date > datetime.now() + timedelta(days=90):
                     year = -1
             except ValueError as e:
                 logger.warning("Error parsing date: '%s" % str(e))
