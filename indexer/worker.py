@@ -118,12 +118,17 @@ def base_queue_name(qname: str) -> str:
     return qname.rsplit("-", maxsplit=1)[0]
 
 
-# NOTE! trying NOT to filter out anything that might be "unusual"
+# Pika (AMQP) Library log message substrings to ignore when checking
+# if queues available.  Pika is PAINFULLY verbose (lots of logging at
+# INFO level) during normal operation!!  Trying NOT to filter out
+# anything that might indicate the cause of an abnormal failure!!
+# (otherwise
 _PIKA_IGNORE_SUBSTRINGS = (
-    "ConnectionRefusedError",
     "Connection refused",
+    "ConnectionRefusedError",
     "Error in _create_connection",  # ERROR w/ exception
-    "Pika version",  # INFO
+    "NOT_FOUND - no exchange",  # WARNING
+    "Normal shutdown",
     "TimeoutError",
 )
 
@@ -133,8 +138,14 @@ def _pika_message_filter(msg: logging.LogRecord) -> bool:
     Filter applied to root handlers during _test_configured.
     return False to drop msg, True to keep.
     """
+    # show non-pika messages
     if not msg.name.startswith("pika."):
         return True
+
+    # ignore INFO and DEBUG messages
+    # maybe ALWAYS suppress them with getLogger("pika").setLevel()?
+    if msg.levelno <= logging.INFO:
+        return False
 
     formatted = msg.getMessage()  # format message
     for substr in _PIKA_IGNORE_SUBSTRINGS:
@@ -160,6 +171,10 @@ class QApp(App):
 
     # override to False to avoid waiting until configuration done
     WAIT_FOR_QUEUE_CONFIGURATION = True
+
+    # override to True for long-running message-sending QApps
+    # (Pika thread causes problems for utilities that do blocking calls)
+    START_PIKA_THREAD = False
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -246,7 +261,8 @@ class QApp(App):
     def wait_until_configured(self) -> None:
         """for use by QApps that set WAIT_FOR_QUEUE_CONFIGURATION = False"""
         while not self._test_configured():
-            time.sleep(5)
+            logger.info("sleeping...")
+            time.sleep(30)
 
     def _set_configured(self, chan: BlockingChannel, set_true: bool) -> None:
         """INTERNAL: for use by indexer.pipeline ONLY!"""
@@ -268,12 +284,11 @@ class QApp(App):
         url = self.args.amqp_url
         assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
-        assert self.connection  # keep mypy quiet
+        logger.info(f"connected to {url}")
 
         # start Pika I/O thread (ONLY ONE!)
-        self._start_pika_thread()
-
-        logger.info(f"connected to {url}")
+        if self.START_PIKA_THREAD:
+            self._start_pika_thread()
 
     def _start_pika_thread(self) -> None:
         """
@@ -380,6 +395,8 @@ class QApp(App):
 
 class Worker(QApp):
     """Base class for Workers that consume messages"""
+
+    START_PIKA_THREAD = True
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
