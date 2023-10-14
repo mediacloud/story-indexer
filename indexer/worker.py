@@ -118,6 +118,32 @@ def base_queue_name(qname: str) -> str:
     return qname.rsplit("-", maxsplit=1)[0]
 
 
+# NOTE! trying NOT to filter out anything that might be "unusual"
+_PIKA_IGNORE_SUBSTRINGS = (
+    "ConnectionRefusedError",
+    "Connection refused",
+    "Error in _create_connection",  # ERROR w/ exception
+    "Pika version",  # INFO
+    "TimeoutError",
+)
+
+
+def _pika_message_filter(msg: logging.LogRecord) -> bool:
+    """
+    Filter applied to root handlers during _test_configured.
+    return False to drop msg, True to keep.
+    """
+    if not msg.name.startswith("pika."):
+        return True
+
+    formatted = msg.getMessage()  # format message
+    for substr in _PIKA_IGNORE_SUBSTRINGS:
+        if substr in formatted:
+            return False
+
+    return True
+
+
 class QApp(App):
     """
     Base class for AMQP/pika based App.
@@ -192,27 +218,30 @@ class QApp(App):
         """
         assert self.args and self.args.amqp_url
         url = self.args.amqp_url
-        try:
-            conn = BlockingConnection(URLParameters(url))
-        except (
-            requests.exceptions.ConnectionError,
-            pika.exceptions.AMQPConnectionError,
-        ):
-            return False
+        conn = None
 
-        # XXX do getLogger("pika").addFilter(filter) to avoid noise???
+        for handler in logging.root.handlers:
+            handler.addFilter(_pika_message_filter)
+
+        params = URLParameters(url)
         try:
+            conn = BlockingConnection(params)
             chan = conn.channel()
             # throws ChannelClosedByBroker if exchange does not exist
             chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE, passive=True)
             return True
-        except pika.exceptions.ChannelClosedByBroker:  # exchange not found
+        except (
+            requests.exceptions.ConnectionError,
+            pika.exceptions.AMQPConnectionError,
+            pika.exceptions.ChannelClosedByBroker,  # exchange not found
+        ):
             return False
         finally:
-            # XXX remove pika message filter
             if conn and conn.is_open:
                 conn.close()  # XXX wrap in try??
                 # XXX need to process events?
+            for handler in logging.root.handlers:
+                handler.removeFilter(_pika_message_filter)
 
     def wait_until_configured(self) -> None:
         """for use by QApps that set WAIT_FOR_QUEUE_CONFIGURATION = False"""
