@@ -32,6 +32,8 @@ class Parser(StoryWorker):
         if not html:
             raise QuarantineException("no html")
 
+        logger.info("parsing %s: %d characters", link, len(html))
+
         # metadata dict
         # may raise mcmetadata.exceptions.BadContentError
         #   What to do?
@@ -50,6 +52,8 @@ class Parser(StoryWorker):
             mdd["publication_date"] = mdd["publication_date"].strftime("%Y-%m-%d")
         else:
             mdd["publication_date"] = "None"
+
+        logger.info("parsed %s with %s date %s", link, extraction_label, mdd["publication_date"])
 
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!
