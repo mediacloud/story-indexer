@@ -174,6 +174,9 @@ class QApp(App):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
+        if self.AUTO_CONNECT:
+            self.qconnect()
+
     def _test_configured(self) -> bool:
         """
         NOTE! Called before Pika thread launched,
@@ -234,7 +237,7 @@ class QApp(App):
 
     def _run_pika_thread(self) -> None:
         """
-        called after channels are open
+        called after channels are open; launches pika I/O thread
         """
         self._pika_thread = threading.Thread(
             target=self._pika_thread_body, name="Pika-thread"
@@ -325,8 +328,6 @@ class Worker(QApp):
         basic main_loop for a consumer.
         override for a producer!
         """
-
-        self.qconnect()
 
         assert self._conn
         chan = self._conn.channel()
