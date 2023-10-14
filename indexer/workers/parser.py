@@ -12,7 +12,7 @@ from pika.adapters.blocking_connection import BlockingChannel
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StoryWorker, run
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("parser")
 
 
 class Parser(StoryWorker):
@@ -53,7 +53,9 @@ class Parser(StoryWorker):
         else:
             mdd["publication_date"] = "None"
 
-        logger.info("parsed %s with %s date %s", link, extraction_label, mdd["publication_date"])
+        logger.info(
+            "parsed %s with %s date %s", link, extraction_label, mdd["publication_date"]
+        )
 
         with story.content_metadata() as cmd:
             # XXX assumes identical item names!!

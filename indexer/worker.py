@@ -52,6 +52,12 @@ RETRY_DELAY_MINUTES = 60
 MS_PER_MINUTE = 60 * 1000
 
 
+class _Never(Exception):
+    """
+    an exception class that is NEVER thrown!
+    """
+
+
 class QuarantineException(AppException):
     """
     Exception to raise when a message cannot _possibly_ be processed,
@@ -245,7 +251,8 @@ class QApp(App):
         self._pika_thread.daemon = True  # remove need to join before exit???
         self._pika_thread.start()
 
-        # XXX wait on queue here?
+    def _subscribe(self, chan: BlockingChannel) -> None:
+        """overridden in Worker class"""
 
     def _pika_thread_body(self) -> None:
         """
@@ -258,19 +265,17 @@ class QApp(App):
 
         assert self.connection
         chan = self.connection.channel()
-        chan.tx_select()  # enter transaction mode
+        self._subscribe(chan)
 
-        # set "prefetch" limit: distributes messages among workers,'
-        # limits the number of unacked messages in _message_queue
-        chan.basic_qos(prefetch_count=2)
-
-        # subscribe to the queue:
-        chan.basic_consume(self.input_queue_name, self.on_message)
-
-        while self._running and self.connection and self.connection.is_open:
-            # process_data_events is called by conn.sleep,
-            # but may return sooner:
-            self.connection.process_data_events(10)
+        try:
+            while self._running and self.connection and self.connection.is_open:
+                # process_data_events is called by conn.sleep,
+                # but may return sooner:
+                self.connection.process_data_events(10)
+        except _Never:
+            pass  # should not happen
+        finally:
+            self._running = False  # tell _process_messages
         logging.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
@@ -283,7 +288,7 @@ class QApp(App):
         data: bytes,
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
-        properties: Optional[BasicProperties] = None, # WILL BE MODIFIED!
+        properties: Optional[BasicProperties] = None,  # WILL BE MODIFIED!
     ) -> None:
         """
         called by Worker/Publisher code in main thread.
@@ -302,7 +307,9 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def send() -> None:
-            logger.debug("send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data))
+            logger.debug(
+                "send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data)
+            )
             chan.basic_publish(exchange, routing_key, data, properties)
 
         self._call_in_pika_thread(send)
@@ -343,7 +350,7 @@ class Worker(QApp):
         self._start_pika_thread()
         self._process_messages()
 
-    def on_message(
+    def _on_message(
         self,
         chan: BlockingChannel,
         method: Basic.Deliver,
@@ -357,15 +364,25 @@ class Worker(QApp):
         """
         # XXX add time.monotonic() to show queue latency?
         im = InputMessage(chan, method, properties, body)
-        logger.info("on_message tag %s", method.delivery_tag)
+        logger.info("_on_message tag %s", method.delivery_tag)
         self._message_queue.put(im)
+
+    def _subscribe(self, chan: BlockingChannel) -> None:
+        chan.tx_select()  # enter transaction mode
+
+        # set "prefetch" limit: distributes messages among workers,'
+        # limits the number of unacked messages in _message_queue
+        chan.basic_qos(prefetch_count=2)
+
+        # subscribe to the queue:
+        chan.basic_consume(self.input_queue_name, self._on_message)
 
     def _process_messages(self) -> None:
         """
         Blocking loop for Worker thread
         """
 
-        while True:
+        while self._running:
             im: InputMessage = self._message_queue.get()  # blocking
 
             tag = im.method.delivery_tag  # tag from last message
@@ -384,19 +401,33 @@ class Worker(QApp):
                 status = "retry"
                 self._retry(im.channel, im.method, im.properties, im.body, e)
 
-            def ack_and_commit() -> None:
-                logger.debug("ack_and_commit tag %s", tag)
-                im.channel.basic_ack(delivery_tag=tag)
-                # AFTER basic_ack!
-                im.channel.tx_commit()  # commit sent messages and ack atomically!
-
-            self._call_in_pika_thread(ack_and_commit)
+            self._ack_and_commit(im)
 
             ms = 1000 * (time.monotonic() - t0)
             # NOTE! also serves as message counter (but without rate)
             self.timing("message", ms, [("stat", status)])
-            logger.info("processed %s in %.6f ms, status: %s", tag, ms, status)
+            logger.info("processed tag %s in %.3f ms, status: %s", tag, ms, status)
             sys.stdout.flush()  # for redirection, supervisord
+        logger.info("_process_messages exiting")
+        sys.exit(1)  # give error status so docker restarts
+
+    def _ack_and_commit(self, im: InputMessage) -> None:
+        """
+        a closure wrapped in a method
+        (instead of inside _process_messages loop)
+        because a closure in a loop captures the loop variable
+        whose value may change before the closure is called!
+        """
+        tag = im.method.delivery_tag  # tag from last message
+        assert tag is not None
+
+        def acker() -> None:
+            logger.info("ack_and_commit tag %s", tag)
+            im.channel.basic_ack(delivery_tag=tag)
+            # AFTER basic_ack!
+            im.channel.tx_commit()  # commit sent messages and ack atomically!
+
+        self._call_in_pika_thread(acker)
 
     def _exc_headers(self, e: Exception) -> Dict:
         """
