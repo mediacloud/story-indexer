@@ -6,13 +6,16 @@ import argparse
 import logging
 import os
 import pickle
+import queue
 import sys
+import threading
 import time
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 import pika.credentials
 import pika.exceptions
 import rabbitmq_admin
+import requests.exceptions
 
 # PyPI
 from pika import BasicProperties
@@ -62,6 +65,7 @@ class QuarantineException(AppException):
 class InputMessage(NamedTuple):
     """used to save batches of input messages"""
 
+    channel: BlockingChannel
     method: Basic.Deliver
     properties: BasicProperties
     body: bytes
@@ -126,7 +130,10 @@ class QApp(App):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        self.connection: Optional[BlockingConnection] = None
+        self._conn: Optional[BlockingConnection] = None
+
+        self._pika_thread: Optional[threading.Thread] = None
+        self._running = True
 
         # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
@@ -164,23 +171,37 @@ class QApp(App):
             logger.fatal("need --rabbitmq-url or RABBITMQ_URL")
             sys.exit(1)
 
-        if self.AUTO_CONNECT:
-            self.qconnect()
-
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
     def _test_configured(self) -> bool:
+        """
+        NOTE! Called before Pika thread launched,
+        uses own connection, and closes it
+        """
+        assert self.args and self.args.amqp_url
+        url = self.args.amqp_url
         try:
-            assert self.connection
-            chan = self.connection.channel()
-            chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE, passive=True)
-            chan.close()
-            return True
-        except pika.exceptions.ChannelClosedByBroker:
-            # grumble: pika logs Warning
-            # would need to wack pika.channel logger to suppress???
+            conn = BlockingConnection(URLParameters(url))
+        except (
+            requests.exceptions.ConnectionError,
+            pika.exceptions.AMQPConnectionError,
+        ):
             return False
+
+        # XXX do getLogger("pika").addFilter(filter) to avoid noise???
+        try:
+            chan = conn.channel()
+            # throws ChannelClosedByBroker if exchange does not exist
+            chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE, passive=True)
+            return True
+        except pika.exceptions.ChannelClosedByBroker:  # exchange not found
+            return False
+        finally:
+            # XXX remove pika message filter
+            if conn and conn.is_open:
+                conn.close()  # XXX wrap in try??
+                # XXX need to process events?
 
     def wait_until_configured(self) -> None:
         """for use by QApps that set WAIT_FOR_QUEUE_CONFIGURATION = False"""
@@ -188,7 +209,7 @@ class QApp(App):
             time.sleep(5)
 
     def _set_configured(self, chan: BlockingChannel, set_true: bool) -> None:
-        """INTERNAL: for use by indexer.pipeline"""
+        """INTERNAL: for use by indexer.pipeline ONLY!"""
         if set_true:
             chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE)
         else:
@@ -198,16 +219,52 @@ class QApp(App):
         """
         called from process_args if AUTO_CONNECT is True
         """
+        if self.WAIT_FOR_QUEUE_CONFIGURATION:
+            logger.info("waiting until queues configured....")
+            self.wait_until_configured()
+            logger.info("queues configured")
+
         assert self.args  # checked in process_args
         url = self.args.amqp_url
         assert url  # checked in process_args
-        self.connection = BlockingConnection(URLParameters(url))
+        self._conn = BlockingConnection(URLParameters(url))
+        assert self._conn  # keep mypy quiet
 
-        assert self.connection  # keep mypy quiet
         logger.info(f"connected to {url}")
 
-        if self.WAIT_FOR_QUEUE_CONFIGURATION:
-            self.wait_until_configured()
+    def _run_pika_thread(self) -> None:
+        """
+        called after channels are open
+        """
+        self._pika_thread = threading.Thread(
+            target=self._pika_thread_body, name="Pika-thread"
+        )
+        self._pika_thread.daemon = True  # remove need to join before exit???
+        self._pika_thread.run()
+
+        # XXX wait on queue here?
+
+    def _pika_thread_body(self) -> None:
+        """
+        Body for Pika-thread.
+        Processes all Pika I/O events.
+        Any channel methods MUST be executed via
+        connection.add_callback_threadsafe()
+        """
+        logging.info("Pika thread starting")
+        while self._running and self._conn and self._conn.is_open:
+            # process_data_events is called by conn.sleep,
+            # but may return sooner:
+            self._conn.process_data_events(10)
+        logging.info("Pika thread exiting")
+
+    def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
+        """
+        It would be cleaner to pass InputMessage object with send methods to Workers,
+        so bare channel is never exposed to worker code.  Maybe later.
+        """
+        assert self._conn
+        self._conn.add_callback_threadsafe(cb)
 
     def send_message(
         self,
@@ -217,6 +274,9 @@ class QApp(App):
         routing_key: str = DEFAULT_ROUTING_KEY,
         properties: Optional[BasicProperties] = None,
     ) -> None:
+        """
+        called by Worker/Publisher code in main thread
+        """
         if exchange is None:
             exchange = self.output_exchange_name
 
@@ -225,9 +285,13 @@ class QApp(App):
 
         # persist messages on disk
         # (otherwise may be lost on reboot)
-        properties.delivery_mode = PERSISTENT_DELIVERY_MODE
         # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
-        chan.basic_publish(exchange, routing_key, data, properties)
+        properties.delivery_mode = PERSISTENT_DELIVERY_MODE
+
+        def send() -> None:
+            chan.basic_publish(exchange, routing_key, data, properties)
+
+        self._call_in_pika_thread(send)
 
         if exchange:
             dest = exchange
@@ -252,51 +316,28 @@ class QApp(App):
 class Worker(QApp):
     """Base class for Workers that consume messages"""
 
-    # XXX maybe allow command line args, environment overrides?
-    # override this to allow enable input batching
-    INPUT_BATCH_MSGS = 1
-
-    # if INPUT_BATCH_MSGS > 1, wait no longer than INPUT_BATCH_SECS after
-    # first message, then process messages on hand:
-    INPUT_BATCH_SECS = 120
-
-    # Additional time to process batch (after INPUT_BATCH_SECS).
-    # Only takes effect if INPUT_BATCH_MSGS > 1 and
-    # (INPUT_BATCH_SECS + BATCH_PROCESSING_SECS) > CONSUMER_TIMEOUT
-    BATCH_PROCESSING_SECS = 60
-
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.input_msgs: List[InputMessage] = []
-        self.input_timer: Optional[object] = None  # opaque timer
-
-        # max total time for batch (wait + processing)
-        self.batch_time = self.INPUT_BATCH_SECS + self.BATCH_PROCESSING_SECS
-
-        # number of messages retried in a row
-        self.retries = 0
+        self._message_queue: queue.Queue[InputMessage] = queue.Queue()
 
     def main_loop(self) -> None:
         """
         basic main_loop for a consumer.
         override for a producer!
         """
-        assert self.connection
-        chan = self.connection.channel()
+
+        self.qconnect()
+
+        assert self._conn
+        chan = self._conn.channel()
         chan.tx_select()  # enter transaction mode
-        # set "prefetch" limit so messages get distributed among workers:
-        chan.basic_qos(prefetch_count=self.INPUT_BATCH_MSGS * 2)
+        # set "prefetch" limit: distributes messages among workers,'
+        # limits the number of unacked messages in _message_queue
+        chan.basic_qos(prefetch_count=2)
+        chan.basic_consume(self.input_queue_name, self.on_message)
 
-        # if batching multiple input messages, and batch timeout
-        # greater than the default consumer ack timeout (which is
-        # LOOOOOONG), set consumer timeout accordingly
-        arguments = {}
-        if self.INPUT_BATCH_MSGS > 1 and self.batch_time > CONSUMER_TIMEOUT:
-            arguments["x-consumer-timeout"] = self.batch_time * 1000
-
-        chan.basic_consume(self.input_queue_name, self.on_message, arguments=arguments)
-
-        chan.start_consuming()  # enter pika main loop; calls on_message
+        self._run_pika_thread()
+        self._process_messages()
 
     def on_message(
         self,
@@ -306,73 +347,47 @@ class Worker(QApp):
         body: bytes,
     ) -> None:
         """
-        basic_consume callback function
+        basic_consume callback function; called in Pika thread.
+        Queue message for Worker thread _process_messages function.
         """
-
         logger.debug("on_message %s", method.delivery_tag)  # no preformat!
+        self._message_queue.put(InputMessage(chan, method, properties, body))
 
-        self.input_msgs.append(InputMessage(method, properties, body))
-
-        if len(self.input_msgs) < self.INPUT_BATCH_MSGS:
-            # Here only when batching multiple msgs, and less than full batch.
-            # If no input_timer set, start one so that incomplete batch
-            # won't sit for longer than INPUT_BATCH_SECS
-            if self.input_timer is None and self.INPUT_BATCH_SECS and self.connection:
-                self.input_timer = self.connection.call_later(
-                    self.INPUT_BATCH_SECS, lambda: self._process_messages(chan)
-                )
-            return
-
-        # here with full batch: start processing
-        if self.input_timer and self.connection:
-            self.connection.remove_timeout(self.input_timer)
-            self.input_timer = None
-
-        self._process_messages(chan)
-
-    def _process_messages(self, chan: BlockingChannel) -> None:
+    def _process_messages(self) -> None:
         """
-        Here w/ INPUT_BATCH_MSGS or
-        INPUT_BATCH_SECS elapsed after first message
+        Blocking loop for Worker thread
         """
-        t0 = time.monotonic()
-        msgs = 0
-        for m, p, b in self.input_msgs:
-            msgs += 1
+
+        while True:
+            im: InputMessage = self._message_queue.get()  # blocking
+            t0 = time.monotonic()
+            # XXX report latency since message queued??
             try:
-                self.process_message(chan, m, p, b)
+                # XXX pass im, with methods and non-public channel!
+                self.process_message(im.channel, im.method, im.properties, im.body)
                 status = "ok"
-                self.retries = 0
             except QuarantineException as e:
                 status = "error"
-                self._quarantine(chan, m, p, b, e)
-                self.retries = 0
+                self._quarantine(im.channel, im.method, im.properties, im.body, e)
             except Exception as e:
                 status = "retry"
-                self._retry(chan, m, p, b, e)
-                self.retries += 1
+                self._retry(im.channel, im.method, im.properties, im.body, e)
 
-        # when INPUT_BATCH_MSGS != 1, actual work is done by
-        # "end_of_batch" method, so include in total time
-        self.end_of_batch(chan)
+            tag = im.method.delivery_tag  # tag from last message
+            assert tag is not None
+            logger.debug("ack %s", tag)  # NOT preformated!!
 
-        # ack message(s)
-        multiple = len(self.input_msgs) > 1
-        tag = self.input_msgs[-1].method.delivery_tag  # tag from last message
-        assert tag is not None
-        logger.debug("ack %s %s", tag, multiple)  # NOT preformated!!
-        chan.basic_ack(delivery_tag=tag, multiple=multiple)
-        self.input_msgs = []
+            def ack_and_commit() -> None:
+                im.channel.basic_ack(delivery_tag=tag)
+                # AFTER basic_ack!
+                im.channel.tx_commit()  # commit sent messages and ack atomically!
 
-        # AFTER basic_ack!
-        chan.tx_commit()  # commit sent messages and ack atomically!
+            self._call_in_pika_thread(ack_and_commit)
+            sys.stdout.flush()  # for redirection, supervisord
 
-        if msgs:
-            ms_per_msg = 1000 * (time.monotonic() - t0) / msgs
+            ms_per_msg = 1000 * (time.monotonic() - t0)
             # NOTE! also serves as message counter!
             self.timing("message", ms_per_msg, [("stat", status)])
-
-        sys.stdout.flush()  # for redirection, supervisord
 
     def _exc_headers(self, e: Exception) -> Dict:
         """
@@ -479,8 +494,14 @@ class Worker(QApp):
     ) -> None:
         raise NotImplementedError("Worker.process_message not overridden")
 
-    def end_of_batch(self, chan: BlockingChannel) -> None:
-        """hook for batch processors (ie; write to database)"""
+    def send_story(
+        self,
+        chan: BlockingChannel,
+        story: BaseStory,
+        exchange: Optional[str] = None,
+        routing_key: str = DEFAULT_ROUTING_KEY,
+    ) -> None:
+        self.send_message(chan, story.dump(), exchange, routing_key)
 
 
 class StoryWorker(Worker):
@@ -505,44 +526,6 @@ class StoryWorker(Worker):
         story: BaseStory,
     ) -> None:
         raise NotImplementedError("StoryWorker.process_story not overridden")
-
-    def send_story(
-        self,
-        chan: BlockingChannel,
-        story: BaseStory,
-        exchange: Optional[str] = None,
-        routing_key: str = DEFAULT_ROUTING_KEY,
-    ) -> None:
-        self.send_message(chan, story.dump(), exchange, routing_key)
-
-
-class BatchStoryWorker(StoryWorker):
-    """
-    process batches of stories:
-    INPUT_BATCH_MSGS controls batch size (and defaults to one),
-    so you likely want to increase it, BUT, it's not prohibited,
-    in case you want to test code on REALLY small batches!
-    """
-
-    def __init__(self, process_name: str, descr: str):
-        super().__init__(process_name, descr)
-        self._stories: List[BaseStory] = []
-        if self.INPUT_BATCH_MSGS == 1:
-            logger.info("INPUT_BATCH_MSGS is 1!!")
-
-    def process_story(
-        self,
-        chan: BlockingChannel,
-        story: BaseStory,
-    ) -> None:
-        self._stories.append(story)
-
-    def end_of_batch(self, chan: BlockingChannel) -> None:
-        self.story_batch(chan, self._stories)
-        self._stories = []
-
-    def story_batch(self, chan: BlockingChannel, stories: List[BaseStory]) -> None:
-        raise NotImplementedError("BatchStoryWorker.story_batch not overridden")
 
 
 def run(klass: type[Worker], *args: Any, **kw: Any) -> None:
