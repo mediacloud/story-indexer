@@ -235,7 +235,7 @@ class QApp(App):
 
         logger.info(f"connected to {url}")
 
-    def _run_pika_thread(self) -> None:
+    def _start_pika_thread(self) -> None:
         """
         called after channels are open; launches pika I/O thread
         """
@@ -243,7 +243,7 @@ class QApp(App):
             target=self._pika_thread_body, name="Pika-thread"
         )
         self._pika_thread.daemon = True  # remove need to join before exit???
-        self._pika_thread.run()
+        self._pika_thread.start()
 
         # XXX wait on queue here?
 
@@ -255,6 +255,18 @@ class QApp(App):
         connection.add_callback_threadsafe()
         """
         logging.info("Pika thread starting")
+
+        assert self.connection
+        chan = self.connection.channel()
+        chan.tx_select()  # enter transaction mode
+
+        # set "prefetch" limit: distributes messages among workers,'
+        # limits the number of unacked messages in _message_queue
+        chan.basic_qos(prefetch_count=2)
+
+        # subscribe to the queue:
+        chan.basic_consume(self.input_queue_name, self.on_message)
+
         while self._running and self.connection and self.connection.is_open:
             # process_data_events is called by conn.sleep,
             # but may return sooner:
@@ -262,10 +274,6 @@ class QApp(App):
         logging.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        """
-        It would be cleaner to pass InputMessage object with send methods to Workers,
-        so bare channel is never exposed to worker code.  Maybe later.
-        """
         assert self.connection
         self.connection.add_callback_threadsafe(cb)
 
@@ -275,10 +283,12 @@ class QApp(App):
         data: bytes,
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
-        properties: Optional[BasicProperties] = None,
+        properties: Optional[BasicProperties] = None, # WILL BE MODIFIED!
     ) -> None:
         """
-        called by Worker/Publisher code in main thread
+        called by Worker/Publisher code in main thread.
+        It would be cleaner to pass InputMessage object with send methods to Workers,
+        so bare channel is never exposed to worker code.  Maybe later.
         """
         if exchange is None:
             exchange = self.output_exchange_name
@@ -292,6 +302,7 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def send() -> None:
+            logger.debug("send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data))
             chan.basic_publish(exchange, routing_key, data, properties)
 
         self._call_in_pika_thread(send)
@@ -329,15 +340,7 @@ class Worker(QApp):
         override for a producer!
         """
 
-        assert self.connection
-        chan = self.connection.channel()
-        chan.tx_select()  # enter transaction mode
-        # set "prefetch" limit: distributes messages among workers,'
-        # limits the number of unacked messages in _message_queue
-        chan.basic_qos(prefetch_count=2)
-        chan.basic_consume(self.input_queue_name, self.on_message)
-
-        self._run_pika_thread()
+        self._start_pika_thread()
         self._process_messages()
 
     def on_message(
@@ -349,10 +352,13 @@ class Worker(QApp):
     ) -> None:
         """
         basic_consume callback function; called in Pika thread.
-        Queue message for Worker thread _process_messages function.
+        Queue message for Worker thread _process_messages function,
+        ack will be done back in Pika thread.
         """
-        logger.debug("on_message %s", method.delivery_tag)  # no preformat!
-        self._message_queue.put(InputMessage(chan, method, properties, body))
+        # XXX add time.monotonic() to show queue latency?
+        im = InputMessage(chan, method, properties, body)
+        logger.info("on_message tag %s", method.delivery_tag)
+        self._message_queue.put(im)
 
     def _process_messages(self) -> None:
         """
@@ -361,8 +367,12 @@ class Worker(QApp):
 
         while True:
             im: InputMessage = self._message_queue.get()  # blocking
+
+            tag = im.method.delivery_tag  # tag from last message
+            assert tag is not None
+            logger.info("_process_messages tag %s", tag)
             t0 = time.monotonic()
-            # XXX report latency since message queued??
+            # XXX report timing for latency since message queued??
             try:
                 # XXX pass im, with methods and non-public channel!
                 self.process_message(im.channel, im.method, im.properties, im.body)
@@ -374,21 +384,19 @@ class Worker(QApp):
                 status = "retry"
                 self._retry(im.channel, im.method, im.properties, im.body, e)
 
-            tag = im.method.delivery_tag  # tag from last message
-            assert tag is not None
-            logger.debug("ack %s", tag)  # NOT preformated!!
-
             def ack_and_commit() -> None:
+                logger.debug("ack_and_commit tag %s", tag)
                 im.channel.basic_ack(delivery_tag=tag)
                 # AFTER basic_ack!
                 im.channel.tx_commit()  # commit sent messages and ack atomically!
 
             self._call_in_pika_thread(ack_and_commit)
-            sys.stdout.flush()  # for redirection, supervisord
 
-            ms_per_msg = 1000 * (time.monotonic() - t0)
-            # NOTE! also serves as message counter!
-            self.timing("message", ms_per_msg, [("stat", status)])
+            ms = 1000 * (time.monotonic() - t0)
+            # NOTE! also serves as message counter (but without rate)
+            self.timing("message", ms, [("stat", status)])
+            logger.info("processed %s in %.6f ms, status: %s", tag, ms, status)
+            sys.stdout.flush()  # for redirection, supervisord
 
     def _exc_headers(self, e: Exception) -> Dict:
         """
@@ -396,9 +404,14 @@ class Worker(QApp):
         after an exception was caught
         """
 
+        # str(exception) omits class name.
+        # truncate because Unicode exceptions contain ENTIRE body
+        # which creates impossibly long headers!
+        what = repr(e)[:100]
+
         ret = {
             "x-mc-who": self.process_name,
-            "x-mc-what": repr(e)[:50],  # str() omits exception class name
+            "x-mc-what": what,
             "x-mc-when": str(time.time()),
             # maybe log hostname @ time w/ full traceback
             # and include hostname in headers (to find full traceback)
