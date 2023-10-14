@@ -29,9 +29,6 @@ from indexer.story import BaseStory
 
 logger = logging.getLogger(__name__)
 
-# content types:
-MIME_TYPE_PICKLE = "application/python-pickle"
-
 DEFAULT_ROUTING_KEY = "default"
 
 # semaphore in the sense of railway signal tower!
@@ -43,6 +40,7 @@ _CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
 CONSUMER_TIMEOUT = 30 * 60
 
 RETRIES_HDR = "x-mc-retries"
+EXCEPTION_HDR = "x-mc-what"
 
 # MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
 # before quarantine:
@@ -241,9 +239,9 @@ class QApp(App):
 
         logger.info(f"connected to {url}")
 
-    def _start_pika_thread(self) -> None:
+    def start_pika_thread(self) -> None:
         """
-        called after channels are open; launches pika I/O thread
+        call from main_loop
         """
         self._pika_thread = threading.Thread(
             target=self._pika_thread_body, name="Pika-thread"
@@ -252,14 +250,14 @@ class QApp(App):
         self._pika_thread.start()
 
     def _subscribe(self, chan: BlockingChannel) -> None:
-        """overridden in Worker class"""
+        """overridden in Worker class to subscribe to input queues"""
 
     def _pika_thread_body(self) -> None:
         """
-        Body for Pika-thread.
-        Processes all Pika I/O events.
+        Body for Pika-thread.  Processes all Pika I/O events.
+
         Any channel methods MUST be executed via
-        connection.add_callback_threadsafe()
+        connection.add_callback_threadsafe() to run here.
         """
         logging.info("Pika thread starting")
 
@@ -306,13 +304,13 @@ class QApp(App):
         # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
-        def send() -> None:
+        def sender() -> None:
             logger.debug(
                 "send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data)
             )
             chan.basic_publish(exchange, routing_key, data, properties)
 
-        self._call_in_pika_thread(send)
+        self._call_in_pika_thread(sender)
 
         if exchange:
             dest = exchange
@@ -347,7 +345,7 @@ class Worker(QApp):
         override for a producer!
         """
 
-        self._start_pika_thread()
+        self.start_pika_thread()
         self._process_messages()
 
     def _on_message(
@@ -368,6 +366,9 @@ class Worker(QApp):
         self._message_queue.put(im)
 
     def _subscribe(self, chan: BlockingChannel) -> None:
+        """
+        called from Pika thread with newly opened channel
+        """
         chan.tx_select()  # enter transaction mode
 
         # set "prefetch" limit: distributes messages among workers,'
@@ -379,11 +380,12 @@ class Worker(QApp):
 
     def _process_messages(self) -> None:
         """
-        Blocking loop for Worker thread
+        Blocking loop for Worker thread;
+        process messages queued by _on_message (called from Pika thread)
         """
 
         while self._running:
-            im: InputMessage = self._message_queue.get()  # blocking
+            im = self._message_queue.get()  # blocking
 
             tag = im.method.delivery_tag  # tag from last message
             assert tag is not None
@@ -442,8 +444,8 @@ class Worker(QApp):
 
         ret = {
             "x-mc-who": self.process_name,
-            "x-mc-what": what,
             "x-mc-when": str(time.time()),
+            EXCEPTION_HDR: what,
             # maybe log hostname @ time w/ full traceback
             # and include hostname in headers (to find full traceback)
         }
@@ -478,9 +480,9 @@ class Worker(QApp):
         Here from QuarantineException OR on other exception
         and retries exhausted
         """
-        logger.info(f"quarantine: {e}")  # TEMP
 
         headers = self._exc_headers(e)
+        logger.info(f"quarantine: {headers[EXCEPTION_HDR]}")  # TEMP
 
         # send to quarantine via direct exchange w/ headers
         self.send_message(
@@ -499,8 +501,6 @@ class Worker(QApp):
         body: bytes,
         e: Exception,
     ) -> None:
-        logger.info(f"retry: {e!r}")  # TEMP
-
         # XXX if debugging re-raise exception???
 
         oh = properties.headers  # old headers
@@ -514,6 +514,8 @@ class Worker(QApp):
 
         headers = self._exc_headers(e)
         headers[RETRIES_HDR] = retries + 1
+
+        logger.info(f"retry {retries}: {headers[EXCEPTION_HDR]}")  # TEMP
 
         # Queue message to -delay queue, which has no consumers with
         # an expiration/TTL; when messages expire, they are routed
