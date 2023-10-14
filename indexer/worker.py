@@ -130,7 +130,7 @@ class QApp(App):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        self._conn: Optional[BlockingConnection] = None
+        self.connection: Optional[BlockingConnection] = None
 
         self._pika_thread: Optional[threading.Thread] = None
         self._running = True
@@ -230,8 +230,8 @@ class QApp(App):
         assert self.args  # checked in process_args
         url = self.args.amqp_url
         assert url  # checked in process_args
-        self._conn = BlockingConnection(URLParameters(url))
-        assert self._conn  # keep mypy quiet
+        self.connection = BlockingConnection(URLParameters(url))
+        assert self.connection  # keep mypy quiet
 
         logger.info(f"connected to {url}")
 
@@ -255,10 +255,10 @@ class QApp(App):
         connection.add_callback_threadsafe()
         """
         logging.info("Pika thread starting")
-        while self._running and self._conn and self._conn.is_open:
+        while self._running and self.connection and self.connection.is_open:
             # process_data_events is called by conn.sleep,
             # but may return sooner:
-            self._conn.process_data_events(10)
+            self.connection.process_data_events(10)
         logging.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
@@ -266,8 +266,8 @@ class QApp(App):
         It would be cleaner to pass InputMessage object with send methods to Workers,
         so bare channel is never exposed to worker code.  Maybe later.
         """
-        assert self._conn
-        self._conn.add_callback_threadsafe(cb)
+        assert self.connection
+        self.connection.add_callback_threadsafe(cb)
 
     def send_message(
         self,
@@ -329,8 +329,8 @@ class Worker(QApp):
         override for a producer!
         """
 
-        assert self._conn
-        chan = self._conn.channel()
+        assert self.connection
+        chan = self.connection.channel()
         chan.tx_select()  # enter transaction mode
         # set "prefetch" limit: distributes messages among workers,'
         # limits the number of unacked messages in _message_queue
