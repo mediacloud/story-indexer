@@ -28,7 +28,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 # limit to columns of interest?
                 indices = cast(
                     List[Dict[str, str]],
-                    es.cat.indices(pri=True, format="json"),
+                    es.cat.indices(bytes="b", pri=True, format="json"),
                 )
                 health: Counter[str] = Counter()
                 for index in indices:
