@@ -21,6 +21,10 @@ logger = getLogger("elastic-stats")
 
 class ElasticStats(ElasticMixin, IntervalMixin, App):
     def main_loop(self) -> None:
+        # maybe:
+        # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+        # to avoid log message for each GET?
+
         es = self.elasticsearch_client()
 
         while True:
