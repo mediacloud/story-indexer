@@ -16,11 +16,6 @@ from elastic_transport import ConnectionError, ConnectionTimeout
 from indexer.app import App, IntervalMixin
 from indexer.elastic import ElasticMixin
 
-# Reporting unit for storage.
-# Changing this will cause a discontinuity in graphs!!!
-# But here for clarity, and for reference in comments!
-BYTES = "mb"
-
 logger = getLogger("elastic-stats")
 
 
@@ -33,7 +28,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 # limit to columns of interest?
                 indices = cast(
                     List[Dict[str, str]],
-                    es.cat.indices(bytes=BYTES, pri=True, format="json"),
+                    es.cat.indices(pri=True, format="json"),
                 )
                 health: Counter[str] = Counter()
                 for index in indices:
@@ -49,7 +44,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
 
                     by_index("docs.count", "docs")
                     by_index("docs.deleted", "deleted")
-                    by_index("pri.store.size", "pri-size")  # in BYTES
+                    by_index("pri.store.size", "pri-size")
                     health[index["health"]] += 1
 
                 # report totals for each health state
