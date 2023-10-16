@@ -54,7 +54,6 @@ class ElasticsearchConnector:
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
-        assert isinstance(hosts, str)
         self.client = client
         self.mappings = mappings
         self.settings = settings
