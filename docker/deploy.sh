@@ -238,6 +238,25 @@ dev)
     ;;
 esac
 
+# NOTE! in-network containers see native (unmapped) ports,
+# so set environment variable values BEFORE applying PORT_BIAS!!
+if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
+    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
+    exit 1
+else
+    RABBITMQ_HOST=rabbitmq
+fi
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
+
+if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
+    ELASTICSEARCH_CLUSTER=mc_elasticsearch
+    ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
+    ELASTICSEARCH_NODES=elasticsearch1
+    for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
+	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
+	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
+    done
+fi
 
 if [ "x$PORT_BIAS" != x ]; then
     ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
@@ -275,24 +294,6 @@ WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
-
-if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
-    ELASTICSEARCH_CLUSTER=mc_elasticsearch
-    ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
-    ELASTICSEARCH_NODES=elasticsearch1
-    for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
-	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
-	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
-    done
-fi
-
-if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
-    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
-    exit 1
-else
-    RABBITMQ_HOST=rabbitmq
-fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR

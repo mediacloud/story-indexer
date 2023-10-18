@@ -307,4 +307,7 @@ volumes:
 
 networks:
   default:
+    # order dependent?!
+    driver: overlay
+    attachable: true
     name: {{network_name}}
