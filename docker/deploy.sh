@@ -125,9 +125,6 @@ NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 NEWS_SEARCH_UI_PORT=8051	# server's native port
 
-NEWS_SEARCH_API_PORT=8000
-NEWS_SEARCH_UI_PORT=8001
-
 RABBITMQ_CONTAINERS=1
 RABBITMQ_PORT=5672		# native port
 
