@@ -237,6 +237,17 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
+  # Elasticsearch Snaphost worker
+  elastic-snapshots:
+    <<: *worker-service-settings
+    labels:
+        swarm.cronjob.enable: "{{elastic_snapshot_cronjob_enable}}"
+        swarm.cronjob.schedule: "0 0 * * *"
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-snapshots
+      ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
+
   ################ news search api (built elsewhere)
 
   # NOTE! Not building Docker image here (yet)
