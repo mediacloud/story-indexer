@@ -202,6 +202,7 @@ prod)
     NEWS_SEARCH_API_PORT=8010
     NEWS_SEARCH_UI_PORT=8051	# server's native port (no need to move back to 8001)
     RABBITMQ_PORT=5682
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
     ;;
 staging)
     # TEMP!! only needed for news-search-{api,ui}??
@@ -212,7 +213,7 @@ staging)
     ELASTICSEARCH_CONTAINERS=3
     MULTI_NODE_DEPLOYMENT=1
     # correct for ramos 2023-09-23 staging deployment:
-    # NOTE: **SHOULD** contain indexer-staging!!!
+    # ADD staging-indexer/ !!!
     VOLUME_DEVICE_PREFIX=/srv/data/docker/
     ;;
 dev)
