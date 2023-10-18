@@ -145,9 +145,11 @@ services:
     # hardwire container hostname for queues
     hostname: rabbitmq
     image: rabbitmq:3.11-management-alpine
+{% if export_ports %}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "{{rabbitmq_port}}:5672"
+      - "{{rabbitmq_port+10000}}:15672"
+{% endif %}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 {% endif %}
@@ -172,10 +174,12 @@ services:
     environment:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
+{% if export_ports %}
     ports:
       {% set port9200mapping = 9200 + i - 1 -%}
       - {{port9200mapping}}:9200
       - {{port9200mapping+100}}:9300
+{% endif %}
     volumes:
       - *es-backup-volume
       - elasticsearch_data_{{"%02d" % i}}:/usr/share/elasticsearch/data
@@ -244,16 +248,20 @@ services:
 
   news-search-api:
     image: {{news_search_image}}
+{% if export_ports %}
     ports:
-      - 8000:8000
+      - {{news_search_api_port}}:8000
+{% endif %}
 
   news-search-ui:
     command: streamlit run ui.py
     environment:
       APIURL: http://news-search-api:8000/v1
     image: {{news_search_image}}
+{% if export_ports %}
     ports:
-      - 8001:8501
+      - {{news_search_ui_port}}:8501
+{% endif %}
 
 volumes:
 {% if elasticsearch_containers > 0 %}

@@ -114,6 +114,8 @@ ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_REPLICAS=1
 ELASTICSEARCH_SHARDS=1
 
+EXPORT_PORTS=false		# honor _PORT config items
+
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
 FETCHER_OPTIONS="--yesterday"
@@ -122,7 +124,11 @@ NEWS_SEARCH_IMAGE_NAME=colsearch
 NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 
+NEWS_SEARCH_API_PORT=8000
+NEWS_SEARCH_UI_PORT=8001
+
 RABBITMQ_CONTAINERS=1
+RABBITMQ_PORT=5672
 
 STATSD_REALM="$BRANCH"
 
@@ -179,14 +185,29 @@ prod)
     STACK_NAME=$BASE_STACK_NAME
     ELASTICSEARCH_CONTAINERS=0
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
+    ELASTICSEARCH_SHARDS=30
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
     TAG=$DATE_TIME-$BRANCH
 
     MULTI_NODE_DEPLOYMENT=1
+
+    # NOTE!! initially not setting EXPORT_PORTS=true
+    # so none of these should matter!!
+
+    # usual ports, plus ten.
+    # moved to avoid conflict with staging
+    # (staging should be moved)
+    NEWS_SEARCH_API_PORT=8010
+    NEWS_SEARCH_UI_PORT=8051	# server's native port (no need to move back to 8001)
+    RABBITMQ_PORT=5682
     ;;
 staging)
+    # TEMP!! only needed for news-search-{api,ui}??
+    # should move to alternate ports!!!!
+    EXPORT_PORTS=true
+
     STACK_NAME=staging-$BASE_STACK_NAME
     ELASTICSEARCH_CONTAINERS=3
     MULTI_NODE_DEPLOYMENT=1
@@ -253,7 +274,7 @@ if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
 else
     RABBITMQ_HOST=rabbitmq
 fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:5672/?connection_attempts=10&retry_delay=5"
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
@@ -312,12 +333,16 @@ add ELASTICSEARCH_NODES
 add ELASTICSEARCH_REPLICAS int
 add ELASTICSEARCH_SHARDS int
 add ELASTICSEARCH_PLACEMENT_CONSTRAINT
+add EXPORT_PORTS bool
 add FETCHER_CRONJOB_ENABLE	# NOT bool!
 add FETCHER_NUM_BATCHES int
 add FETCHER_OPTIONS
 add NETWORK_NAME
+add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_IMAGE
+add NEWS_SEARCH_UI_PORT int
 add RABBITMQ_CONTAINERS int
+add RABBITMQ_PORT int
 add RABBITMQ_URL
 add STACK_NAME
 add STATSD_REALM

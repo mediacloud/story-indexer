@@ -242,7 +242,7 @@ class QApp(App):
         par = URLParameters(args.amqp_url)
         creds = par.credentials
         assert isinstance(creds, pika.credentials.PlainCredentials)
-        port = 15672  # XXX par.port + 10000???
+        port = par.port + 10000  # default 15672
         api = rabbitmq_admin.AdminAPI(
             url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
         )
