@@ -109,26 +109,27 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
-ELASTICSEARCH_CONTAINERS=1
+# configuration for Elastic Search Containers
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
-ELASTICSEARCH_REPLICAS=1
-ELASTICSEARCH_SHARDS=1
 
-EXPORT_PORTS=false		# honor _PORT config items
+# Elastic Search container config
+ELASTICSEARCH_PORT_BASE=9200	# native port
 
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
 FETCHER_OPTIONS="--yesterday"
 
-NEWS_SEARCH_IMAGE_NAME=colsearch
-NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/
+NEWS_SEARCH_API_PORT=8000	# native port
+NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
+NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
+NEWS_SEARCH_UI_PORT=8051	# server's native port
 
 NEWS_SEARCH_API_PORT=8000
 NEWS_SEARCH_UI_PORT=8001
 
 RABBITMQ_CONTAINERS=1
-RABBITMQ_PORT=5672
+RABBITMQ_PORT=5672		# native port
 
 STATSD_REALM="$BRANCH"
 
@@ -183,46 +184,53 @@ TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
     STACK_NAME=$BASE_STACK_NAME
-    ELASTICSEARCH_CONTAINERS=0
-    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
-    ELASTICSEARCH_SHARDS=30
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-$BRANCH
+    TAG=$DATE_TIME-prod
 
     MULTI_NODE_DEPLOYMENT=1
 
-    # NOTE!! initially not setting EXPORT_PORTS=true
-    # so none of these should matter!!
+    ELASTICSEARCH_CONTAINERS=0
+    # XXX change to 9200 once reconfigured:
+    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=30
 
-    # usual ports, plus ten.
-    # moved to avoid conflict with staging
-    # (staging should be moved)
-    NEWS_SEARCH_API_PORT=8010
-    NEWS_SEARCH_UI_PORT=8051	# server's native port (no need to move back to 8001)
-    RABBITMQ_PORT=5682
+    # for RabbitMQ and worker_data:
     VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
     ;;
 staging)
-    # TEMP!! only needed for news-search-{api,ui}??
-    # should move to alternate ports!!!!
-    EXPORT_PORTS=true
-
     STACK_NAME=staging-$BASE_STACK_NAME
+
+    PORT_BIAS=10		# ports: prod + 10
+
     ELASTICSEARCH_CONTAINERS=3
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=5
+
+    # don't run daily, fetch 10x more than dev:
+    FETCHER_CRONJOB_ENABLE=false
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
+    FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=1
-    # correct for ramos 2023-09-23 staging deployment:
-    # ADD staging-indexer/ !!!
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/
+
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
     ;;
 dev)
-    # fetch limited articles under development, don't run daily
+    # pick up from environment, so multiple dev stacks can run on same h/w cluster!
+    PORT_BIAS=${INDEXER_DEV_PORT_BIAS:-20}
+
     ELASTICSEARCH_CONTAINERS=1
-    ELASTICSEARCH_REPLICAS=0
+    ELASTICSEARCH_IMPORTER_REPLICAS=0
+    ELASTICSEARCH_IMPORTER_SHARDS=2
+
+    # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
     FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     # default volume storage location!
@@ -230,6 +238,15 @@ dev)
     ;;
 esac
 
+
+if [ "x$PORT_BIAS" != x ]; then
+    ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
+    NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PORT_BIAS)
+    NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PORT_BIAS)
+    RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PORT_BIAS)
+fi
+
+# XXX set all of this above separately for prod/staging/dev?!
 if [ "x$MULTI_NODE_DEPLOYMENT" != x ]; then
     # saw problems with fetcher queuing?
     #ELASTICSEARCH_PLACEMENT_CONSTRAINT='node.labels.role_es == true'
@@ -249,7 +266,7 @@ if [ "x$IS_DIRTY" = x ]; then
     # in development this means old tagged images will pile up until removed
     WORKER_IMAGE_TAG=$TAG
 else
-    # _could_ include DATE_TIME
+    # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
 fi
 
@@ -261,11 +278,11 @@ NETWORK_NAME=$STACK_NAME
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
     ELASTICSEARCH_CLUSTER=mc_elasticsearch
-    ELASTICSEARCH_HOSTS=http://elasticsearch1:9200
+    ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
     ELASTICSEARCH_NODES=elasticsearch1
     for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
 	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
-	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr 9200 + $I - 1)"
+	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
     done
 fi
 
@@ -292,23 +309,24 @@ fi
 
 # function to add a parameter to JSON CONFIG file
 add() {
-    NAME=$(echo $1 | tr A-Z a-z)
-    eval VALUE=\$$1
+    VAR=$1
+    NAME=$(echo $VAR | tr A-Z a-z)
+    eval VALUE=\$$VAR
     # take optional type second, so lines sortable!
     case $2 in
     bool)
 	case $VALUE in
 	true|false) ;;
-	*) echo add: $1 bad bool: $VALUE 1>&2; exit 1;;
+	*) echo "add: $VAR bad bool: '$VALUE'" 1>&2; exit 1;;
 	esac
 	;;
     int)
 	if ! echo $VALUE | egrep '^(0|[1-9][0-9]*)$' >/dev/null; then
-	    echo add: $1 bad int: $VALUE 1>&2; exit 1
+	    echo "add: $VAR bad int: '$VALUE'" 1>&2; exit 1
 	fi
 	;;
     str|'') VALUE='"'$VALUE'"';; # XXX maybe warn if empty??
-    *) echo "add: bad type for $1: $2" 1>&2; exit 1;;
+    *) echo "add: $VAR bad type: '$2'" 1>&2; exit 1;;
     esac
     echo '  "'$NAME'": '$VALUE, >> $CONFIG
     if [ "x$DEBUG" != x ]; then
@@ -330,11 +348,11 @@ add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
 add ELASTICSEARCH_IMAGE
+add ELASTICSEARCH_IMPORTER_REPLICAS int
+add ELASTICSEARCH_IMPORTER_SHARDS int
 add ELASTICSEARCH_NODES
-add ELASTICSEARCH_REPLICAS int
-add ELASTICSEARCH_SHARDS int
 add ELASTICSEARCH_PLACEMENT_CONSTRAINT
-add EXPORT_PORTS bool
+add ELASTICSEARCH_PORT_BASE int
 add FETCHER_CRONJOB_ENABLE	# NOT bool!
 add FETCHER_NUM_BATCHES int
 add FETCHER_OPTIONS
