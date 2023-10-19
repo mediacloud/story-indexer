@@ -348,7 +348,24 @@ class QApp(App):
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
         assert self.connection
+
+        if self._pika_thread is None:
+            # here from a QApp
+            # transactions will NOT be enabled
+            # (unless _subscribe is overridden)
+            self._start_pika_thread()
+
         self.connection.add_callback_threadsafe(cb)
+
+    def _stop_pika_thread(self) -> None:
+        if self._pika_thread:
+            if self._pika_thread.is_alive():
+                self._running = False
+                # Log message in case Pika thread hangs.
+                logger.info("Waiting for Pika thread to exit")
+                # could issue join with timeout.
+                self._pika_thread.join()
+            self._pika_thread = None
 
     def cleanup(self) -> None:
         super().cleanup()
@@ -356,14 +373,7 @@ class QApp(App):
         #   not acquire lock for <_io.BufferedWriter name='<stderr>'> at
         #   interpreter shutdown, possibly due to daemon threads"
         # so asking Pika thread to exit, and waiting for it.
-        if self._pika_thread and self._pika_thread.is_alive():
-            # may take thread
-            self._running = False
-            # Log message in case Pika thread hangs.
-            logger.info("Waiting for Pika thread")
-            # could issue join with timeout.
-            self._pika_thread.join()
-            self._pika_thread = None
+        self._stop_pika_thread()
 
     def send_message(
         self,
@@ -378,12 +388,6 @@ class QApp(App):
         It would be cleaner to pass InputMessage object with send methods to Workers,
         so bare channel is never exposed to worker code.  Maybe later.
         """
-        if self._pika_thread is None:
-            # here from a QApp
-            # transactions will NOT be enabled
-            # (unless _subscribe is overridden)
-            self._start_pika_thread()
-
         if exchange is None:
             exchange = self.output_exchange_name
 
