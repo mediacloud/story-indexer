@@ -262,6 +262,11 @@ class App(ArgsProtocol):
         """
         return _TimingContext(self, name)
 
+    def cleanup(self) -> None:
+        """
+        when overridden, call super().cleanup()
+        """
+
     ################ main program
 
     def main(self) -> None:
@@ -272,7 +277,10 @@ class App(ArgsProtocol):
         self._stats_init()
 
         with self.timer("main_loop"):  # also serves as restart count
-            self.main_loop()
+            try:
+                self.main_loop()
+            finally:
+                self.cleanup()
 
     def main_loop(self) -> None:
         """

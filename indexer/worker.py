@@ -298,11 +298,11 @@ class QApp(App):
         """
         if self._pika_thread:
             logger.error("_start_pika_thread called again")
+            return
 
         self._pika_thread = threading.Thread(
-            target=self._pika_thread_body, name="Pika-thread"
+            target=self._pika_thread_body, name="Pika-thread", daemon=True
         )
-        self._pika_thread.daemon = True  # remove need to join before exit???
         self._pika_thread.start()
 
     def _subscribe(self) -> None:
@@ -324,22 +324,56 @@ class QApp(App):
         """
         ptlogger.info("Pika thread starting")
 
+        # hook for Workers to make consume calls,
+        # (and/or any blocking calls, like exchange/queue creation)
         self._subscribe()
 
         try:
+            # Timeout value means _running can be set to False and main thread
+            # may have to wait for timeout before this thread wakes up and exits.
             while self._running and self.connection and self.connection.is_open:
                 # process_data_events is called by conn.sleep,
                 # but may return sooner:
                 self.connection.process_data_events(10)
         finally:
+            # Trying clean close, in case process_data_events returns
+            # with unprocessed events (especially send callbacks).
+            if self.connection and self.connection.is_open:
+                self.connection.close()
+            self.connection = None
             self._running = False  # tell _process_messages
 
-        # here if _running was set False, or connection closed (w/o Exception)
-        ptlogger.info("Pika thread exiting")
+            # here if _running was set False, connection closed, exception thrown
+            ptlogger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
         assert self.connection
+
+        if self._pika_thread is None:
+            # here from a QApp
+            # transactions will NOT be enabled
+            # (unless _subscribe is overridden)
+            self._start_pika_thread()
+
         self.connection.add_callback_threadsafe(cb)
+
+    def _stop_pika_thread(self) -> None:
+        if self._pika_thread:
+            if self._pika_thread.is_alive():
+                self._running = False
+                # Log message in case Pika thread hangs.
+                logger.info("Waiting for Pika thread to exit")
+                # could issue join with timeout.
+                self._pika_thread.join()
+            self._pika_thread = None
+
+    def cleanup(self) -> None:
+        super().cleanup()
+        # saw error "Fatal Python error: _enter_buffered_busy: could
+        #   not acquire lock for <_io.BufferedWriter name='<stderr>'> at
+        #   interpreter shutdown, possibly due to daemon threads"
+        # so asking Pika thread to exit, and waiting for it.
+        self._stop_pika_thread()
 
     def send_message(
         self,
