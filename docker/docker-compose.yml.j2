@@ -106,6 +106,7 @@ x-worker-service-settings: &worker-service-settings
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
+    ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
     STATSD_REALM: {{statsd_realm}}
@@ -241,7 +242,6 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
-      ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
       ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
@@ -253,6 +253,12 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
+
+  elastic-stats:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-stats
 
   ################ news search api (built elsewhere)
 
