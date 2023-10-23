@@ -274,6 +274,7 @@ services:
     command: streamlit run ui.py
     environment:
       APIURL: http://news-search-api:8000/v1
+      INDEXES: mediacloud_search_text_older,mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023,mediacloud_search_text_2024
     image: {{news_search_image}}
     ports:
       - {{news_search_ui_port}}:8501
