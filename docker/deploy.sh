@@ -111,8 +111,6 @@ fi
 
 # configuration for Elastic Search Containers
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
-
-# Elastic Search container config
 ELASTICSEARCH_PORT_BASE=9200	# native port
 
 FETCHER_CRONJOB_ENABLE=true
@@ -123,7 +121,7 @@ NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
 NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
-NEWS_SEARCH_UI_PORT=8051	# server's native port
+NEWS_SEARCH_UI_PORT=8501	# server's native port
 
 RABBITMQ_CONTAINERS=1
 RABBITMQ_PORT=5672		# native port
