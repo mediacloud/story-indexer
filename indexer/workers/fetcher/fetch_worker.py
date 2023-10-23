@@ -182,8 +182,6 @@ class FetchWorker(QApp):
         assert self.connection
         chan = self.connection.channel()
 
-        queued_stories = 0
-        oversized_stories = 0
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
 
@@ -196,18 +194,9 @@ class FetchWorker(QApp):
                     logger.warn(
                         f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story_dump)}"
                     )
-                    oversized_stories += 1
+                    self.incr("oversized-stories")
                 else:
                     self.send_message(chan, story_dump)
-                    queued_stories += 1
-
-        self.gauge(
-            "oversized-stories", oversized_stories, labels=[("batch", self.batch_index)]
-        )
-
-        self.gauge(
-            "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
-        )
 
 
 if __name__ == "__main__":

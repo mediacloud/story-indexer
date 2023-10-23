@@ -40,8 +40,10 @@ class Parser(StoryWorker):
         #     or let fail from repeated retries???
         try:
             mdd = mcmetadata.extract(link, html)
-        except mcmetadata.exceptions.BadContentError as e:
-            raise QuarantineException(getattr(e, "message", repr(e)))
+        except mcmetadata.exceptions.BadContentError:
+            self.incr(
+                "undersized-stories"
+            )  # _PG: Or "unparsed-story" label ('reason', 'too-short'), and add counters for no html and no link too?
 
         extraction_label = mdd["text_extraction_method"]
 
