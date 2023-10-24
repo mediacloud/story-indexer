@@ -269,10 +269,15 @@ services:
     image: {{news_search_image}}
     ports:
       - {{news_search_api_port}}:8000
+    environment:
+      <<: *base-environment-vars
+      TERMAGGR: top,significant,rare
+      TERMFIELDS: article_title,text_content
 
   news-search-ui:
     command: streamlit run ui.py
     environment:
+      <<: *base-environment-vars
       APIURL: http://news-search-api:8000/v1
       INDEXES: mediacloud_search_text_older,mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023,mediacloud_search_text_2024
     image: {{news_search_image}}
