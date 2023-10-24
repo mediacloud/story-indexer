@@ -291,6 +291,7 @@ services:
     environment:
       <<: *news-search-environment-vars
       APIURL: http://news-search-api:8000/v1
+      TITLE: {{news_search_ui_title}}
     ports:
       - {{news_search_ui_port}}:8501
 

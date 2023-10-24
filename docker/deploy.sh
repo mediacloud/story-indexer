@@ -122,6 +122,7 @@ NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
 NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 NEWS_SEARCH_UI_PORT=8501	# server's native port
+NEWS_SEARCH_UI_TITLE="Search API" # Explorer is appended
 
 RABBITMQ_CONTAINERS=1
 RABBITMQ_PORT=5672		# native port
@@ -210,7 +211,7 @@ staging)
     FETCHER_NUM_BATCHES=10
 
     MULTI_NODE_DEPLOYMENT=1
-
+    NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
     VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
     ;;
 dev)
@@ -227,6 +228,7 @@ dev)
     FETCHER_NUM_BATCHES=10
 
     MULTI_NODE_DEPLOYMENT=
+    NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     # default volume storage location!
     VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
@@ -356,6 +358,7 @@ add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_IMAGE
 add NEWS_SEARCH_UI_PORT int
+add NEWS_SEARCH_UI_TITLE
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
 add RABBITMQ_URL
