@@ -7,6 +7,7 @@ name = "story-indexer"
 version = "0.0.1"
 dependencies = [
   "boto3 ~= 1.28.44",
+  "docker ~= 6.1.0",
   "elasticsearch ~= 8.9.0",
   "mediacloud-metadata ~= 0.9.4",
   "pika ~= 1.3.2",

@@ -254,6 +254,29 @@ services:
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
 
+  ################ stats reporters
+
+  # almost certainly needs to run on a swarm manager
+  docker-stats:
+    <<: *worker-service-settings
+    deploy: &worker-deploy-settings
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+      <<: *worker-environment-vars
+      RUN: docker-stats
+      ARGS: "--stack {{stack_name}}"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  # run a copy on each ES server?
+  elastic-stats:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-stats
+
   # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
   # run a copy on each RabbitMQ cluster node (for node stats & redundancy)?
   rabbitmq-stats:
@@ -261,12 +284,6 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
-
-  elastic-stats:
-    <<: *worker-service-settings
-    environment:
-      <<: *worker-environment-vars
-      RUN: elastic-stats
 
   ################ news search api (built elsewhere)
 
