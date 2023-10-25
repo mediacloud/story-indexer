@@ -125,6 +125,12 @@ x-news-search-service-settings: &news-search-service-settings
     <<: *base-environment-vars
     INDEXES: mediacloud_search_text_older,mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023,mediacloud_search_text_2024
   image: {{news_search_image}}
+  deploy: &news-search-deploy-settings
+    placement:
+      constraints:
+        - {{worker_placement_constraint}}
+    restart_policy:
+      condition: on-failure
 
 # end of aliases
 ################################################################
