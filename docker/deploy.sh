@@ -122,7 +122,7 @@ NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
 NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 NEWS_SEARCH_UI_PORT=8501	# server's native port
-NEWS_SEARCH_UI_TITLE="Search API" # Explorer is appended
+NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
 RABBITMQ_CONTAINERS=1
 RABBITMQ_PORT=5672		# native port
