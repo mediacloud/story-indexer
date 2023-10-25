@@ -134,10 +134,10 @@ options:
 
 ## docker-compose.yml.j2 template
 
-docker-compose.yml is generated the Jinja2 template
+docker-compose.yml is generated from the Jinja2 template
 docker-compose.yml.j2
 
-Read the comments in at the top of the template before opening a PR
+Read the comments at the top of the template before opening a PR
 with changes.
 
 In particular:
