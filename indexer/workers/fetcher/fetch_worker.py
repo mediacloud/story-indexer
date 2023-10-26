@@ -11,7 +11,7 @@ from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
 from indexer.story import BaseStory, StoryFactory, uuid_by_link
-from indexer.worker import QApp
+from indexer.worker import StoryProducer
 from indexer.workers.fetcher.batch_spider import BatchSpider
 from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_daily_rss
 
@@ -28,7 +28,7 @@ MAX_FETCHER_MSG_SIZE: int = (
 )
 
 
-class FetchWorker(QApp):
+class FetchWorker(StoryProducer):
     AUTO_CONNECT: bool = False
 
     fetch_date: str

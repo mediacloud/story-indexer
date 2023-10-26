@@ -322,5 +322,12 @@ if __name__ == "__main__":
     # or "python indexer/pipeline.py"
     # configure the default queues.
     p = Pipeline("pipeline", "configure story-indexer queues")
-    p.add_producer("fetcher", [p.add_worker("parser", [p.add_consumer("importer")])])
+    p.add_producer(
+        "fetcher",
+        [
+            p.add_worker(
+                "parser", [p.add_worker("importer", [p.add_consumer("archiver")])]
+            )
+        ],
+    )
     p.main()

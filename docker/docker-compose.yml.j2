@@ -259,6 +259,12 @@ services:
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
 
+  archiver-worker:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: archiver
+
   # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
   # run a copy on each RabbitMQ cluster node (for node stats & redundancy)?
   rabbitmq-stats:

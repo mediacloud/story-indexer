@@ -154,7 +154,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             }
             self.import_story(url_hash, data)
 
-            # sender.send_story(story)  # pass story along (ie; to archiver)
+            # pass story along to archiver
+            # (have an option to disable, for previously archived data?)
+            sender.send_story(story)
 
     def import_story(
         self,
