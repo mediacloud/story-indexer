@@ -222,8 +222,7 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: configure-pipeline
-      ARGS: "configure"
-      # exits successfully, won't be restarted
+      ARGS: "configure_and_loop"
 
   fetcher-worker:
     <<: *worker-service-settings
