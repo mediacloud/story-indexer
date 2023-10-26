@@ -6,6 +6,7 @@ Pipeline Worker Definitions
 # are recieving messages from exactly one channel/queue:
 # * There is no channel global/member!!!
 # * The code DOES assume there is only one Pika connection.
+# * For code processing messages: Pika ops MUST be done from Pika thread
 
 # log.debug calls w/ "move to debug?" comments
 # can be acted upon once the Pika-thread code is trusted.
@@ -38,6 +39,7 @@ from indexer.story import BaseStory
 logger = logging.getLogger(__name__)
 ptlogger = logging.getLogger("Pika-thread")  # used for logging from Pika-thread
 
+DEFAULT_EXCHANGE = ""           # routes to queue named by routing key
 DEFAULT_ROUTING_KEY = "default"
 
 # semaphore in the sense of railway signal tower!
@@ -48,6 +50,7 @@ _CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT = 30 * 60
 
+# Media Cloud headers where code examines values:
 RETRIES_HDR = "x-mc-retries"
 EXCEPTION_HDR = "x-mc-what"
 
@@ -69,7 +72,7 @@ class QuarantineException(AppException):
 
 
 class InputMessage(NamedTuple):
-    channel: BlockingChannel  # XXX make private
+    _channel: BlockingChannel
     method: Basic.Deliver
     properties: BasicProperties
     body: bytes
@@ -78,6 +81,17 @@ class InputMessage(NamedTuple):
     # XXX make into a class with methods
     # that call chan.xxx via conn.add_callback_threadsafe
 
+class StorySender:
+    def __init__(self, app: QApp, channel: BlockingChannel):
+        self.app = app
+        self._channel = channel
+
+    def send_story(self,
+        story: BaseStory,
+        exchange: Optional[str] = None,
+        routing_key: str = DEFAULT_ROUTING_KEY,
+     ) -> None:
+        app._send_message(self._channel, story.dump(), exchange, routing_key)
 
 # NOTE!! base_queue_name depends on the following
 # functions adding ONLY a hyphen and a single word!
@@ -188,6 +202,9 @@ class QApp(App):
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
         self.delay_queue_name = delay_queue_name(self.process_name)
+
+        # avoid needing to create senders on the fly
+        self.senders: Dict[BlockingChannel, StorySender] = {}
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -375,7 +392,7 @@ class QApp(App):
         # so asking Pika thread to exit, and waiting for it.
         self._stop_pika_thread()
 
-    def send_message(
+    def _send_message(
         self,
         chan: BlockingChannel,
         data: bytes,
@@ -480,6 +497,7 @@ class Worker(QApp):
         # subscribe to the queue.
         chan.basic_consume(self.input_queue_name, self._on_message)
 
+
     def _process_messages(self) -> None:
         """
         Blocking loop for running Worker processing code.  Processes
@@ -491,34 +509,37 @@ class Worker(QApp):
 
         while self._running:
             im = self._message_queue.get()  # blocking
-
-            tag = im.method.delivery_tag
-            assert tag is not None
-            logger.info("_process_messages #%s", tag)
-            t0 = time.monotonic()
-            # XXX report t0-im.mtime as latency since message queued timing stat?
-            try:
-                # XXX pass im, with methods and non-public channel!
-                self.process_message(im.channel, im.method, im.properties, im.body)
-                status = "ok"
-            except QuarantineException as e:
-                status = "error"
-                self._quarantine(im.channel, im.method, im.properties, im.body, e)
-            except Exception as e:
-                if self._retry(im.channel, im.method, im.properties, im.body, e):
-                    status = "retry"
-                else:
-                    status = "retryx"  # retries eXausted
-
+            self._process_one_message(im)
             self._ack_and_commit(im)
 
-            ms = 1000 * (time.monotonic() - t0)
-            # NOTE! statsd timers have .count but not .rate
-            self.timing("message", ms, [("stat", status)])
-            logger.info("processed #%s in %.3f ms, status: %s", tag, ms, status)
             sys.stdout.flush()  # for redirection, supervisord
         logger.info("_process_messages exiting")
         sys.exit(1)  # give error status so docker restarts
+
+    def _process_one_message(self, im: InputMessage):
+        tag = im.method.delivery_tag
+        assert tag is not None
+        logger.info("_process_messages #%s", tag)
+        t0 = time.monotonic()
+        # XXX report t0-im.mtime as latency since message queued timing stat?
+
+        try:
+            self.process_message(im)
+            status = "ok"
+        except QuarantineException as e:
+            status = "error"
+            self._quarantine(im, e)
+        except Exception as e:
+            if self._retry(im, e):
+                status = "retry"
+            else:
+                status = "retryx"  # retries eXausted
+
+        ms = 1000 * (time.monotonic() - t0)
+        # NOTE! statsd timers have .count but not .rate
+        self.timing("message", ms, [("stat", status)])
+        logger.info("processed #%s in %.3f ms, status: %s", tag, ms, status)
+
 
     def _ack_and_commit(self, im: InputMessage) -> None:
         """
@@ -584,14 +605,7 @@ class Worker(QApp):
 
         return ret
 
-    def _quarantine(
-        self,
-        chan: BlockingChannel,
-        method: Basic.Deliver,
-        properties: BasicProperties,
-        body: bytes,
-        e: Exception,
-    ) -> None:
+    def _quarantine(self, im: InputMessage, e: Exception) -> None:
         """
         Here from QuarantineException OR on other exception
         and retries exhausted
@@ -601,29 +615,22 @@ class Worker(QApp):
         logger.info(f"quarantine: {headers[EXCEPTION_HDR]}")  # TEMP
 
         # send to quarantine via direct exchange w/ headers
-        self.send_message(
-            chan,
-            body,
-            "",
+        self._send_message(
+            im.channel,
+            im.body,
+            DEFAULT_EXCHANGE,
             quarantine_queue_name(self.process_name),
             BasicProperties(headers=headers),
         )
 
-    def _retry(
-        self,
-        chan: BlockingChannel,
-        method: Basic.Deliver,
-        properties: BasicProperties,
-        body: bytes,
-        e: Exception,
-    ) -> bool:
+    def _retry(self, im: InputMessage, e: Exception) -> bool:
         # XXX if debugging re-raise exception???
 
-        oh = properties.headers  # old headers
+        oh = im.properties.headers  # old headers
         if oh:
             retries = oh.get(RETRIES_HDR, 0)
             if retries >= MAX_RETRIES:
-                self._quarantine(chan, method, properties, body, e)
+                self._quarantine(im, e)
                 return False  # retries exhausted
         else:
             retries = 0
@@ -646,17 +653,19 @@ class Worker(QApp):
 
         # send to retry delay queue via default exchange
         props = BasicProperties(headers=headers, expiration=expiration_ms_str)
-        self.send_message(chan, body, "", self.delay_queue_name, props)
+        self._send_message(im.channel, im.body, DEFAULT_EXCHANGE,
+                           self.delay_queue_name, im.properties)
         return True  # queued for retry
 
-    def process_message(
-        self,
-        chan: BlockingChannel,
-        method: Basic.Deliver,
-        properties: BasicProperties,
-        body: bytes,
-    ) -> None:
+    def process_message(self, im: InputMessage) -> None:
         raise NotImplementedError("Worker.process_message not overridden")
+
+    def story_sender(self) -> StorySender:
+        """
+        Call once PER THREAD in a producer (generates new messages)
+        MUST be called before Pika thread running
+        """
+        return StorySender(self, self.connection.channel())
 
     def send_story(
         self,
@@ -665,7 +674,7 @@ class Worker(QApp):
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
     ) -> None:
-        self.send_message(chan, story.dump(), exchange, routing_key)
+        self._send_message(chan, story.dump(), exchange, routing_key)
 
 
 class StoryWorker(Worker):
@@ -673,22 +682,18 @@ class StoryWorker(Worker):
     Process Stories in Queue Messages
     """
 
-    def process_message(
-        self,
-        chan: BlockingChannel,
-        method: Basic.Deliver,
-        properties: BasicProperties,
-        body: bytes,
-    ) -> None:
-        # XXX pass content-type?
-        story = BaseStory.load(body)
-        self.process_story(chan, story)
+    def process_message(self, im: InputMessage) -> None:
+        if chan in self.senders:
+            sender = self.senders[chan]
+        else:
+            sender = self.senders[chan] = StorySender(self, channel)
 
-    def process_story(
-        self,
-        chan: BlockingChannel,
-        story: BaseStory,
-    ) -> None:
+        story = BaseStory.load(body)
+
+        # XXX pass content-type?
+        self.process_story(sender, story)
+
+    def process_story(self, sender: StorySender, story: BaseStory) -> None:
         raise NotImplementedError("StoryWorker.process_story not overridden")
 
 

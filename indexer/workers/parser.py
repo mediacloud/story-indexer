@@ -6,21 +6,16 @@ import logging
 
 # PyPI:
 import mcmetadata
-from pika.adapters.blocking_connection import BlockingChannel
 
 # local:
 from indexer.story import BaseStory
-from indexer.worker import QuarantineException, StoryWorker, run
+from indexer.worker import QuarantineException, StorySender, StoryWorker, run
 
 logger = logging.getLogger("parser")
 
 
 class Parser(StoryWorker):
-    def process_story(
-        self,
-        chan: BlockingChannel,
-        story: BaseStory,
-    ) -> None:
+    def process_story(self, sender: StorySender, story: BaseStory) -> None:
         rss = story.rss_entry()
         raw = story.raw_html()
 
@@ -65,7 +60,7 @@ class Parser(StoryWorker):
                 if hasattr(cmd, key):  # avoid hardwired exceptions list?!
                     setattr(cmd, key, val)
 
-        self.send_story(chan, story)
+        sender.send_story(story)
         self.incr("parsed-stories", labels=[("method", extraction_label)])
 
 

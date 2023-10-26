@@ -193,8 +193,7 @@ class FetchWorker(QApp):
         # enqueue stories
         self.qconnect()
 
-        assert self.connection
-        chan = self.connection.channel()
+        sender = self.story_sender()
 
         queued_stories = 0
         oversized_stories = 0
@@ -212,7 +211,7 @@ class FetchWorker(QApp):
                     )
                     oversized_stories += 1
                 else:
-                    self.send_message(chan, story_dump)
+                    sender.send_story(story) # NOTE! re-encodes! test HTML size
                     queued_stories += 1
 
         self.gauge(

@@ -11,11 +11,10 @@ from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
-from pika.adapters.blocking_connection import BlockingChannel
 
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
-from indexer.worker import StoryWorker, run
+from indexer.worker import StorySender, StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +134,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
         return routing_index
 
-    def process_story(
-        self,
-        chan: BlockingChannel,
-        story: BaseStory,
-    ) -> None:
+    def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
         Process story and extract metadataurl
         """
@@ -158,6 +153,8 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
             self.import_story(url_hash, data)
+
+            #sender.send_story(story)  # pass story along (ie; to archiver)
 
     def import_story(
         self,
