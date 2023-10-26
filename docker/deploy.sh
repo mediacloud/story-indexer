@@ -19,6 +19,7 @@ SCRIPT_DIR=$(dirname $SCRIPT)
 
 # hostname w/o any domain
 HOSTNAME=$(hostname --short)
+BRANCH=$(git branch --show-current)
 
 if [ "x$(which jinja2)" = x ]; then
     VENV_BIN=$SCRIPT_DIR/../venv/bin
@@ -30,27 +31,31 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
-    echo "  -a  allow-dirty; no dirty/push checks; no tags applied (for dev)"
-    echo "  -b  build image but do not deploy"
-    echo "  -d  enable debug output (on jinja2 invocation)"
-    echo "  -h  output this help and exit"
-    echo "  -n  dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
-    echo "  -u  allow running as non-root user"
+    echo "  -a      allow-dirty; no dirty/push checks; no tags applied (for dev)"
+    echo "  -b      build image but do not deploy"
+    echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
+    echo "  -d      enable debug output (for template parameters)"
+    echo "  -h      output this help and exit"
+    echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
+    echo "  -u      allow running as non-root user"
     exit 1
 }
-while getopts abdhnu OPT; do
+while getopts B:abdhnu OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
+   B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
+
 # XXX complain if anything remaining?
 
 # may not be needed if user is in right (docker?) group(s)?
@@ -77,7 +82,6 @@ run_as_login_user() {
     fi
 }
 
-BRANCH=$(git branch --show-current)
 #GIT_HASH=$(git rev-parse --short HEAD)
 
 dirty() {
@@ -89,6 +93,15 @@ dirty() {
     IS_DIRTY=1
 }
 
+# news-search-api sources in separate repo, by popular opinion,
+# but deploying from our docker-compose file for network access.
+# but not yet/currently building it from there.
+echo looking for news-search-api docker image:
+if ! docker images | grep colsearch; then
+    echo news-search-api docker image not found. 1>&2
+    echo 'run "docker compose build" in news-search-api repo' 1>&2
+fi
+
 if ! git diff --quiet; then
     dirty 'local changes not checked in' 1>&2
 fi
@@ -96,9 +109,23 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
-ELASTIC_NUM_NODES=1
+# configuration for Elastic Search Containers
+ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
+ELASTICSEARCH_PORT_BASE=9200	# native port
 
-FETCHER_NUM_BATCHES=10
+FETCHER_CRONJOB_ENABLE=true
+FETCHER_NUM_BATCHES=20
+FETCHER_OPTIONS="--yesterday"
+
+NEWS_SEARCH_API_PORT=8000	# native port
+NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
+NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
+NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
+NEWS_SEARCH_UI_PORT=8501	# server's native port
+NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
+
+RABBITMQ_CONTAINERS=1
+RABBITMQ_PORT=5672		# native port
 
 STATSD_REALM="$BRANCH"
 
@@ -108,14 +135,14 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
 # Pushing to a local registry for now, while in dev loop.
 # set registry differently based on BRANCH?!
-WORKER_IMAGE_REGISTRY=localhost:5000
-
+# MUST have trailing slash unless empty
+WORKER_IMAGE_REGISTRY=localhost:5000/
 WORKER_IMAGE_NAME=indexer-worker
 
 # set DEPLOY_TIME, check remotes up to date
 case "$BRANCH" in
 prod|staging)
-    if [ "x$INDEXER_ALLOW_DIRTY" != x ]; then
+    if [ "x$INDEXER_ALLOW_DIRTY" != x -a "x$NO_ACTION" = x ]; then
 	echo "dirty/notag not allowed on $BRANCH branch: ignoring" 1>&2
 	INDEXER_ALLOW_DIRTY=
     fi
@@ -153,106 +180,208 @@ TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
     STACK_NAME=$BASE_STACK_NAME
-    ELASTIC_NUM_NODES=3
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-$BRANCH
+    TAG=$DATE_TIME-prod
+
     MULTI_NODE_DEPLOYMENT=1
-    # use the ones being created by staging,
-    # and give staging new directories????
-    echo "need VOLUME_DEVICE_PREFIX!!!!" 1>&2
-    exit 1
+
+    ELASTICSEARCH_CONTAINERS=0
+    # XXX change to 9200 once reconfigured:
+    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=30
+
+    # for RabbitMQ and worker_data:
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
     ;;
 staging)
     STACK_NAME=staging-$BASE_STACK_NAME
-    ELASTIC_NUM_NODES=3
+
+    PORT_BIAS=10		# ports: prod + 10
+
+    ELASTICSEARCH_CONTAINERS=3
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=5
+
+    # don't run daily, fetch 10x more than dev:
+    FETCHER_CRONJOB_ENABLE=false
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
+    FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=1
-    # correct for ramos 2023-09-23 staging deployment:
-    # NOTE: **SHOULD** contain indexer-staging!!!
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/
+    NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
     ;;
 dev)
-    STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
+    # pick up from environment, so multiple dev stacks can run on same h/w cluster!
+    PORT_BIAS=${INDEXER_DEV_PORT_BIAS:-20}
+
+    ELASTICSEARCH_CONTAINERS=1
+    ELASTICSEARCH_IMPORTER_REPLICAS=0
+    ELASTICSEARCH_IMPORTER_SHARDS=2
+
+    # fetch limited articles under development, don't run daily:
+    FETCHER_CRONJOB_ENABLE=false
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
+    FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=
+    NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
+    STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     # default volume storage location!
     VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
     ;;
 esac
 
+# NOTE! in-network containers see native (unmapped) ports,
+# so set environment variable values BEFORE applying PORT_BIAS!!
+if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
+    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
+    exit 1
+else
+    RABBITMQ_HOST=rabbitmq
+fi
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
+
+if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
+    ELASTICSEARCH_CLUSTER=mc_elasticsearch
+    ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
+    ELASTICSEARCH_NODES=elasticsearch1
+    for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
+	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
+	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
+    done
+fi
+
+if [ "x$PORT_BIAS" != x ]; then
+    ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
+    NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PORT_BIAS)
+    NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PORT_BIAS)
+    RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PORT_BIAS)
+fi
+
+# XXX set all of this above separately for prod/staging/dev?!
 if [ "x$MULTI_NODE_DEPLOYMENT" != x ]; then
     # saw problems with fetcher queuing?
-    #ELASTIC_PLACEMENT_CONSTRAINT='node.labels.role_es == true'
+    #ELASTICSEARCH_PLACEMENT_CONSTRAINT='node.labels.role_es == true'
     #WORKER_PLACEMENT_CONSTRAINT='node.labels.role_indexer == true'
 
     # TEMP: run everything on ramos:
-    ELASTIC_PLACEMENT_CONSTRAINT='node.labels.node_name==ramos'
+    ELASTICSEARCH_PLACEMENT_CONSTRAINT='node.labels.node_name==ramos'
     WORKER_PLACEMENT_CONSTRAINT='node.labels.node_name==ramos'
 else
     # default to placement on manager for (single node) developement
-    ELASTIC_PLACEMENT_CONSTRAINT="node.role == manager"
+    ELASTICSEARCH_PLACEMENT_CONSTRAINT="node.role == manager"
     WORKER_PLACEMENT_CONSTRAINT="node.role == manager"
 fi
 
 if [ "x$IS_DIRTY" = x ]; then
     # use git tag for image tag.
     # in development this means old tagged images will pile up until removed
-    # maybe have an option to prune old images?
     WORKER_IMAGE_TAG=$TAG
 else
-    # _could_ include DATE_TIME
+    # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
 fi
 
-WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY/$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
+NEWS_SEARCH_IMAGE=$NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME:$NEWS_SEARCH_IMAGE_TAG
+WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
-
-ELASTIC_CLUSTER_NAME=mc_elasticsearch
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
 
 echo creating docker-compose.yml
-(
-  echo '# generated by jinja2: EDITING IS FUTILE'
-  echo '# edit docker-compose.yml.j2 and run deploy.sh'
-  if [ "x$DEBUG" != x ]; then
-      # display jinja2 command:
-      set -x
-  fi
 
-  # NOTE! COULD pass -Ddeploy_type=$DEPLOY_TYPE, but would rather
-  # pass multiple variables that effect specific outcomes
-  # (keep decision making in this file, and not template;
-  #  don't ifdef based on platform name, but on features)
+CONFIG=config.json
+COMPOSE=docker-compose.yml.new
 
-  # NOTE! All variables (lower_case) in sorted order,
-  # set from shell UPPER_CASE shell variables of the same name.
+# remove config.json file on exit unless debugging
+if [ "x$DEBUG" = x ]; then
+    trap "rm -f $CONFIG" 0
+fi
 
-  # from jinja2-cli package:
-  jinja2 \
-      -Delastic_cluster_name=$ELASTIC_CLUSTER_NAME \
-      -Delastic_placement_constraint="$ELASTIC_PLACEMENT_CONSTRAINT" \
-      -Delastic_num_nodes=$ELASTIC_NUM_NODES \
-      -Dfetcher_num_batches=$FETCHER_NUM_BATCHES \
-      -Dnetwork_name=$NETWORK_NAME \
-      -Dstack_name=$STACK_NAME \
-      -Dstatsd_realm=$STATSD_REALM \
-      -Dstatsd_url=$STATSD_URL \
-      -Dvolume_device_prefix=$VOLUME_DEVICE_PREFIX \
-      -Dworker_placement_constraint="$WORKER_PLACEMENT_CONSTRAINT" \
-      -Dworker_image_full=$WORKER_IMAGE_FULL \
-      -Dworker_image_name=$WORKER_IMAGE_NAME \
-      docker-compose.yml.j2
-) > docker-compose.yml.new
+# function to add a parameter to JSON CONFIG file
+add() {
+    VAR=$1
+    NAME=$(echo $VAR | tr A-Z a-z)
+    eval VALUE=\$$VAR
+    # take optional type second, so lines sortable!
+    case $2 in
+    bool)
+	case $VALUE in
+	true|false) ;;
+	*) echo "add: $VAR bad bool: '$VALUE'" 1>&2; exit 1;;
+	esac
+	;;
+    int)
+	if ! echo $VALUE | egrep '^(0|[1-9][0-9]*)$' >/dev/null; then
+	    echo "add: $VAR bad int: '$VALUE'" 1>&2; exit 1
+	fi
+	;;
+    str|'') VALUE='"'$VALUE'"';; # XXX maybe warn if empty??
+    *) echo "add: $VAR bad type: '$2'" 1>&2; exit 1;;
+    esac
+    echo '  "'$NAME'": '$VALUE, >> $CONFIG
+    if [ "x$DEBUG" != x ]; then
+	echo $NAME $VALUE
+    fi
+}
+
+# remove, in case old file owned by root
+rm -f $CONFIG
+echo '{' > $CONFIG
+# NOTE! COULD pass deploy_type, but would rather
+# pass multiple variables that effect specific outcomes
+# (keep decision making in this file, and not template;
+#  don't ifdef C code based on platform name, but on features)
+
+# keep in alphabetical order to avoid duplicates
+
+add ELASTICSEARCH_CLUSTER
+add ELASTICSEARCH_CONTAINERS int
+add ELASTICSEARCH_HOSTS
+add ELASTICSEARCH_IMAGE
+add ELASTICSEARCH_IMPORTER_REPLICAS int
+add ELASTICSEARCH_IMPORTER_SHARDS int
+add ELASTICSEARCH_NODES
+add ELASTICSEARCH_PLACEMENT_CONSTRAINT
+add ELASTICSEARCH_PORT_BASE int
+add FETCHER_CRONJOB_ENABLE	# NOT bool!
+add FETCHER_NUM_BATCHES int
+add FETCHER_OPTIONS
+add NETWORK_NAME
+add NEWS_SEARCH_API_PORT int
+add NEWS_SEARCH_IMAGE
+add NEWS_SEARCH_UI_PORT int
+add NEWS_SEARCH_UI_TITLE
+add RABBITMQ_CONTAINERS int
+add RABBITMQ_PORT int
+add RABBITMQ_URL
+add STACK_NAME
+add STATSD_REALM
+add STATSD_URL
+add VOLUME_DEVICE_PREFIX
+add WORKER_IMAGE_FULL
+add WORKER_IMAGE_NAME
+add WORKER_PLACEMENT_CONSTRAINT
+echo '  "__THE_END__": true' >> $CONFIG
+echo '}' >> $CONFIG
+
+echo '# generated by jinja2: EDITING IS FUTILE' > $COMPOSE
+echo '# edit docker-compose.yml.j2 and run deploy.sh' >> $COMPOSE
+jinja2 --strict docker-compose.yml.j2 $CONFIG >> $COMPOSE
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo "jinja2 error: $STATUS" 1>&2
     exit 2
 fi
 mv -f docker-compose.yml.new docker-compose.yml
+chmod -w docker-compose.yml
 
 echo "checking docker-compose.yml syntax" 1>&2
 rm -f docker-compose.yml.dump
@@ -289,7 +418,7 @@ fi
 
 if [ "x$BUILD_ONLY" = x ]; then
     echo ''
-    echo -n "Deploy branch $BRANCH as stack $STACK_NAME? [no] "
+    echo -n "Deploy from branch $BRANCH as stack $STACK_NAME? [no] "
     read CONFIRM
     case "$CONFIRM" in
     [yY]|[yY][eE][sS]) ;;
@@ -313,7 +442,7 @@ if [ "x$IS_DIRTY" = x ]; then
     # XXX check status?
 
     # push tag to upstream repos
-    echo pushing git tag to $REMOTE
+    echo pushing git tag $TAG to $REMOTE
     run_as_login_user git push $REMOTE $TAG
     # XXX check status?
 fi
@@ -340,21 +469,6 @@ if [ $STATUS != 0 ]; then
     exit 1
 fi
 
-# "external" network in docker-compose for web_collection_search attach
-# see questions in docker-compose.yml.j2
-if docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
-    echo found docker network $NETWORK_NAME
-else
-    docker network create --attachable --driver overlay $NETWORK_NAME
-    STATUS=$?
-    if [ $STATUS = 0 ]; then
-	echo created docker network $NETWORK_NAME
-    else
-	echo error creating docker network $NETWORK_NAME: $STATUS 1>&2
-	exit 1
-    fi
-fi
-
 echo 'docker stack deploy (ignore "Ignoring unsupported options: build"):'
 # add --prune to remove old services?
 docker stack deploy -c docker-compose.yml $STACK_NAME
@@ -363,6 +477,7 @@ if [ $STATUS != 0 ]; then
     echo docker stack deploy failed: $STATUS 1>&2
     exit 1
 fi
+
 echo deployed stack $STACK
 
 # keep (private) record of deploys:
@@ -373,3 +488,5 @@ else
 fi
 echo "$DATE_TIME $HOSTNAME $STACK_NAME $NOTE" >> deploy.log
 # XXX chown to LOGIN_USER?
+
+# optionally prune old images?

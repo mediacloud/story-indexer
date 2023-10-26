@@ -12,7 +12,7 @@ from pika.adapters.blocking_connection import BlockingChannel
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StoryWorker, run
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("parser")
 
 
 class Parser(StoryWorker):
@@ -34,15 +34,12 @@ class Parser(StoryWorker):
             self.incr("stories", labels=[("status", "no-html")])
             raise QuarantineException("no html")
 
-        # metadata dict
-        # may raise mcmetadata.exceptions.BadContentError
-        #   What to do?
-        #     translate to QuarantineException (with loss of detail),
-        #     call (_)quarantine directly (with exception),
-        #     or let fail from repeated retries???
+        logger.info("parsing %s: %d characters", link, len(html))
+
         try:
             mdd = mcmetadata.extract(link, html)
         except mcmetadata.exceptions.BadContentError:
+            # No quarantine error here, just stop execution.
             self.incr("stories", labels=[("status", "too-short")])
 
         else:
@@ -53,6 +50,13 @@ class Parser(StoryWorker):
                 mdd["publication_date"] = mdd["publication_date"].strftime("%Y-%m-%d")
             else:
                 mdd["publication_date"] = "None"
+
+            logger.info(
+                "parsed %s with %s date %s",
+                link,
+                extraction_label,
+                mdd["publication_date"],
+            )
 
             with story.content_metadata() as cmd:
                 # XXX assumes identical item names!!

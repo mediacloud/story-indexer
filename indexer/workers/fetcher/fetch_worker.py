@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
 from indexer.story import BaseStory, StoryFactory, uuid_by_link
@@ -140,6 +141,10 @@ class FetchWorker(QApp):
             )
             status_label = "oversized"
 
+        assert http_meta.final_url is not None
+        if any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
+            status_label = "non-news"
+
         if status_label == "success":
             self.fetched_stories.append(story)
 
@@ -151,7 +156,15 @@ class FetchWorker(QApp):
         all_rss_records = fetch_daily_rss(self.fetch_date, self.sample_size)
         batches, batch_map = batch_rss(all_rss_records, num_batches=self.num_batches)
         self.rss_batch = batches[self.batch_index]
-        logger.info(f"Found {len(self.rss_batch)} entries for batch {self.batch_index}")
+
+        # Logging batch information:
+        for i in range(self.num_batches):
+            batch = batches[i]
+            batch_size = len(batch[i])
+            domains = len(set([s["domain"] for s in batch]))
+            logger.info(
+                f"Batch {i}:  {batch_size} stories, from {domains} domains (~{batch_size / domains} stories per domain"
+            )
 
         # Initialize stories
         logger.info(f"Initializing stories for {self.batch_index} on {self.fetch_date}")
