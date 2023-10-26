@@ -154,7 +154,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             }
             self.import_story(url_hash, data)
 
-            #sender.send_story(story)  # pass story along (ie; to archiver)
+            # sender.send_story(story)  # pass story along (ie; to archiver)
 
     def import_story(
         self,

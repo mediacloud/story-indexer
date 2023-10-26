@@ -211,7 +211,7 @@ class FetchWorker(QApp):
                     )
                     oversized_stories += 1
                 else:
-                    sender.send_story(story) # NOTE! re-encodes! test HTML size
+                    sender.send_story(story)  # NOTE! re-encodes! test HTML size
                     queued_stories += 1
 
         self.gauge(

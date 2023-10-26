@@ -39,7 +39,7 @@ from indexer.story import BaseStory
 logger = logging.getLogger(__name__)
 ptlogger = logging.getLogger("Pika-thread")  # used for logging from Pika-thread
 
-DEFAULT_EXCHANGE = ""           # routes to queue named by routing key
+DEFAULT_EXCHANGE = ""  # routes to queue named by routing key
 DEFAULT_ROUTING_KEY = "default"
 
 # semaphore in the sense of railway signal tower!
@@ -81,17 +81,20 @@ class InputMessage(NamedTuple):
     # XXX make into a class with methods
     # that call chan.xxx via conn.add_callback_threadsafe
 
+
 class StorySender:
-    def __init__(self, app: QApp, channel: BlockingChannel):
+    def __init__(self, app: "QApp", channel: BlockingChannel):
         self.app = app
         self._channel = channel
 
-    def send_story(self,
+    def send_story(
+        self,
         story: BaseStory,
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
-     ) -> None:
+    ) -> None:
         app._send_message(self._channel, story.dump(), exchange, routing_key)
+
 
 # NOTE!! base_queue_name depends on the following
 # functions adding ONLY a hyphen and a single word!
@@ -497,7 +500,6 @@ class Worker(QApp):
         # subscribe to the queue.
         chan.basic_consume(self.input_queue_name, self._on_message)
 
-
     def _process_messages(self) -> None:
         """
         Blocking loop for running Worker processing code.  Processes
@@ -539,7 +541,6 @@ class Worker(QApp):
         # NOTE! statsd timers have .count but not .rate
         self.timing("message", ms, [("stat", status)])
         logger.info("processed #%s in %.3f ms, status: %s", tag, ms, status)
-
 
     def _ack_and_commit(self, im: InputMessage) -> None:
         """
@@ -653,8 +654,9 @@ class Worker(QApp):
 
         # send to retry delay queue via default exchange
         props = BasicProperties(headers=headers, expiration=expiration_ms_str)
-        self._send_message(im.channel, im.body, DEFAULT_EXCHANGE,
-                           self.delay_queue_name, im.properties)
+        self._send_message(
+            im.channel, im.body, DEFAULT_EXCHANGE, self.delay_queue_name, props,
+        )
         return True  # queued for retry
 
     def process_message(self, im: InputMessage) -> None:
@@ -683,14 +685,15 @@ class StoryWorker(Worker):
     """
 
     def process_message(self, im: InputMessage) -> None:
+        chan = im.channel
         if chan in self.senders:
             sender = self.senders[chan]
         else:
-            sender = self.senders[chan] = StorySender(self, channel)
+            sender = self.senders[chan] = StorySender(self, chan)
 
+        # raised exceptions will cause retry
         story = BaseStory.load(body)
 
-        # XXX pass content-type?
         self.process_story(sender, story)
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
