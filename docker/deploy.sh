@@ -110,6 +110,7 @@ fi
 # (in alphabetical order):
 
 # configuration for Elastic Search Containers
+ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 
@@ -137,6 +138,7 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 # set registry differently based on BRANCH?!
 # MUST have trailing slash unless empty
 WORKER_IMAGE_REGISTRY=localhost:5000/
+# PLB: maybe indexer-common, now that it's used for config & stats reporting?
 WORKER_IMAGE_NAME=indexer-worker
 
 # set DEPLOY_TIME, check remotes up to date
@@ -216,6 +218,8 @@ staging)
     ;;
 dev)
     # pick up from environment, so multiple dev stacks can run on same h/w cluster!
+    # unless developers are running multiple ES instances, bias can be incremented
+    # by one for each new developer
     PORT_BIAS=${INDEXER_DEV_PORT_BIAS:-20}
 
     ELASTICSEARCH_CONTAINERS=1
@@ -246,7 +250,6 @@ fi
 RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
-    ELASTICSEARCH_CLUSTER=mc_elasticsearch
     ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
     ELASTICSEARCH_NODES=elasticsearch1
     for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
@@ -323,7 +326,17 @@ add() {
 	    echo "add: $VAR bad int: '$VALUE'" 1>&2; exit 1
 	fi
 	;;
-    str|'') VALUE='"'$VALUE'"';; # XXX maybe warn if empty??
+    str|'')
+	if [ "x$VALUE" = x ]; then
+	    echo "add: $VAR has null value" 1>&2; exit 1
+	fi
+	VALUE='"'$VALUE'"'
+	;;
+    # in case of emergency, break glass:
+    # (it's better to conditionalize variables that aren't set/used
+    #  in some circumstances than to allow null values when
+    #  the value, when used, needs to be non-null)
+    #allow-null) VALUE='"'$VALUE'"';;
     *) echo "add: $VAR bad type: '$2'" 1>&2; exit 1;;
     esac
     echo '  "'$NAME'": '$VALUE, >> $CONFIG
@@ -345,12 +358,15 @@ echo '{' > $CONFIG
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
-add ELASTICSEARCH_IMAGE
 add ELASTICSEARCH_IMPORTER_REPLICAS int
 add ELASTICSEARCH_IMPORTER_SHARDS int
-add ELASTICSEARCH_NODES
-add ELASTICSEARCH_PLACEMENT_CONSTRAINT
-add ELASTICSEARCH_PORT_BASE int
+if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
+    # make these conditional rather than allow-null
+    add ELASTICSEARCH_IMAGE
+    add ELASTICSEARCH_PLACEMENT_CONSTRAINT
+    add ELASTICSEARCH_PORT_BASE int
+    add ELASTICSEARCH_NODES
+fi
 add FETCHER_CRONJOB_ENABLE	# NOT bool!
 add FETCHER_NUM_BATCHES int
 add FETCHER_OPTIONS
