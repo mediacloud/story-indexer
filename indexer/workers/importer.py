@@ -86,13 +86,13 @@ class ElasticsearchConnector:
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        # ap.add_argument(
-        #     "--index-name-prefix",
-        #     dest="index_name_prefix",
-        #     type=str,
-        #     default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
-        #     help="Elasticsearch index name prefix",
-        # )
+        ap.add_argument(
+            "--index-name-prefix",
+            dest="index_name_prefix",
+            type=str,
+            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
+            help="Elasticsearch index name prefix",
+        )
 
     def process_args(self) -> None:
         super().process_args()
