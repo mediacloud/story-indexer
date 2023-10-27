@@ -8,11 +8,8 @@ import sys
 from datetime import date
 from logging import getLogger
 
-import requests
-
 from indexer.app import App
 from indexer.elastic import ElasticMixin
-from indexer.workers.importer import create_elasticsearch_client
 
 logger = logging.getLogger(__name__)
 
@@ -20,32 +17,36 @@ logger = logging.getLogger(__name__)
 class ElasticSnapshots(ElasticMixin, App):
     def main_loop(self) -> None:
         _TODAY = date.today().strftime("%Y.%m.%d")
-        _REPOSITORY_NAME = self.get_elasticsearch_snapshot
-        _SNAPSHOT_NAME = f"snapshot-{_TODAY}"
+        repository_name: str = self.get_elasticsearch_snapshot()
+        snapshot_name: str = f"snapshot-{_TODAY}"
 
         client = self.elasticsearch_client()
         assert client.ping(), "Failed to connect to Elasticsearch"
 
         index_names = list(client.indices.get_alias().keys())
-        logger.info(f"Starting Snapshot {_SNAPSHOT_NAME}")
+        indices: str = ",".join(index_names)
 
-        data = {
-            "repository": _REPOSITORY_NAME,
-            "snapshot": _SNAPSHOT_NAME,
-            "indices": ",".join(index_names),
-            "ignore_unavailable": True,
-            "include_global_state": False,
-            "wait_for_completion": True,
-        }
-        response = client.snapshot.create(**data)
-
-        if "acknowledged" in response and response["acknowledged"]:
-            logger.info(f"Successfully created {_SNAPSHOT_NAME} in S3")
+        logger.info(f"Starting Snapshot {snapshot_name}")
+        response = client.snapshot.create(
+            repository=repository_name,
+            snapshot=snapshot_name,
+            indices=indices,
+            ignore_unavailable=True,
+            include_global_state=True,
+            wait_for_completion=True,
+        )
+        snapshot_info = response.get("snapshot", {})
+        if snapshot_info.get("state") == "SUCCESS":
+            logger.info(f"Successfully created {snapshot_name} in S3")
+            logger.info(f"Start Time: {snapshot_info.get('start_time')}")
+            logger.info(f"End Time: {snapshot_info.get('end_time')}")
+            shards_info = snapshot_info.get("shards", {})
+            logger.info(
+                f"Shards - Total: {shards_info.get('total', 0)}, Failed: {shards_info.get('failed', 0)}, Successful: {shards_info.get('successful', 0)}"
+            )
         else:
-            logger.debug("Snapshot creation failed with status code")
-            if "error" in response:
-                error_message = response["error"]["reason"]
-                logger.error("Snapshot creation failed :%s", error_message)
+            error_message = snapshot_info["failures"]["reason"]
+            logger.error("Snapshot creation failed :%s", error_message)
 
 
 if __name__ == "__main__":

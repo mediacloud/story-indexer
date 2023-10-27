@@ -51,6 +51,11 @@ class ElasticMixin:
         # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
 
-    def get_elasticsearch_snapshot(self) -> Optional[str]:
-        # Return the Elasticsearch snapshot
+    def get_elasticsearch_snapshot(self: ArgsProtocol) -> Any:
+        assert self.args
+        if not self.args.elasticsearch_snapshot:
+            logger.fatal(
+                "need --elasticsearch-snapshot-repo or ELASTICSEARCH_SNAPSHOT_REPO"
+            )
+            sys.exit(1)
         return self.args.elasticsearch_snapshot
