@@ -6,6 +6,21 @@
  # jinja variables lower-case and underscore_delimited
  # dictionary keys in ASCII sort order,
  # avoiding extra whitespace inside double-curlies with plain variables
+ #
+ # When you add use of a new {{variable}}, run
+ #   ./deploy.sh -Bprod
+ #   ./deploy.sh -Bstaging
+ #   ./deploy.sh -Bdev
+ # to ensure all three paths in deploy.sh supply a value!
+ # (that an "add VAR" has been added to the script)
+ # this will also catch bad int/bool values, but not empty strings.
+ # XXX maybe this check can be run by pre-commit??
+ #
+ # As a rule, "policy" decisions should be made in deploy.sh,
+ # which should pass on the results as values to be subtituted
+ # in this template.  The type of deployment (dev/staging/prod)
+ # has explicitly NOT been passed as a value to this template
+ # to discourage decision-making here!
 -#}
 version: "3.8"
 # https://docs.docker.com/compose/compose-file/compose-file-v3/
@@ -17,6 +32,9 @@ version: "3.8"
  # external_links, links, network_mode, *restart* (use
  # deploy.restart_policy), security_opt, userns_mode as well as IPv6
  # options.
+ #
+ # "docker stack deploy" warning about about ignoring "build:"
+ # can be ignored!!
  #
  # NOTE! Specifying a (dict) key/value overwrites any previously
  # existing value under that key (ie; for keys set in a "<<:" merge)
@@ -88,6 +106,7 @@ x-worker-service-settings: &worker-service-settings
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
+    ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
     STATSD_REALM: {{statsd_realm}}
@@ -98,6 +117,20 @@ x-worker-service-settings: &worker-service-settings
 
   volumes:
     - worker_data:/app/data/
+
+################ news-search-{api,ui} settings
+
+x-news-search-service-settings: &news-search-service-settings
+  environment: &news-search-environment-vars
+    <<: *base-environment-vars
+    INDEXES: mediacloud_search_text_older,mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023,mediacloud_search_text_2024
+  image: {{news_search_image}}
+  deploy: &news-search-deploy-settings
+    placement:
+      constraints:
+        - {{worker_placement_constraint}}
+    restart_policy:
+      condition: on-failure
 
 # end of aliases
 ################################################################
@@ -146,8 +179,8 @@ services:
     hostname: rabbitmq
     image: rabbitmq:3.11-management-alpine
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "{{rabbitmq_port}}:5672"
+      - "{{rabbitmq_port+10000}}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 {% endif %}
@@ -173,7 +206,7 @@ services:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
     ports:
-      {% set port9200mapping = 9200 + i - 1 -%}
+      {% set port9200mapping = elasticsearch_port_base + i - 1 -%}
       - {{port9200mapping}}:9200
       - {{port9200mapping+100}}:9300
     volumes:
@@ -189,8 +222,7 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: configure-pipeline
-      ARGS: "configure"
-      # exits successfully, won't be restarted
+      ARGS: "configure_and_loop"
 
   fetcher-worker:
     <<: *worker-service-settings
@@ -223,11 +255,9 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
-      ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
       ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
-      ELASTICSEARCH_INDEX_NAME: is_this_still_needed
-      ELASTICSEARCH_REPLICAS: {{elasticsearch_replicas}}
-      ELASTICSEARCH_SHARDS: {{elasticsearch_shards}}
+      ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
+      ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
 
   # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
   # run a copy on each RabbitMQ cluster node (for node stats & redundancy)?
@@ -236,6 +266,12 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
+
+  elastic-stats:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-stats
 
   # Elasticsearch Snaphost worker
   elastic-snapshots:
@@ -254,17 +290,26 @@ services:
   # until version/revision control issues worked out.
 
   news-search-api:
-    image: {{news_search_image}}
+    <<: *news-search-service-settings
+    environment:
+      <<: *news-search-environment-vars
+      DESCRIPTION: "Descriptive text here"
+      ESHOSTS: {{elasticsearch_hosts}}
+      ESOPTS: '{"timeout": 60, "max_retries": 3}' # 'timeout' parameter is deprecated
+      TERMAGGRS: top,significant,rare
+      TERMFIELDS: article_title,text_content
     ports:
-      - 8000:8000
+      - {{news_search_api_port}}:8000
 
   news-search-ui:
+    <<: *news-search-service-settings
     command: streamlit run ui.py
     environment:
+      <<: *news-search-environment-vars
       APIURL: http://news-search-api:8000/v1
-    image: {{news_search_image}}
+      TITLE: {{news_search_ui_title}}
     ports:
-      - 8001:8501
+      - {{news_search_ui_port}}:8501
 
 volumes:
 {% if elasticsearch_containers > 0 %}
@@ -301,4 +346,7 @@ volumes:
 
 networks:
   default:
+    # order dependent?!
+    driver: overlay
+    attachable: true
     name: {{network_name}}

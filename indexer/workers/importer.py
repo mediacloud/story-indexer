@@ -6,14 +6,14 @@ import hashlib
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
-from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
 from pika.adapters.blocking_connection import BlockingChannel
 
+from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
 from indexer.worker import StoryWorker, run
 
@@ -47,42 +47,16 @@ es_mappings = {
 }
 
 
-def create_elasticsearch_client(
-    hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]]],
-) -> Elasticsearch:
-    if isinstance(hosts, str):
-        host_urls = hosts.split(",")
-
-    host_configs: Any = []
-    for host_url in host_urls:
-        parsed_url = urlparse(host_url)
-        host = parsed_url.hostname
-        scheme = parsed_url.scheme
-        port = parsed_url.port
-        if host and scheme and port:
-            node_config = NodeConfig(scheme=scheme, host=host, port=port)
-            host_configs.append(node_config)
-
-    return Elasticsearch(host_configs)
-
-
 class ElasticsearchConnector:
     def __init__(
         self,
-        hosts: Union[
-            str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]], None
-        ],
-        index_name: str,
+        client: Elasticsearch,
         mappings: Mapping[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
-        assert isinstance(hosts, str)
-        self.client = create_elasticsearch_client(hosts)
-        self.index_name = index_name
+        self.client = client
         self.mappings = mappings
         self.settings = settings
-        if self.client and self.index_name:
-            self.create_index(self.index_name)
 
     def create_index(self, index_name: str) -> None:
         if not self.client.indices.exists(index=index_name):
@@ -94,6 +68,9 @@ class ElasticsearchConnector:
                 )
             else:
                 self.client.indices.create(index=index_name)
+            logger.info("Index '%s' created successfully." % index_name)
+        else:
+            logger.debug("Index '%s' already exists. Skipping creation." % index_name)
 
     def index(
         self, id: str, index_name: str, document: Mapping[str, Any]
@@ -105,21 +82,15 @@ class ElasticsearchConnector:
         return response
 
 
-class ElasticsearchImporter(StoryWorker):
+class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--elasticsearch-hosts",
-            dest="elasticsearch_hosts",
-            default=os.environ.get("ELASTICSEARCH_HOSTS"),
-            help="override ELASTICSEARCH_HOSTS",
-        )
-        ap.add_argument(
-            "--index-name",
-            dest="index_name",
+            "--index-name-prefix",
+            dest="index_name_prefix",
             type=str,
-            default=os.environ.get("ELASTICSEARCH_INDEX_NAME"),
-            help="Elasticsearch index name",
+            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
+            help="Elasticsearch index name prefix",
         )
 
     def process_args(self) -> None:
@@ -127,21 +98,14 @@ class ElasticsearchImporter(StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        elasticsearch_hosts = self.args.elasticsearch_hosts
-        if not elasticsearch_hosts:
-            logger.fatal("need --elasticsearch-host defined")
+        index_name_prefix = self.args.index_name_prefix
+        if index_name_prefix is None:
+            logger.fatal("need --index-name-prefix defined")
             sys.exit(1)
-        self.elasticsearch_hosts = elasticsearch_hosts
-
-        index_name = self.args.index_name
-        if index_name is None:
-            logger.fatal("need --index-name defined")
-            sys.exit(1)
-        self.index_name = index_name
+        self.index_name_prefix = index_name_prefix
 
         self.connector = ElasticsearchConnector(
-            self.elasticsearch_hosts,
-            self.index_name,
+            self.elasticsearch_client(),
             mappings=es_mappings,
             settings=es_settings,
         )
@@ -153,15 +117,21 @@ class ElasticsearchImporter(StoryWorker):
         year = -1
         if publication_date_str:
             try:
-                year = datetime.strptime(publication_date_str, "%Y-%m-%d").year
+                pub_date = datetime.strptime(publication_date_str, "%Y-%m-%d")
+                year = pub_date.year
+                # check for exceptions of future dates just in case gets past mcmetadata
+                if pub_date > datetime.now() + timedelta(days=90):
+                    year = -1
             except ValueError as e:
-                logger.error(f"Error parsing date: {str(e)}")
+                logger.warning("Error parsing date: '%s" % str(e))
 
-        index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        if year and year >= 2021:
+        index_name_prefix = self.index_name_prefix
+        if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
-        else:
+        elif 2008 <= year <= 2020:
             routing_index = f"{index_name_prefix}_older"
+        else:
+            routing_index = f"{index_name_prefix}_other"
 
         return routing_index
 
