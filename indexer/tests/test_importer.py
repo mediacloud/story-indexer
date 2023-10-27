@@ -1,6 +1,8 @@
+import argparse
 import dataclasses
 import hashlib
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -8,10 +10,10 @@ import pytest
 from elastic_transport import NodeConfig
 from elasticsearch import Elasticsearch
 
+from indexer.elastic import create_elasticsearch_client
 from indexer.workers.importer import (
     ElasticsearchConnector,
     ElasticsearchImporter,
-    create_elasticsearch_client,
     es_mappings,
     es_settings,
 )
@@ -59,6 +61,7 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "article_title": "Example Article",
     "normalized_article_title": "example article",
     "text_content": "Lorem ipsum dolor sit amet",
+    "indexed_date": datetime.now().isoformat(),
 }
 
 
@@ -88,9 +91,8 @@ class TestElasticsearchConnection:
 
 
 @pytest.fixture(scope="class")
-def elasticsearch_connector() -> ElasticsearchConnector:
-    elasticsearch_hosts = cast(str, os.environ.get("ELASTICSEARCH_HOSTS"))
-    connector = ElasticsearchConnector(elasticsearch_hosts, es_mappings, es_settings)
+def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector:
+    connector = ElasticsearchConnector(elasticsearch_client, es_mappings, es_settings)
     return connector
 
 
@@ -105,6 +107,7 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
+        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         url = test_data.get("url")
         assert isinstance(url, str)
         id = hashlib.sha256(url.encode("utf-8")).hexdigest()
@@ -120,10 +123,20 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        assert index_name_prefix is not None
-        assert importer.index_routing("2023-06-27") == f"{index_name_prefix}_2023"
-        assert importer.index_routing(None) == f"{index_name_prefix}_other"
-        assert importer.index_routing("2022-06-27") == f"{index_name_prefix}_2022"
-        assert importer.index_routing("2020-06-27") == f"{index_name_prefix}_older"
-        assert importer.index_routing("2026-06-27") == f"{index_name_prefix}_other"
+        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
+        assert importer.index_name_prefix is not None
+        assert (
+            importer.index_routing("2023-06-27") == f"{importer.index_name_prefix}_2023"
+        )
+        assert importer.index_routing(None) == f"{importer.index_name_prefix}_other"
+        assert (
+            importer.index_routing("2022-06-27") == f"{importer.index_name_prefix}_2022"
+        )
+        assert (
+            importer.index_routing("2020-06-27")
+            == f"{importer.index_name_prefix}_older"
+        )
+        assert (
+            importer.index_routing("2026-06-27")
+            == f"{importer.index_name_prefix}_other"
+        )

@@ -8,7 +8,7 @@ import argparse
 import os
 import sys
 from logging import getLogger
-from typing import Any, List, Optional
+from typing import Any, List, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
@@ -17,6 +17,25 @@ from elasticsearch import Elasticsearch
 from indexer.app import ArgsProtocol
 
 logger = getLogger(__name__)
+
+
+def create_elasticsearch_client(
+    hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]]],
+) -> Elasticsearch:
+    if isinstance(hosts, str):
+        host_urls = hosts.split(",")
+
+    host_configs: Any = []
+    for host_url in host_urls:
+        parsed_url = urlparse(host_url)
+        host = parsed_url.hostname
+        scheme = parsed_url.scheme
+        port = parsed_url.port
+        if host and scheme and port:
+            node_config = NodeConfig(scheme=scheme, host=host, port=port)
+            host_configs.append(node_config)
+
+    return Elasticsearch(host_configs)
 
 
 class ElasticMixin:
@@ -42,4 +61,5 @@ class ElasticMixin:
             sys.exit(1)
 
         # Connects immediately, performs failover and retries
-        return Elasticsearch(hosts.split(","))
+        es_client = create_elasticsearch_client(hosts)
+        return es_client

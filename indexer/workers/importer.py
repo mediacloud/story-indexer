@@ -43,6 +43,7 @@ es_mappings = {
             "fields": {"keyword": {"type": "keyword"}},
         },
         "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+        "indexed_date": {"type": "date"},
     }
 }
 
@@ -85,13 +86,13 @@ class ElasticsearchConnector:
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        ap.add_argument(
-            "--index-name-prefix",
-            dest="index_name_prefix",
-            type=str,
-            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
-            help="Elasticsearch index name prefix",
-        )
+        # ap.add_argument(
+        #     "--index-name-prefix",
+        #     dest="index_name_prefix",
+        #     type=str,
+        #     default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
+        #     help="Elasticsearch index name prefix",
+        # )
 
     def process_args(self) -> None:
         super().process_args()
@@ -124,8 +125,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     year = -1
             except ValueError as e:
                 logger.warning("Error parsing date: '%s" % str(e))
-
-        index_name_prefix = self.index_name_prefix
+        index_name_prefix = self.index_name_prefix or os.environ.get(
+            "ELASTICSEARCH_INDEX_NAME_PREFIX"
+        )
         if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
         elif 2008 <= year <= 2020:
@@ -170,6 +172,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         response = None
         if data:
             publication_date = str(data.get("publication_date"))
+            # Add the indexed_date with today's date in ISO 8601 format
+            indexed_date: str = datetime.now().isoformat()
+            data = {**data, "indexed_date": indexed_date}
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
