@@ -46,8 +46,13 @@ DEFAULT_ROUTING_KEY = "default"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT_SECONDS = 30 * 60
 
+# Ammount of time to leave for "end_of_batch()" to do its work:
+# XXX calculate at run time, different workers
+#    should be able to specify different values of "a bit under"
+_WORK_TIME = 5 * 60
+
 # Use a bit under default consumer_timeout
-_BATCH_SECONDS_MAX = CONSUMER_TIMEOUT_SECONDS - (5 * 60)
+_BATCH_SECONDS_MAX = CONSUMER_TIMEOUT_SECONDS - _WORK_TIME
 
 # semaphore in the sense of railway signal tower!
 # an exchange rather than a queue to avoid crocks to not monitor it!
@@ -797,8 +802,11 @@ class BatchStoryWorker(StoryWorker):
                 if msg_number == 1:
                     logger.info("waiting for first batch message")  # move to debug?
                     im = self._message_queue.get()  # blocking
-                    batch_start_time = time.monotonic()
-                    batch_deadline = batch_start_time + batch_seconds
+                    batch_start_time = time.monotonic()  # for logging
+
+                    # base on when recieved from channel by Pika thread!!
+                    # (does RabbitMQ write timestamp on departure?)
+                    batch_deadline = im.mtime + batch_seconds
                 else:
                     try:
                         timeout = batch_deadline - time.monotonic()
