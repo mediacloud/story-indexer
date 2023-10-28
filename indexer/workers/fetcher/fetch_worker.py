@@ -135,13 +135,20 @@ class FetchWorker(QApp):
         else:
             status_label = f"http-{http_meta.response_code//100}xx"
 
+        if len(story.dump()) > MAX_FETCHER_MSG_SIZE:
+            logger.warn(
+                f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story.dump())}"
+            )
+            status_label = "oversized"
+
         assert http_meta.final_url is not None
         if any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
             status_label = "non-news"
 
-        else:
+        if status_label == "success":
             self.fetched_stories.append(story)
-        self.incr("fetched-stories", labels=[("status", status_label)])
+
+        self.incr("stories", labels=[("status", status_label)])
 
     def main_loop(self) -> None:
         # Fetch and batch rss
@@ -196,8 +203,6 @@ class FetchWorker(QApp):
         assert self.connection
         chan = self.connection.channel()
 
-        queued_stories = 0
-        oversized_stories = 0
         for story in self.fetched_stories:
             http_meta = story.http_metadata()
 
@@ -205,23 +210,7 @@ class FetchWorker(QApp):
 
             if http_meta.response_code == 200:
                 story_dump = story.dump()
-                if len(story_dump) > MAX_FETCHER_MSG_SIZE:
-                    # Just log this for now- we might want a less ephemeral record eventually.
-                    logger.warn(
-                        f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story_dump)}"
-                    )
-                    oversized_stories += 1
-                else:
-                    self.send_message(chan, story_dump)
-                    queued_stories += 1
-
-        self.gauge(
-            "oversized-stories", oversized_stories, labels=[("batch", self.batch_index)]
-        )
-
-        self.gauge(
-            "queued-stories", queued_stories, labels=[("batch", self.batch_index)]
-        )
+                self.send_message(chan, story_dump)
 
 
 if __name__ == "__main__":
