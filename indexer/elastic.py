@@ -34,13 +34,6 @@ class ElasticMixin:
             help="comma separated list of ES server URLs",
         )
 
-        ap.add_argument(
-            "--elasticsearch-snapshot-repo",
-            dest="elasticsearch_snapshot_repo",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
-            help="Elasticsearch snapshot repository name",
-        )
-
     def elasticsearch_client(self: ArgsProtocol) -> Elasticsearch:
         assert self.args
         hosts = self.args.elasticsearch_hosts
@@ -50,12 +43,3 @@ class ElasticMixin:
 
         # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
-
-    def get_elasticsearch_snapshot(self: ArgsProtocol) -> Any:
-        assert self.args
-        if not self.args.elasticsearch_snapshot:
-            logger.fatal(
-                "need --elasticsearch-snapshot-repo or ELASTICSEARCH_SNAPSHOT_REPO"
-            )
-            sys.exit(1)
-        return self.args.elasticsearch_snapshot

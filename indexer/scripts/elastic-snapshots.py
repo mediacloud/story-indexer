@@ -7,14 +7,24 @@ import os
 import sys
 from datetime import date
 from logging import getLogger
+from typing import Any
 
-from indexer.app import App
+from indexer.app import App, ArgsProtocol
 from indexer.elastic import ElasticMixin
 
 logger = logging.getLogger(__name__)
 
 
 class ElasticSnapshots(ElasticMixin, App):
+    def get_elasticsearch_snapshot(self: ArgsProtocol) -> Any:
+        assert self.args
+        if not self.args.elasticsearch_snapshot:
+            logger.fatal(
+                "need --elasticsearch-snapshot-repo or ELASTICSEARCH_SNAPSHOT_REPO"
+            )
+            sys.exit(1)
+        return self.args.elasticsearch_snapshot
+
     def main_loop(self) -> None:
         _TODAY = date.today().strftime("%Y.%m.%d")
         repository_name: str = self.get_elasticsearch_snapshot()
