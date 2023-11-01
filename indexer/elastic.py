@@ -19,25 +19,6 @@ from indexer.app import ArgsProtocol
 logger = getLogger(__name__)
 
 
-def create_elasticsearch_client(
-    hosts: Union[str, List[Union[str, Mapping[str, Union[str, int]], NodeConfig]]],
-) -> Elasticsearch:
-    if isinstance(hosts, str):
-        host_urls = hosts.split(",")
-
-    host_configs: Any = []
-    for host_url in host_urls:
-        parsed_url = urlparse(host_url)
-        host = parsed_url.hostname
-        scheme = parsed_url.scheme
-        port = parsed_url.port
-        if host and scheme and port:
-            node_config = NodeConfig(scheme=scheme, host=host, port=port)
-            host_configs.append(node_config)
-
-    return Elasticsearch(host_configs)
-
-
 class ElasticMixin:
     """
     mixin class for Apps that use Elastic Search API
@@ -60,6 +41,4 @@ class ElasticMixin:
             logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
             sys.exit(1)
 
-        # Connects immediately, performs failover and retries
-        es_client = create_elasticsearch_client(hosts)
-        return es_client
+        return Elasticsearch(hosts.split(","))

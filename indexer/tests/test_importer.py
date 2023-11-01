@@ -10,7 +10,7 @@ import pytest
 from elastic_transport import NodeConfig
 from elasticsearch import Elasticsearch
 
-from indexer.elastic import create_elasticsearch_client
+# from indexer.elastic import create_elasticsearch_client
 from indexer.workers.importer import (
     ElasticsearchConnector,
     ElasticsearchImporter,
@@ -35,9 +35,9 @@ def recreate_indices(client: Elasticsearch, index_name: str) -> None:
 
 @pytest.fixture(scope="class")
 def elasticsearch_client() -> Any:
-    hosts = os.environ.get("ELASTICSEARCH_HOSTS")
+    hosts: Any = os.environ.get("ELASTICSEARCH_HOSTS")
     assert hosts is not None, "ELASTICSEARCH_HOSTS is not set"
-    client = create_elasticsearch_client(hosts=hosts)
+    client = Elasticsearch(hosts.split(","))
     assert client.ping(), "Failed to connect to Elasticsearch"
     index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
     assert index_name_prefix is not None, "ELASTICSEARCH_INDEX_NAME_PREFIX is not set"
