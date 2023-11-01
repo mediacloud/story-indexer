@@ -11,11 +11,12 @@ from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import ConflictError, RequestError
 from pika.adapters.blocking_connection import BlockingChannel
 
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
-from indexer.worker import StoryWorker, run
+from indexer.worker import QuarantineException, StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ class ElasticsearchConnector:
         self, id: str, index_name: str, document: Mapping[str, Any]
     ) -> ObjectApiResponse[Any]:
         self.create_index(index_name)
-        response: ObjectApiResponse[Any] = self.client.index(
+        response: ObjectApiResponse[Any] = self.client.create(
             index=index_name, id=id, document=document
         )
         return response
@@ -178,6 +179,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
+            except RequestError as e:
+                self.incr("imported-stories", labels=[("status", "400-indexing-error")])
+                raise QuarantineException("%s", str(e))
+            except ConflictError as e:
+                self.incr(
+                    "imported-stories", labels=[("status", "409-duplicate-stories")]
+                )
+                raise QuarantineException("%s", str(e))
             except Exception as e:
                 response = None
                 logger.error(f"Elasticsearch exception: {str(e)}")
