@@ -2,6 +2,8 @@ import argparse
 import dataclasses
 import hashlib
 import os
+import random
+import string
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
@@ -54,7 +56,7 @@ def elasticsearch_client() -> Any:
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
     "normalized_url": "http://example.com",
-    "url": "http://example40.com",
+    "url": "http://example.com",
     "canonical_domain": "example.com",
     "publication_date": "2023-06-27",
     "language": "en",
@@ -68,7 +70,7 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
 
 url = test_data.get("url")
 assert isinstance(url, str)
-test_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
+test_id = hashlib.sha256(url.encode("utf-8")).hexdigest
 
 
 class TestElasticsearchConnection:
@@ -86,10 +88,11 @@ class TestElasticsearchConnection:
         assert response["result"] == "created"
         assert "_id" in response
 
-        # Attempt to index the document with the same ID
         with pytest.raises(ConflictError) as exc_info:
-            elasticsearch_client.create(index=index_name, id=test_id, body=test_data)
-
+            elasticsearch_client.create(
+                index=index_name, id=test_id, document=test_data
+            )
+        assert "ConflictError" in str(exc_info.type)
         assert "version_conflict_engine_exception" in str(exc_info.value)
 
     def test_index_document_with_none_date(self, elasticsearch_client: Any) -> None:
@@ -98,17 +101,39 @@ class TestElasticsearchConnection:
         test_data_with_none_date = dict(test_data).copy()
         test_data_with_none_date["publication_date"] = None
         response = elasticsearch_client.create(
-            index=index_name, id=test_id, document=test_data_with_none_date
+            index=index_name, id=123, document=test_data_with_none_date
         )
         assert response["result"] == "created"
         assert "_id" in response
-        
+
+        with pytest.raises(ConflictError) as exc_info:
+            elasticsearch_client.create(
+                index=index_name, id=test_id, document=test_data_with_none_date
+            )
+        assert "ConflictError" in str(exc_info.type)
+        assert "version_conflict_engine_exception" in str(exc_info.value)
 
 
 @pytest.fixture(scope="class")
 def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector:
     connector = ElasticsearchConnector(elasticsearch_client, es_mappings, es_settings)
     return connector
+
+
+test_import_data: Mapping[str, Optional[Union[str, bool]]] = {
+    "original_url": "http://example_import.com",
+    "normalized_url": "http://example_import.com",
+    "url": "http://example_import.com",
+    "canonical_domain": "example.com",
+    "publication_date": "2023-06-27",
+    "language": "en",
+    "full_language": "English",
+    "text_extraction": "Lorem ipsum",
+    "article_title": "Example Article",
+    "normalized_article_title": "example article",
+    "text_content": "Lorem ipsum dolor sit amet",
+    "indexed_date": datetime.now().isoformat(),
+}
 
 
 class TestElasticsearchImporter:
@@ -123,16 +148,14 @@ class TestElasticsearchImporter:
     ) -> None:
         importer.connector = elasticsearch_connector
         importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        response = importer.import_story(test_id, test_data)
+
+        response = importer.import_story(test_import_data)
         if response is not None:
             assert response.get("result") == "created"
-        else:
-            raise AssertionError("No response received")
 
         with pytest.raises(QuarantineException) as exc_info:
-            response = importer.import_story(test_id, test_data)
-
-        assert "version_conflict_engine_exception" in str(exc_info.value)
+            importer.import_story(test_import_data)
+        assert "ConflictError" in str(exc_info.value)
 
     def test_index_routing(
         self,

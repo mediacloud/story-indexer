@@ -153,18 +153,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     logger.error(f"Value for key '{key}' is not provided.")
                     continue
 
-            url = content_metadata.get("url")
-            assert isinstance(url, str)
-            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             keys_to_skip = ["is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(url_hash, data)
+            self.import_story(data)
 
     def import_story(
         self,
-        url_hash: str,
         data: Mapping[str, Optional[Union[str, bool]]],
     ) -> Optional[ObjectApiResponse[Any]]:
         """
@@ -172,6 +168,8 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         response = None
         if data:
+            url = str(data.get("url"))
+            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             publication_date = str(data.get("publication_date"))
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date: str = datetime.now().isoformat()
@@ -179,17 +177,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
-            except RequestError as e:
-                self.incr("imported-stories", labels=[("status", "400-indexing-error")])
-                raise QuarantineException("%s", str(e))
             except ConflictError as e:
                 self.incr(
                     "imported-stories", labels=[("status", "409-duplicate-stories")]
                 )
                 raise QuarantineException("%s", str(e))
-            except Exception as e:
-                response = None
-                logger.error(f"Elasticsearch exception: {str(e)}")
+            except RequestError as e:
+                self.incr("imported-stories", labels=[("status", "400-indexing-error")])
+                raise QuarantineException("%s", str(e))
 
             if response and response.get("result") == "created":
                 logger.info(
