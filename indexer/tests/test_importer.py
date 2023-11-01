@@ -1,11 +1,7 @@
-import argparse
-import dataclasses
 import hashlib
 import os
-import random
-import string
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Union, cast
+from typing import Any, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
 
 import pytest
@@ -70,7 +66,7 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
 
 url = test_data.get("url")
 assert isinstance(url, str)
-test_id = hashlib.sha256(url.encode("utf-8")).hexdigest
+test_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
 class TestElasticsearchConnection:
@@ -98,10 +94,15 @@ class TestElasticsearchConnection:
     def test_index_document_with_none_date(self, elasticsearch_client: Any) -> None:
         index_names = list(elasticsearch_client.indices.get_alias().keys())
         index_name = index_names[0]
-        test_data_with_none_date = dict(test_data).copy()
-        test_data_with_none_date["publication_date"] = None
+        test_data_with_none_date = {
+            **test_data,
+            "id": "adrferdiyhyu9",
+            "publication_date": None,
+        }
         response = elasticsearch_client.create(
-            index=index_name, id=123, document=test_data_with_none_date
+            index=index_name,
+            id=test_data_with_none_date["id"],
+            document=test_data_with_none_date,
         )
         assert response["result"] == "created"
         assert "_id" in response
@@ -120,22 +121,6 @@ def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector
     return connector
 
 
-test_import_data: Mapping[str, Optional[Union[str, bool]]] = {
-    "original_url": "http://example_import.com",
-    "normalized_url": "http://example_import.com",
-    "url": "http://example_import.com",
-    "canonical_domain": "example.com",
-    "publication_date": "2023-06-27",
-    "language": "en",
-    "full_language": "English",
-    "text_extraction": "Lorem ipsum",
-    "article_title": "Example Article",
-    "normalized_article_title": "example article",
-    "text_content": "Lorem ipsum dolor sit amet",
-    "indexed_date": datetime.now().isoformat(),
-}
-
-
 class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
@@ -148,7 +133,7 @@ class TestElasticsearchImporter:
     ) -> None:
         importer.connector = elasticsearch_connector
         importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-
+        test_import_data = {**test_data, "url": "http://example_import_story.com"}
         response = importer.import_story(test_import_data)
         if response is not None:
             assert response.get("result") == "created"
