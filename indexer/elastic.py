@@ -8,7 +8,7 @@ import argparse
 import os
 import sys
 from logging import getLogger
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, List, Optional
 from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
@@ -41,4 +41,5 @@ class ElasticMixin:
             logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
             sys.exit(1)
 
+        # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
