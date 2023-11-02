@@ -126,9 +126,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     year = -1
             except ValueError as e:
                 logger.warning("Error parsing date: '%s" % str(e))
-        index_name_prefix = self.index_name_prefix or os.environ.get(
-            "ELASTICSEARCH_INDEX_NAME_PREFIX"
-        )
+        index_name_prefix = self.index_name_prefix
         if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
         elif 2008 <= year <= 2020:
