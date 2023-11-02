@@ -138,9 +138,8 @@ class TestElasticsearchImporter:
         if response is not None:
             assert response.get("result") == "created"
 
-        with pytest.raises(QuarantineException) as exc_info:
-            importer.import_story(test_import_data)
-        assert "ConflictError" in str(exc_info.value)
+        second_response = importer.import_story(test_import_data)
+        assert second_response is None
 
     def test_index_routing(
         self,

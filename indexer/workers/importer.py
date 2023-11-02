@@ -175,9 +175,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
-            except ConflictError as e:
+            except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
-                raise QuarantineException(getattr(e, "message", repr(e)))
+
             except RequestError as e:
                 self.incr("imported-stories", labels=[("status", "reqerr")])
                 raise QuarantineException(getattr(e, "message", repr(e)))
