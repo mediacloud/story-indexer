@@ -290,12 +290,6 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
-  elastic-stats:
-    <<: *worker-service-settings
-    environment:
-      <<: *worker-environment-vars
-      RUN: elastic-stats
-
   # Elasticsearch Snaphost worker
   elastic-snapshots:
     <<: *worker-service-settings

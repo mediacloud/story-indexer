@@ -1,30 +1,18 @@
 """
 schedule Elasticsearch snapshots
 """
-import argparse
 import logging
-import os
-import sys
 from datetime import date
 from logging import getLogger
 from typing import Any
 
-from indexer.app import App, ArgsProtocol
-from indexer.elastic import ElasticMixin
+from indexer.app import App
+from indexer.elastic import ElasticSnapshotMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ElasticSnapshots(ElasticMixin, App):
-    def get_elasticsearch_snapshot(self: ArgsProtocol) -> Any:
-        assert self.args
-        if not self.args.elasticsearch_snapshot:
-            logger.fatal(
-                "need --elasticsearch-snapshot-repo or ELASTICSEARCH_SNAPSHOT_REPO"
-            )
-            sys.exit(1)
-        return self.args.elasticsearch_snapshot
-
+class ElasticSnapshots(ElasticSnapshotMixin, App):
     def main_loop(self) -> None:
         _TODAY = date.today().strftime("%Y.%m.%d")
         repository_name: str = self.get_elasticsearch_snapshot()
@@ -47,14 +35,16 @@ class ElasticSnapshots(ElasticMixin, App):
         )
         snapshot_info = response.get("snapshot", {})
         if snapshot_info.get("state") == "SUCCESS":
-            logger.info(f"Successfully created {snapshot_name} in S3")
-            logger.info(f"Start Time: {snapshot_info.get('start_time')}")
-            logger.info(f"End Time: {snapshot_info.get('end_time')}")
+            self.incr("snapshots", labels=[("status", "success")])
             shards_info = snapshot_info.get("shards", {})
             logger.info(
-                f"Shards - Total: {shards_info.get('total', 0)}, Failed: {shards_info.get('failed', 0)}, Successful: {shards_info.get('successful', 0)}"
+                f"Snapshot Created Successfully Information - "
+                f"N: {snapshot_name} "
+                f"T: {snapshot_info.get('start_time')}/{snapshot_info.get('end_time')} "
+                f"S: {shards_info.get('total', 0)}/{shards_info.get('failed', 0)}"
             )
         else:
+            self.incr("snapshots", labels=[("status", "failed")])
             error_message = snapshot_info["failures"]["reason"]
             logger.error("Snapshot creation failed :%s", error_message)
 
