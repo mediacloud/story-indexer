@@ -1,34 +1,32 @@
 """
-Media Cloud Archiver
+Media Cloud Archiver Worker
 """
 
 import argparse
 import logging
 import os
+import socket
 import time
-from io import BytesIO
-from typing import List
-
-from warcio.statusandheaders import StatusAndHeaders
-from warcio.warcwriter import WARCWriter
+from enum import Enum
+from io import BytesIO, RawIOBase
+from typing import List, Optional
 
 from indexer.story import BaseStory
+from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
 from indexer.worker import BatchStoryWorker, QuarantineException, StorySender, run
 
 logger = logging.getLogger("indexer.workers.archiver")
+
+FQDN = socket.getfqdn()  # most likely internal or container!
+HOSTNAME = socket.gethostname()  # for filenames
 
 
 class Archiver(BatchStoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.work: List[bytes] = []  # list of pre-processed work
-
-        # temporarily create files in data volume for visibility:
-        self.work_dir = time.strftime("/app/data/%Y-%m-%d-%H-%M-%S", time.gmtime())
-        if not os.path.isdir(self.work_dir):
-            os.mkdir(self.work_dir)
-
-        self.file_number = 1
+        self.archive: Optional[StoryArchiveWriter] = None
+        self.stories = 0
+        self.archives = 0
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -37,58 +35,62 @@ class Archiver(BatchStoryWorker):
         any other exception will cause this story to be retried.
         """
 
-        re = story.rss_entry()
-        hmd = story.http_metadata()
-        cmd = story.content_metadata()
-        rhtml = story.raw_html()
-
-        # synthesize (forge) from available info
-        # almost certainly needs work (show redirects better?)
-        # taking the position that "failure is not an option"
-
-        url = hmd.final_url or cmd.url or cmd.original_url or re.link
-        html = rhtml.html
-        if url and html:
-            logger.info("process_story %s", url)
-
-            rcode = hmd.response_code
-            if rcode is not None and rcode != 200:
-                resp = f"{rcode:03d} HUH?"
+        if not self.archive:
+            realm = os.getenv("STATSD_REALM", "")
+            if realm == "prod":
+                prefix = "mc"
+            elif realm:
+                prefix = realm  # staging or username
             else:
-                resp = "200 OK"
+                prefix = "unk"
 
-            headers_list = []
-            # could call rhtml.guess_encoding, but so can reader
-            if encoding := hmd.encoding or rhtml.encoding:
-                # Danger! a peek inside warcio looks like
-                # no headers causes create_warc_record to do different stuff!
-                headers_list.append(("Content-Type", f"text/html; charset={encoding}"))
+            self.archives += 1
+            self.archive = StoryArchiveWriter(
+                prefix=prefix,
+                hostname=HOSTNAME,
+                fqdn=FQDN,
+                serial=self.archives,
+            )
+            self.stories = 0
 
-            http_headers = StatusAndHeaders(resp, headers_list, protocol="HTTP/1.0")
-
-            # started from https://pypi.org/project/warcio/#description
-            # "Manual/Advanced WARC Writing"
-
-            # write directly to a ZipFile (disk or memory)??
-            fname = f"{self.work_dir}/{self.file_number:05d}.warc.gz"
-            with open(fname, "wb") as output:
-                writer = WARCWriter(output, gzip=True)
-                record = writer.create_warc_record(
-                    url, "response", payload=BytesIO(html), http_headers=http_headers
-                )
-                writer.write_record(record)
-            self.file_number += 1
-        else:
-            # counters!! separate for each??
-            raise QuarantineException("no url or html")
+        try:
+            self.archive.write_story(story)
+            self.stories += 1
+        except ArchiveStoryError as e:
+            logger.info("caught %r", e)
+            self.incr("stories.{e}")
+            raise QuarantineException(repr(e))  # for now
 
     def end_of_batch(self) -> None:
         """
         Here to process collected work.
         Any exception will cause all stories to be retried.
         """
-        logger.info("end of batch: %d stories", len(self.work))
-        self.work = []
+        logger.info("end of batch: %d stories", self.stories)
+        if self.archive:
+            name, path = self.archive.finish()
+            logger.info("wrote %d stories to %s", self.stories, path)
+            del self.archive
+            self.archive = None
+
+            # report stories as a "timer" (get statistics)
+            if self.stories == 0:
+                logger.debug("no stories: removing %s", path)
+                try:
+                    os.unlink(path)
+                except (FileNotFoundError, IsADirectoryError, PermissionError):
+                    pass
+                status = "empty"
+            else:
+                logger.info("UPLOAD %s", path)
+                status = "uploaded"
+                # XXX upload to S3????
+        else:
+            logger.info("no archive?")  # want "notice" level!
+            status = "noarch"
+
+        self.incr("batches", labels=[("status", status)])
+        self.stories = 0
 
 
 if __name__ == "__main__":
