@@ -246,12 +246,12 @@ class StoryArchiveWriter:
             ("Content-Length", str(len(html))),
         ]
 
-        hmd_fetch = hmd.fetch_timestamp
+        hmd_fetch = (
+            hmd.fetch_timestamp or time.time()
+        )  # XXX better default first choices??
 
         # no fractional seconds in WARC/1.0:
-        fetch_date = dt.datetime.fromtimestamp(hmd_fetch or time.time()).isoformat(
-            "seconds"
-        )
+        fetch_date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(hmd_fetch))
 
         # any headers here appear to appear first in the WARC records.
         response_whd = {"WARC-Date": fetch_date}  # back date to when fetched
