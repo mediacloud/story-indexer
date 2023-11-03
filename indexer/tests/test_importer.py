@@ -147,8 +147,6 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-        assert importer.index_name_prefix is not None
         assert (
             importer.index_routing("2023-06-27") == f"{importer.index_name_prefix}_2023"
         )
