@@ -55,12 +55,3 @@ class ElasticSnapshotMixin(ElasticMixin):
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
         )
-
-    def get_elasticsearch_snapshot(self: ArgsProtocol) -> Any:
-        assert self.args
-        if not self.args.elasticsearch_snapshot_repo:
-            logger.fatal(
-                "need --elasticsearch-snapshot-repo or ELASTICSEARCH_SNAPSHOT_REPO"
-            )
-            sys.exit(1)
-        return self.args.elasticsearch_snapshot_repo
