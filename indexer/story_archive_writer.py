@@ -166,24 +166,30 @@ def _massage_metadata(
 class StoryArchiveWriter:
     """
     Class to write Story object archives as WARC files.
+
+    API hides the fact that files are WARCs,
+    so it could be replaced with something else.
     """
 
     def __init__(self, *, prefix: str, hostname: str, fqdn: str, serial: int):
+        self.t = time.time()  # time used to generate archive name
         # WARC 1.1 Annex C suggests naming: Prefix-Timestamp-Serial-Crawlhost.warc.gz
-        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime())  # "a 14-digit GMT time-stamp"
-        self.filename = f"{prefix}.{ts}-{serial}-{hostname}.warc.gz"
-
+        ts = time.strftime(
+            "%Y%m%d%H%M%S", time.gmtime(self.t)
+        )  # "a 14-digit GMT time-stamp"
+        self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
         self.path = os.path.join(WORK_DIR, self.filename)
-        self.file = open(self.filename, "wb")
+        self.file = open(self.path, "wb")
+        self.size = -1
 
-        format = "WARC file version " + WARC_VERSION.split("/")[-1]
         self.writer = WARCWriter(self.file, gzip=True, warc_version=WARC_VERSION)
 
+        # write initial "warcinfo" record:
         info = {
             "hostname": hostname,  # likely internal or Docker container
             # ip is almost CERTAINLY an RFC1918 private addr
             "software": "mediacloud story-indexer ArchiveWriter",
-            "format": format,
+            "format": "WARC file version " + WARC_VERSION.split("/")[-1]
             # others:
             # description, isPartOf, operator
             # http-header-user-agent (use if passed by fetcher in http_metadata?)
@@ -305,11 +311,12 @@ class StoryArchiveWriter:
 
         return True  # written
 
-    def finish(self) -> Tuple[str, str]:
+    def finish(self) -> Tuple[str, str, int, float]:
         """
         returns filename and full path of finished file
         """
         if self.file:
+            self.size = self.file.tell()
             self.file.close()
 
-        return self.filename, self.path
+        return self.filename, self.path, self.size, self.t

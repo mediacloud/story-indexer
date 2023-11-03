@@ -839,16 +839,13 @@ class BatchStoryWorker(StoryWorker):
             try:
                 with self.timer("batch"):
                     self.end_of_batch()
-                status = "ok"
             except Exception as e:
                 # log as error, w/ exc_info=True?
                 logger.info("end_of_batch caught %r", e)
 
                 for im in msgs:
                     self._retry(im, e)
-                status = "error"
-
-            self.incr("batches", labels=[("status", status)])
+                self.incr("batches", labels=[("status", "retry")])
 
             # assumes all msgs from same channel:
             last_msg = msgs[-1]
