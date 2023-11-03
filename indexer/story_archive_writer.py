@@ -121,9 +121,9 @@ from indexer.story import BaseStory
 METADATA_CONTENT_TYPE = "application/x.mediacloud-indexer+json"
 
 # TEMP!! create files in data volume for visibility:
-WORK_DIR = time.strftime("/app/data/%Y-%m-%d-%H-%M-%S", time.gmtime())
-if not os.path.isdir(WORK_DIR):
-    os.makedirs(WORK_DIR)
+# WORK_DIR = time.strftime("/app/data/%Y-%m-%d-%H-%M-%S", time.gmtime())
+# if not os.path.isdir(WORK_DIR): os.makedirs(WORK_DIR)
+WORK_DIR = "/tmp"
 
 logger = getLogger(__name__)
 
@@ -173,10 +173,10 @@ class StoryArchiveWriter:
 
     def __init__(self, *, prefix: str, hostname: str, fqdn: str, serial: int):
         self.t = time.time()  # time used to generate archive name
-        # WARC 1.1 Annex C suggests naming: Prefix-Timestamp-Serial-Crawlhost.warc.gz
-        ts = time.strftime(
-            "%Y%m%d%H%M%S", time.gmtime(self.t)
-        )  # "a 14-digit GMT time-stamp"
+        # WARC 1.1 Annex C suggests naming:
+        # Prefix-Timestamp-Serial-Crawlhost.warc.gz
+        # where Timestamp is "a 14-digit GMT time-stamp"
+        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.t))
         self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
         self.path = os.path.join(WORK_DIR, self.filename)
         self.file = open(self.path, "wb")
