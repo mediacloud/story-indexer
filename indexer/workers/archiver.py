@@ -86,7 +86,7 @@ class Archiver(BatchStoryWorker):
             if self.stories == 0:
                 try:
                     os.unlink(path)
-                    logger.info("removinged empty %s", path)
+                    logger.info("removed empty %s", path)
                 except OSError as e:
                     logger.warning("unlink empty %s failed: %r", path, e)
                 status = "empty"
@@ -112,14 +112,22 @@ class Archiver(BatchStoryWorker):
                     )
                     s3.upload_file(path, self.s3_bucket, s3_key)
                     logger.info("uploaded %s to %s:%s", path, self.s3_bucket, s3_key)
-                    os.unlink(path)
+                    try:
+                        os.unlink(path)
+                    except OSError as e:
+                        logger.info("unlink %s failed: %r", path, e)
                     status = "uploaded"
                 else:
                     logger.error("NO S3 CONFIGURATION!!!")
-                    # not a big deal for development;
                     if self.s3_bucket == "NO_ARCHIVE":
+                        # development: keeps temp files around
                         status = "noarchive"
                     else:
+                        try:
+                            os.unlink(path)
+                        except OSError as e:
+                            logger.info("unlink %s failed: %r", path, e)
+
                         # force retry to avoid loss of stories
                         raise Exception("no s3 config")
         else:
