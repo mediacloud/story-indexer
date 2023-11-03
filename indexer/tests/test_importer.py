@@ -1,5 +1,6 @@
 import hashlib
 import os
+from argparse import Namespace
 from datetime import datetime
 from typing import Any, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
@@ -64,10 +65,6 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "indexed_date": datetime.now().isoformat(),
 }
 
-url = test_data.get("url")
-assert isinstance(url, str)
-test_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
-
 
 class TestElasticsearchConnection:
     def test_create_index(self, elasticsearch_client: Any) -> None:
@@ -78,6 +75,7 @@ class TestElasticsearchConnection:
     def test_index_document(self, elasticsearch_client: Any) -> None:
         index_names = list(elasticsearch_client.indices.get_alias().keys())
         index_name = index_names[0]
+        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
         response = elasticsearch_client.create(
             index=index_name, id=test_id, document=test_data
         )
@@ -99,6 +97,7 @@ class TestElasticsearchConnection:
             "id": "adrferdiyhyu9",
             "publication_date": None,
         }
+        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
         response = elasticsearch_client.create(
             index=index_name,
             id=test_data_with_none_date["id"],
@@ -124,7 +123,9 @@ def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector
 class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
-        return ElasticsearchImporter("test_importer", "elasticsearch import worker")
+        importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
+        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
+        return importer
 
     def test_import_story_success(
         self,
@@ -132,7 +133,6 @@ class TestElasticsearchImporter:
         elasticsearch_connector: ElasticsearchConnector,
     ) -> None:
         importer.connector = elasticsearch_connector
-        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
         test_import_data = {**test_data, "url": "http://example_import_story.com"}
         response = importer.import_story(test_import_data)
         if response is not None:
