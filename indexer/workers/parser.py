@@ -11,6 +11,8 @@ import mcmetadata
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StorySender, StoryWorker, run
 
+QUARANTINE_DECODE_ERROR = True  # discard if False
+
 logger = logging.getLogger("parser")
 
 
@@ -32,12 +34,15 @@ class Parser(StoryWorker):
         raw = story.raw_html()
         try:
             html = raw.unicode
-        except UnicodeError:
+        except UnicodeError as e:
             # careful printing exception! may contain entire string!!
-            logger.warning("unicode error: %s", final_url)  # want notice!
-            story_status("unicode")
-            # PLB: noone has seemed concerned, so discarding
-            return
+            err = type(e).__name__
+            logger.warning("unicode error %s: %s", err, final_url)  # want notice!
+            story_status("no-decode")
+            if QUARANTINE_DECODE_ERROR:
+                raise QuarantineException(err)
+            else:
+                return
 
         if not html:
             logger.warning("no HTML: %s", final_url)  # want notice!
