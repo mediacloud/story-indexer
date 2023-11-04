@@ -46,14 +46,6 @@ DEFAULT_ROUTING_KEY = "default"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT_SECONDS = 30 * 60
 
-# Ammount of time to leave for "end_of_batch()" to do its work:
-# XXX calculate at run time, different workers
-#    should be able to specify different values of "a bit under"
-_WORK_TIME = 5 * 60
-
-# Use a bit under default consumer_timeout
-_BATCH_SECONDS_MAX = CONSUMER_TIMEOUT_SECONDS - _WORK_TIME
-
 # semaphore in the sense of railway signal tower!
 # an exchange rather than a queue to avoid crocks to not monitor it!
 _CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
@@ -742,8 +734,9 @@ class BatchStoryWorker(StoryWorker):
 
     # Default values: just guesses, should be tuned.
     # Can be overridden in subclass.
-    BATCH_SECONDS = 120
-    BATCH_SIZE = 1000
+    BATCH_SECONDS = 5 * 60  # time to wait for full batch
+    BATCH_SIZE = 1000  # max batch size
+    WORK_TIME = 5 * 60  # time to reserve for end_of_batch
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -764,12 +757,13 @@ class BatchStoryWorker(StoryWorker):
     def process_args(self) -> None:
         super().process_args()
 
+        batch_seconds_max = CONSUMER_TIMEOUT_SECONDS - self.WORK_TIME
         assert self.args
-        if self.args.batch_seconds > _BATCH_SECONDS_MAX:
+        if self.args.batch_seconds > batch_seconds_max:
             logger.error(
                 "--batch-seconds %d too large (must be <= %d)",
                 self.args.batch_seconds,
-                _BATCH_SECONDS_MAX,
+                batch_seconds_max,
             )
             sys.exit(1)
 
@@ -791,7 +785,7 @@ class BatchStoryWorker(StoryWorker):
         assert self.args
         batch_size = int(self.args.batch_size)
         batch_seconds = self.args.batch_seconds
-        batch_deadline = 0.0
+        batch_deadline = 0.0  # deadline for starting batch processing
         batch_start_time = 0.0
         msg_number = 1
         msgs: List[InputMessage] = []
@@ -805,7 +799,6 @@ class BatchStoryWorker(StoryWorker):
                     batch_start_time = time.monotonic()  # for logging
 
                     # base on when recieved from channel by Pika thread!!
-                    # (does RabbitMQ write timestamp on departure?)
                     batch_deadline = im.mtime + batch_seconds
                 else:
                     try:
