@@ -88,7 +88,9 @@ class InputMessage(NamedTuple):
 class StorySender:
     """
     object to hide channel.
-    Stories must be sent on the channel they came in on for transactions.
+    Stories must be sent on the channel they came in on,
+    so transmission and ACK of original can be made atomic
+    with tx_commit.
     """
 
     def __init__(self, app: "QApp", channel: BlockingChannel):
