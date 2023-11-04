@@ -234,7 +234,7 @@ class StoryArchiveWriter:
         # though any hoops here. Caveat Emptor.
 
         rcode = hmd.response_code
-        if rcode == "200" or rcode == 200:
+        if rcode == 200:
             http_response = "200 OK"
         else:
             http_response = f"{rcode} HUH?"
