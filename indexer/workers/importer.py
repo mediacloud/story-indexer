@@ -11,11 +11,12 @@ from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import ConflictError, RequestError
 from pika.adapters.blocking_connection import BlockingChannel
 
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
-from indexer.worker import StoryWorker, run
+from indexer.worker import QuarantineException, StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ es_mappings = {
             "fields": {"keyword": {"type": "keyword"}},
         },
         "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+        "indexed_date": {"type": "date"},
     }
 }
 
@@ -76,7 +78,7 @@ class ElasticsearchConnector:
         self, id: str, index_name: str, document: Mapping[str, Any]
     ) -> ObjectApiResponse[Any]:
         self.create_index(index_name)
-        response: ObjectApiResponse[Any] = self.client.index(
+        response: ObjectApiResponse[Any] = self.client.create(
             index=index_name, id=id, document=document
         )
         return response
@@ -124,7 +126,6 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     year = -1
             except ValueError as e:
                 logger.warning("Error parsing date: '%s" % str(e))
-
         index_name_prefix = self.index_name_prefix
         if year >= 2021:
             routing_index = f"{index_name_prefix}_{year}"
@@ -150,18 +151,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     logger.error(f"Value for key '{key}' is not provided.")
                     continue
 
-            url = content_metadata.get("url")
-            assert isinstance(url, str)
-            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             keys_to_skip = ["is_homepage", "is_shortened"]
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(url_hash, data)
+            self.import_story(data)
 
     def import_story(
         self,
-        url_hash: str,
         data: Mapping[str, Optional[Union[str, bool]]],
     ) -> Optional[ObjectApiResponse[Any]]:
         """
@@ -169,13 +166,21 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         response = None
         if data:
+            url = str(data.get("url"))
+            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             publication_date = str(data.get("publication_date"))
+            # Add the indexed_date with today's date in ISO 8601 format
+            indexed_date = datetime.now().isoformat()
+            data = {**data, "indexed_date": indexed_date}
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
-            except Exception as e:
-                response = None
-                logger.error(f"Elasticsearch exception: {str(e)}")
+            except ConflictError:
+                self.incr("stories", labels=[("status", "dups")])
+
+            except RequestError as e:
+                self.incr("stories", labels=[("status", "reqerr")])
+                raise QuarantineException(getattr(e, "message", repr(e)))
 
             if response and response.get("result") == "created":
                 logger.info(
