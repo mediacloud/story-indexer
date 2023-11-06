@@ -139,7 +139,7 @@ echo "path.logs: $LOGPATH" >> /etc/elasticsearch/elasticsearch.yml
 echo "network.host: $NETWORK_HOST" >> /etc/elasticsearch/elasticsearch.yml
 echo "discovery.seed_hosts: $HOSTS_CONFIG" >> /etc/elasticsearch/elasticsearch.yml
 
-# Disable xpack.security features 
+# Disable xpack.security features
 # We're mostly accessing our ES instance withing a local network
 echo "xpack.security.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
 echo "xpack.security.enrollment.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
