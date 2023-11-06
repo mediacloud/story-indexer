@@ -112,9 +112,8 @@ x-worker-service-settings: &worker-service-settings
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
-    {% for key, value in private_vars.items() -%}
-    {{key}}: {{value}}
-    {%- endfor %}
+{% for key, value in private_vars.items() %}    {{key}}: {{value}}
+{% endfor %}
   image: {{worker_image_full}}
 
   volumes:
