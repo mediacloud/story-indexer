@@ -248,6 +248,18 @@ class Pipeline(QApp):
         self._configure(True)
 
     @command
+    def configure_and_loop(self) -> None:
+        """loop configuring queues etc and sleeping to handle RabbitMQ restart"""
+        # this exists to handle the race if this starts
+        # before RabbitMQ restarts.
+        # NOTE: not handling exceptions, let Docker restart.
+        while True:
+            if not self._test_configured():
+                self._configure(True)
+            assert self.connection
+            self.connection.sleep(5 * 60)
+
+    @command
     def delete(self) -> None:
         """delete queues etc."""
         self._configure(False)

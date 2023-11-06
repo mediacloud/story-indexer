@@ -109,20 +109,24 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
-ELASTICSEARCH_CONTAINERS=1
+# configuration for Elastic Search Containers
+ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
-ELASTICSEARCH_REPLICAS=1
-ELASTICSEARCH_SHARDS=1
+ELASTICSEARCH_PORT_BASE=9200	# native port
 
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
 FETCHER_OPTIONS="--yesterday"
 
-NEWS_SEARCH_IMAGE_NAME=colsearch
-NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/
+NEWS_SEARCH_API_PORT=8000	# native port
+NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
+NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
+NEWS_SEARCH_UI_PORT=8501	# server's native port
+NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
 RABBITMQ_CONTAINERS=1
+RABBITMQ_PORT=5672		# native port
 
 STATSD_REALM="$BRANCH"
 
@@ -134,6 +138,7 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 # set registry differently based on BRANCH?!
 # MUST have trailing slash unless empty
 WORKER_IMAGE_REGISTRY=localhost:5000/
+# PLB: maybe indexer-common, now that it's used for config & stats reporting?
 WORKER_IMAGE_NAME=indexer-worker
 
 # set DEPLOY_TIME, check remotes up to date
@@ -177,37 +182,90 @@ TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
     STACK_NAME=$BASE_STACK_NAME
-    ELASTICSEARCH_CONTAINERS=0
-    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-$BRANCH
+    TAG=$DATE_TIME-prod
 
     MULTI_NODE_DEPLOYMENT=1
+
+    ELASTICSEARCH_CONTAINERS=0
+    # XXX change to 9200 once reconfigured:
+    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=30
+
+    # for RabbitMQ and worker_data:
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
     ;;
 staging)
     STACK_NAME=staging-$BASE_STACK_NAME
+
+    PORT_BIAS=10		# ports: prod + 10
+
     ELASTICSEARCH_CONTAINERS=3
+    ELASTICSEARCH_IMPORTER_REPLICAS=1
+    ELASTICSEARCH_IMPORTER_SHARDS=5
+
+    # don't run daily, fetch 10x more than dev:
+    FETCHER_CRONJOB_ENABLE=false
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
+    FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=1
-    # correct for ramos 2023-09-23 staging deployment:
-    # NOTE: **SHOULD** contain indexer-staging!!!
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/
+    NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
     ;;
 dev)
-    # fetch limited articles under development, don't run daily
+    # pick up from environment, so multiple dev stacks can run on same h/w cluster!
+    # unless developers are running multiple ES instances, bias can be incremented
+    # by one for each new developer
+    PORT_BIAS=${INDEXER_DEV_PORT_BIAS:-20}
+
     ELASTICSEARCH_CONTAINERS=1
-    ELASTICSEARCH_REPLICAS=0
+    ELASTICSEARCH_IMPORTER_REPLICAS=0
+    ELASTICSEARCH_IMPORTER_SHARDS=2
+
+    # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
     FETCHER_NUM_BATCHES=10
+
     MULTI_NODE_DEPLOYMENT=
+    NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     # default volume storage location!
     VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
     ;;
 esac
 
+# NOTE! in-network containers see native (unmapped) ports,
+# so set environment variable values BEFORE applying PORT_BIAS!!
+if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
+    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
+    exit 1
+else
+    RABBITMQ_HOST=rabbitmq
+fi
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
+
+if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
+    ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
+    ELASTICSEARCH_NODES=elasticsearch1
+    for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
+	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
+	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
+    done
+fi
+
+if [ "x$PORT_BIAS" != x ]; then
+    ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
+    NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PORT_BIAS)
+    NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PORT_BIAS)
+    RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PORT_BIAS)
+fi
+
+# XXX set all of this above separately for prod/staging/dev?!
 if [ "x$MULTI_NODE_DEPLOYMENT" != x ]; then
     # saw problems with fetcher queuing?
     #ELASTICSEARCH_PLACEMENT_CONSTRAINT='node.labels.role_es == true'
@@ -227,7 +285,7 @@ if [ "x$IS_DIRTY" = x ]; then
     # in development this means old tagged images will pile up until removed
     WORKER_IMAGE_TAG=$TAG
 else
-    # _could_ include DATE_TIME
+    # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
 fi
 
@@ -236,24 +294,6 @@ WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
-
-if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
-    ELASTICSEARCH_CLUSTER=mc_elasticsearch
-    ELASTICSEARCH_HOSTS=http://elasticsearch1:9200
-    ELASTICSEARCH_NODES=elasticsearch1
-    for I in $(seq 2 $ELASTICSEARCH_CONTAINERS); do
-	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
-	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr 9200 + $I - 1)"
-    done
-fi
-
-if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
-    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
-    exit 1
-else
-    RABBITMQ_HOST=rabbitmq
-fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:5672/?connection_attempts=10&retry_delay=5"
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
@@ -270,23 +310,34 @@ fi
 
 # function to add a parameter to JSON CONFIG file
 add() {
-    NAME=$(echo $1 | tr A-Z a-z)
-    eval VALUE=\$$1
+    VAR=$1
+    NAME=$(echo $VAR | tr A-Z a-z)
+    eval VALUE=\$$VAR
     # take optional type second, so lines sortable!
     case $2 in
     bool)
 	case $VALUE in
 	true|false) ;;
-	*) echo add: $1 bad bool: $VALUE 1>&2; exit 1;;
+	*) echo "add: $VAR bad bool: '$VALUE'" 1>&2; exit 1;;
 	esac
 	;;
     int)
 	if ! echo $VALUE | egrep '^(0|[1-9][0-9]*)$' >/dev/null; then
-	    echo add: $1 bad int: $VALUE 1>&2; exit 1
+	    echo "add: $VAR bad int: '$VALUE'" 1>&2; exit 1
 	fi
 	;;
-    str|'') VALUE='"'$VALUE'"';; # XXX maybe warn if empty??
-    *) echo "add: bad type for $1: $2" 1>&2; exit 1;;
+    str|'')
+	if [ "x$VALUE" = x ]; then
+	    echo "add: $VAR has null value" 1>&2; exit 1
+	fi
+	VALUE='"'$VALUE'"'
+	;;
+    # in case of emergency, break glass:
+    # (it's better to conditionalize variables that aren't set/used
+    #  in some circumstances than to allow null values when
+    #  the value, when used, needs to be non-null)
+    #allow-null) VALUE='"'$VALUE'"';;
+    *) echo "add: $VAR bad type: '$2'" 1>&2; exit 1;;
     esac
     echo '  "'$NAME'": '$VALUE, >> $CONFIG
     if [ "x$DEBUG" != x ]; then
@@ -307,17 +358,25 @@ echo '{' > $CONFIG
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
-add ELASTICSEARCH_IMAGE
-add ELASTICSEARCH_NODES
-add ELASTICSEARCH_REPLICAS int
-add ELASTICSEARCH_SHARDS int
-add ELASTICSEARCH_PLACEMENT_CONSTRAINT
+add ELASTICSEARCH_IMPORTER_REPLICAS int
+add ELASTICSEARCH_IMPORTER_SHARDS int
+if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
+    # make these conditional rather than allow-null
+    add ELASTICSEARCH_IMAGE
+    add ELASTICSEARCH_PLACEMENT_CONSTRAINT
+    add ELASTICSEARCH_PORT_BASE int
+    add ELASTICSEARCH_NODES
+fi
 add FETCHER_CRONJOB_ENABLE	# NOT bool!
 add FETCHER_NUM_BATCHES int
 add FETCHER_OPTIONS
 add NETWORK_NAME
+add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_IMAGE
+add NEWS_SEARCH_UI_PORT int
+add NEWS_SEARCH_UI_TITLE
 add RABBITMQ_CONTAINERS int
+add RABBITMQ_PORT int
 add RABBITMQ_URL
 add STACK_NAME
 add STATSD_REALM

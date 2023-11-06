@@ -19,9 +19,9 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.6
     # via mediacloud-metadata
-boto3==1.28.49
+boto3==1.28.69
     # via story-indexer (pyproject.toml)
-botocore==1.31.49
+botocore==1.31.69
     # via
     #   boto3
     #   s3transfer
@@ -30,13 +30,13 @@ certifi==2023.7.22
     #   elastic-transport
     #   requests
     #   trafilatura
-cffi==1.15.1
+cffi==1.16.0
     # via cryptography
 cfgv==3.4.0
     # via pre-commit
 chardet==5.2.0
     # via readability-lxml
-charset-normalizer==3.2.0
+charset-normalizer==3.3.1
     # via
     #   htmldate
     #   requests
@@ -47,7 +47,7 @@ constantly==15.1.0
     # via twisted
 courlan==0.9.4
     # via trafilatura
-cryptography==41.0.3
+cryptography==41.0.5
     # via
     #   pyopenssl
     #   scrapy
@@ -65,7 +65,9 @@ dateparser==1.1.8
     #   mediacloud-metadata
 distlib==0.3.7
     # via virtualenv
-elastic-transport==8.4.0
+docker==6.1.3
+    # via story-indexer (pyproject.toml)
+elastic-transport==8.4.1
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
@@ -91,7 +93,7 @@ htmldate==1.4.3
     #   trafilatura
 hyperlink==21.0.0
     # via twisted
-identify==2.5.29
+identify==2.5.30
     # via pre-commit
 idna==3.4
     # via
@@ -152,12 +154,13 @@ nltk==3.8.1
     # via newspaper3k
 nodeenv==1.8.0
     # via pre-commit
-numpy==1.26.0
+numpy==1.26.1
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
-packaging==23.1
+packaging==23.2
     # via
+    #   docker
     #   parsel
     #   pytest
     #   scrapy
@@ -167,11 +170,11 @@ parsel==1.8.1
     #   scrapy
 pika==1.3.2
     # via story-indexer (pyproject.toml)
-pillow==10.0.1
+pillow==10.1.0
     # via
     #   goose3
     #   newspaper3k
-platformdirs==3.10.0
+platformdirs==3.11.0
     # via virtualenv
 pluggy==1.3.0
     # via pytest
@@ -216,12 +219,13 @@ rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.1
     # via mediacloud-metadata
-regex==2023.8.8
+regex==2023.10.3
     # via
     #   dateparser
     #   nltk
 requests==2.31.0
     # via
+    #   docker
     #   feedfinder2
     #   goose3
     #   mediacloud-metadata
@@ -231,7 +235,7 @@ requests==2.31.0
     #   tldextract
 requests-file==1.5.1
     # via tldextract
-s3transfer==0.6.2
+s3transfer==0.7.0
     # via boto3
 scrapy==2.10.1
     # via story-indexer (pyproject.toml)
@@ -281,34 +285,37 @@ twisted==22.10.0
     # via scrapy
 types-pika==1.2.0b1
     # via story-indexer (pyproject.toml)
-types-requests==2.31.0.2
+types-requests==2.31.0.6
     # via story-indexer (pyproject.toml)
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.7.1
+typing-extensions==4.8.0
     # via
     #   mypy
     #   twisted
-tzlocal==5.0.1
+tzlocal==5.2
     # via dateparser
 url-normalize==1.4.3
     # via mediacloud-metadata
-urllib3==1.26.16
+urllib3==1.26.18
     # via
     #   botocore
     #   courlan
+    #   docker
     #   elastic-transport
     #   htmldate
     #   requests
     #   trafilatura
-virtualenv==20.24.5
+virtualenv==20.24.6
     # via pre-commit
 w3lib==2.1.2
     # via
     #   itemloaders
     #   parsel
     #   scrapy
-zope-interface==6.0
+websocket-client==1.6.4
+    # via docker
+zope-interface==6.1
     # via
     #   scrapy
     #   twisted
