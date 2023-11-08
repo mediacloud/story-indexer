@@ -60,7 +60,6 @@ class ElasticSnapshots(ElasticSnapshotMixin, App):
                 snapshot_info.get("end_time"),
                 shards_info.get("total", 0),
                 shards_info.get("failed", 0),
-                )
             )
         else:
             self.incr("snapshots", labels=[("status", "failed")])
