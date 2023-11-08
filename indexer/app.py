@@ -14,6 +14,8 @@ from typing import Any, List, Optional, Protocol, Tuple
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
 
+from indexer import sentry
+
 Labels = List[Tuple[str, Any]]  # optional labels/values for a statistic report
 
 FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -275,6 +277,7 @@ class App(ArgsProtocol):
         self.args = ap.parse_args()
         self.process_args()
         self._stats_init()
+        sentry.init()
 
         with self.timer("main_loop"):  # also serves as restart count
             try:
