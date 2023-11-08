@@ -30,6 +30,13 @@ class Archiver(BatchStoryWorker):
         self.stories = 0  # stories written to current archive
         self.archives = 0  # number of archives written
 
+        # default to Docker worker volume for debug/test *AND*
+        # production (until archive method/location settled)
+        self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", "/app/data/archiver")
+        if not os.path.isdir(self.work_dir):
+            os.makedirs(self.work_dir)
+            logger.info("created work directory %s", self.work_dir)
+
         self.s3_region = os.environ.get("ARCHIVER_S3_REGION", None)
         self.s3_bucket = os.environ.get("ARCHIVER_S3_BUCKET", None)
         self.s3_access_key_id = os.environ.get("ARCHIVER_S3_ACCESS_KEY_ID", None)
@@ -47,6 +54,9 @@ class Archiver(BatchStoryWorker):
         if not self.archive:
             realm = os.getenv("STATSD_REALM", "")
             if realm == "prod":
+                # WARC prefix defined as
+                # "an abbreviation usually reflective of the project
+                # or crawl that created this file."
                 prefix = "mc"
             elif realm:
                 prefix = realm  # staging or username
@@ -59,6 +69,7 @@ class Archiver(BatchStoryWorker):
                 hostname=HOSTNAME,
                 fqdn=FQDN,
                 serial=self.archives,
+                work_dir=self.work_dir,
             )
             self.stories = 0
 
