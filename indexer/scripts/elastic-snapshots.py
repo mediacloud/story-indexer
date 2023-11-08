@@ -54,13 +54,12 @@ class ElasticSnapshots(ElasticSnapshotMixin, App):
                 "Snapshot Created Successfully Information - "
                 "N: %s "
                 "T: %s/%s "
-                "S: %s/%s"
-                % (
-                    snapshot_name,
-                    snapshot_info.get("start_time"),
-                    snapshot_info.get("end_time"),
-                    shards_info.get("total", 0),
-                    shards_info.get("failed", 0),
+                "S: %s/%s",
+                snapshot_name,
+                snapshot_info.get("start_time"),
+                snapshot_info.get("end_time"),
+                shards_info.get("total", 0),
+                shards_info.get("failed", 0),
                 )
             )
         else:
