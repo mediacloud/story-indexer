@@ -112,7 +112,8 @@ x-worker-service-settings: &worker-service-settings
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
-
+{% for key, value in private_vars.items() %}    {{key}}: {{value}}
+{% endfor %}
   image: {{worker_image_full}}
 
   volumes:
@@ -258,6 +259,12 @@ services:
       ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+
+  archiver-worker:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: archiver
 
   ################ stats reporters
 
