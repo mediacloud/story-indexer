@@ -95,15 +95,6 @@ dirty() {
     IS_DIRTY=1
 }
 
-# news-search-api sources in separate repo, by popular opinion,
-# but deploying from our docker-compose file for network access.
-# but not yet/currently building it from there.
-echo looking for news-search-api docker image:
-if ! docker images | grep colsearch; then
-    echo news-search-api docker image not found. 1>&2
-    echo 'run "docker compose build" in news-search-api repo' 1>&2
-fi
-
 if ! git diff --quiet; then
     dirty 'local changes not checked in' 1>&2
 fi
@@ -115,6 +106,7 @@ fi
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
+ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
@@ -142,6 +134,16 @@ STATSD_URL=statsd://stats.tarbell.mediacloud.org
 WORKER_IMAGE_REGISTRY=localhost:5000/
 # PLB: maybe indexer-common, now that it's used for config & stats reporting?
 WORKER_IMAGE_NAME=indexer-worker
+
+# news-search-api sources in separate repo, by popular opinion,
+# but deploying from our docker-compose file for network access.
+# but not yet/currently building it from there.
+echo looking for news-search-api docker image:
+if ! docker images 2>/dev/null | grep $NEWS_SEARCH_IMAGE_REGISTRY/$NEWS_SEARCH_IMAGE_NAME; then
+    # XXX "docker images" needs docker group or to be run as root
+    echo $NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME docker image not found. 1>&2
+    echo 'run "docker compose build" in news-search-api repo' 1>&2
+fi
 
 # set DEPLOY_TIME, check remotes up to date
 case "$BRANCH" in
@@ -196,6 +198,7 @@ prod)
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
     ELASTICSEARCH_IMPORTER_REPLICAS=1
     ELASTICSEARCH_IMPORTER_SHARDS=30
+    ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
     VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
@@ -304,16 +307,51 @@ echo creating docker-compose.yml
 
 CONFIG=config.json
 COMPOSE=docker-compose.yml.new
-
-# remove config.json file on exit unless debugging
+PRIVATE_CONF_DIR=private-conf$$
+# clean up on exit unless debugging
 if [ "x$DEBUG" = x ]; then
-    trap "rm -f $CONFIG" 0
+    trap "rm -f $CONFIG $COMPOSE; rm -rf $PRIVATE_CONF_DIR " 0
 fi
+
+zzz() {
+    echo $1 | tr 'A-Za-z' 'N-ZA-Mn-za-m'
+}
+
+case $DEPLOY_TYPE in
+prod|staging)
+    rm -rf $PRIVATE_CONF_DIR
+    mkdir $PRIVATE_CONF_DIR
+    cd $PRIVATE_CONF_DIR
+    CONFIG_REPO_PREFIX=$(zzz tvg@tvguho.pbz:zrqvnpybhq)
+    CONFIG_REPO_NAME=$(zzz fgbel-vaqrkre-pbasvt)
+    echo cloning $CONFIG_REPO_NAME repo 1>&2
+    if ! git clone $CONFIG_REPO_PREFIX/$CONFIG_REPO_NAME.git >/dev/null 2>&1; then
+	echo "FATAL: could not clone config repo" 1>&2
+	exit 1
+    fi
+    PRIVATE_CONF_REPO=$(pwd)/$CONFIG_REPO_NAME
+    PRIVATE_CONF_FILE=$PRIVATE_CONF_REPO/$DEPLOY_TYPE.sh
+    cd ..
+    ;;
+dev)
+    PRIVATE_CONF_FILE=./dev.sh
+    ;;
+esac
+
+if [ ! -f $PRIVATE_CONF_FILE ]; then
+    echo "FATAL: could not access $PRIVATE_CONF_FILE" 1>&2
+    exit 1
+fi
+. $PRIVATE_CONF_FILE
 
 # function to add a parameter to JSON CONFIG file
 add() {
     VAR=$1
     NAME=$(echo $VAR | tr A-Z a-z)
+    if [ X$(eval echo \${$VAR+X}) != XX ]; then
+	echo $VAR not set 1>&2
+	exit 1
+    fi
     eval VALUE=\$$VAR
     # take optional type second, so lines sortable!
     case $2 in
@@ -330,15 +368,14 @@ add() {
 	;;
     str|'')
 	if [ "x$VALUE" = x ]; then
-	    echo "add: $VAR has null value" 1>&2; exit 1
+	    echo "add: $VAR is empty" 1>&2; exit 1
 	fi
 	VALUE='"'$VALUE'"'
 	;;
-    # in case of emergency, break glass:
-    # (it's better to conditionalize variables that aren't set/used
-    #  in some circumstances than to allow null values when
-    #  the value, when used, needs to be non-null)
-    #allow-null) VALUE='"'$VALUE'"';;
+    allow-empty)
+	# ONLY use for variables that, if null turn off a feature
+	VALUE='"'$VALUE'"'
+	;;
     *) echo "add: $VAR bad type: '$2'" 1>&2; exit 1;;
     esac
     echo '  "'$NAME'": '$VALUE, >> $CONFIG
@@ -350,7 +387,6 @@ add() {
 # remove, in case old file owned by root
 rm -f $CONFIG
 echo '{' > $CONFIG
-chmod go-rwx $CONFIG
 # NOTE! COULD pass deploy_type, but would rather
 # pass multiple variables that effect specific outcomes
 # (keep decision making in this file, and not template;
@@ -358,13 +394,18 @@ chmod go-rwx $CONFIG
 
 # keep in alphabetical order to avoid duplicates
 
+add ARCHIVER_S3_BUCKET		   # private
+add ARCHIVER_S3_REGION allow-empty # private: empty to disable
+add ARCHIVER_S3_SECRET_ACCESS_KEY  # private
+add ARCHIVER_S3_ACCESS_KEY_ID	   # private
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
 add ELASTICSEARCH_IMPORTER_REPLICAS int
 add ELASTICSEARCH_IMPORTER_SHARDS int
+add ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE # NOT bool!
 if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
-    # make these conditional rather than allow-null
+    # make these conditional rather than allow-empty
     add ELASTICSEARCH_IMAGE
     add ELASTICSEARCH_PLACEMENT_CONSTRAINT
     add ELASTICSEARCH_PORT_BASE int
@@ -381,6 +422,8 @@ add NEWS_SEARCH_UI_TITLE
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
 add RABBITMQ_URL
+add SENTRY_DSN allow-empty	# private: empty to disable
+add SENTRY_ENVIRONMENT		# private
 add STACK_NAME
 add STATSD_REALM
 add STATSD_URL
@@ -388,17 +431,7 @@ add VOLUME_DEVICE_PREFIX
 add WORKER_IMAGE_FULL
 add WORKER_IMAGE_NAME
 add WORKER_PLACEMENT_CONSTRAINT
-# cwd is docker dir:
-PRIVATE_FILE=.${DEPLOY_TYPE}.json
-if [ -f $PRIVATE_FILE ]; then
-    echo "found $PRIVATE_FILE" 1>&2
-    echo '  "private_vars": '$(cat $PRIVATE_FILE) >> $CONFIG
-else
-    # this is almost certainly a fatal error for production!!!
-    pwd
-    echo "no $PRIVATE_FILE found" 1>&2
-    exit 1
-fi
+echo '  "_THE_END_": null' >> $CONFIG
 echo '}' >> $CONFIG
 
 echo '# generated by jinja2: EDITING IS FUTILE' > $COMPOSE
@@ -420,7 +453,7 @@ if [ $STATUS != 0 ]; then
     echo "docker stack config status: $STATUS" 1>&2
     # fails w/ older versions
     if [ $STATUS = 125 ]; then
-	echo 'failed due to old version of docker??'
+	echo 'failed due to old version of docker stack command??'
     else
 	exit 3
     fi
@@ -465,16 +498,45 @@ if [ "x$BUILD_ONLY" = x ]; then
     echo ''
 fi
 
+# apply tags before deployment
+# (better to tag and not deploy, than to deploy and not tag)
 if [ "x$IS_DIRTY" = x ]; then
     echo adding local git tag $TAG
-    run_as_login_user git tag $TAG
-    # XXX check status?
+    if run_as_login_user git tag $TAG; then
+	echo OK
+    else
+	echo tag failed 1>&2
+	exit 1
+    fi
 
     # push tag to upstream repos
     echo pushing git tag $TAG to $REMOTE
-    run_as_login_user git push $REMOTE $TAG
-    # XXX check status?
+    if run_as_login_user git push $REMOTE $TAG; then
+	echo OK
+    else
+	echo tag push failed 1>&2
+	exit 1
+    fi
+
+    # if config elsewhere, tag it too.
+    if [ -d $PRIVATE_CONF_DIR -a -d "$PRIVATE_CONF_REPO" ]; then
+	echo tagging config repo
+	if (cd $PRIVATE_CONF_REPO; run_as_login_user git tag $TAG) >/dev/null 2>&1; then
+	    echo OK
+	else
+	    echo Failed to tag $CONFIG_REPO_NAME 1>&2
+	    exit 1
+	fi
+	echo pushing config tag
+	if (cd $PRIVATE_CONF_REPO; run_as_login_user git push origin $TAG) >/dev/null 2>&1; then
+	    echo OK
+	else
+	    echo Failed to push tag to $CONFIG_REPO_NAME 1>&2
+	    exit 1
+	fi
+    fi
 fi
+
 
 echo compose build:
 docker compose build
