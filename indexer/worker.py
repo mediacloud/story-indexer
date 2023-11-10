@@ -511,8 +511,7 @@ class Worker(QApp):
     def _qos(self, chan: BlockingChannel) -> None:
         """
         set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages put into
-        _message_queue
+        processes, limits the number of unacked messages queued
         """
         chan.basic_qos(prefetch_count=2)
 
@@ -736,8 +735,8 @@ class BatchStoryWorker(StoryWorker):
 
     # Default values: just guesses, should be tuned.
     # Can be overridden in subclass.
-    BATCH_SECONDS = 5 * 60  # time to wait for full batch
-    BATCH_SIZE = 1000  # max batch size
+    BATCH_SECONDS = 15 * 60  # time to wait for full batch
+    BATCH_SIZE = 5000  # max batch size
     WORK_TIME = 5 * 60  # time to reserve for end_of_batch
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
@@ -772,11 +771,10 @@ class BatchStoryWorker(StoryWorker):
     def _qos(self, chan: BlockingChannel) -> None:
         """
         set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages put into
-        _message_queue
+        processes, limits the number of unacked messages queued
         """
         assert self.args
-        chan.basic_qos(prefetch_count=self.args.batch_size * 2)
+        chan.basic_qos(prefetch_count=self.args.batch_size)
 
     def _process_messages(self) -> None:
         """
