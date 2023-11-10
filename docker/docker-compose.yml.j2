@@ -300,6 +300,7 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
+{% if elasticsearch_snapshot_cronjob_enable == 'true' %}
   # Elasticsearch Snaphost worker
   elastic-snapshots:
     <<: *worker-service-settings
@@ -310,6 +311,7 @@ services:
       <<: *worker-environment-vars
       RUN: elastic-snapshots
       ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
+{% endif %}
 
   ################ news search api (built elsewhere)
 
