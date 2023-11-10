@@ -29,7 +29,7 @@ MAX_FETCHER_MSG_SIZE: int = (
 
 
 class FetchWorker(StoryProducer):
-    AUTO_CONNECT: bool = False
+    START_PIKA_THREAD: bool = True
 
     fetch_date: str
     sample_size: Optional[int]
@@ -138,8 +138,9 @@ class FetchWorker(StoryProducer):
             elif any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
                 status_label = "non-news"
             else:
-                self.fetched_stories.append(story)
                 status_label = "success"
+                self.sender.send_story(story)
+
         elif http_meta.response_code in (403, 404, 429):
             status_label = f"http-{http_meta.response_code}"
         else:
@@ -184,6 +185,10 @@ class FetchWorker(StoryProducer):
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
+        self.sender = (
+            self.story_sender()
+        )  # Since we only want to actually initalize the sender once
+
         # Fetch html as stories
         process = CrawlerProcess()
         logger.info(f"Launching Batch Spider Process for Batch {self.batch_index}")
@@ -193,19 +198,6 @@ class FetchWorker(StoryProducer):
         logger.info(
             f"Fetched {len(self.fetched_stories)} stories in batch {self.batch_index}"
         )
-
-        # enqueue stories
-        self.qconnect()
-        sender = self.story_sender()
-
-        for story in self.fetched_stories:
-            http_meta = story.http_metadata()
-            resp = http_meta.response_code
-            if resp == 200:
-                sender.send_story(story)
-            else:
-                # SHOULD NOT HAPPEN (only good stories should be appended to list)
-                logger.warning("%s response %r", http_meta.final_url, resp)
 
 
 if __name__ == "__main__":
