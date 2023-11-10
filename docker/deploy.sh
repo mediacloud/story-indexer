@@ -320,12 +320,13 @@ zzz() {
 case $DEPLOY_TYPE in
 prod|staging)
     rm -rf $PRIVATE_CONF_DIR
-    mkdir $PRIVATE_CONF_DIR
+    run_as_login_user mkdir $PRIVATE_CONF_DIR
+    chmod go-rwx $PRIVATE_CONF_DIR
     cd $PRIVATE_CONF_DIR
     CONFIG_REPO_PREFIX=$(zzz tvg@tvguho.pbz:zrqvnpybhq)
     CONFIG_REPO_NAME=$(zzz fgbel-vaqrkre-pbasvt)
     echo cloning $CONFIG_REPO_NAME repo 1>&2
-    if ! git clone $CONFIG_REPO_PREFIX/$CONFIG_REPO_NAME.git >/dev/null 2>&1; then
+    if ! run_as_login_user "git clone $CONFIG_REPO_PREFIX/$CONFIG_REPO_NAME.git" >/dev/null 2>&1; then
 	echo "FATAL: could not clone config repo" 1>&2
 	exit 1
     fi
