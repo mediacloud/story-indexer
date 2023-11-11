@@ -1,6 +1,7 @@
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+import tldextract
 from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.downloadermiddlewares.redirect import (
     BaseRedirectMiddleware,
@@ -39,7 +40,8 @@ class BlacklistRedirectMiddleware(BaseRedirectMiddleware):  # type: ignore[no-an
 
         redirected_url = urljoin(request.url, location)
 
-        if any(dom in redirected_url for dom in NON_NEWS_DOMAINS):
+        tld = tldextract.extract(redirected_url)
+        if f"{tld.domain}.{tld.suffix}" in NON_NEWS_DOMAINS:
             raise IgnoreRequest("Redirect to blacklisted domain")
 
         if response.status in (301, 307, 308) or request.method == "HEAD":
