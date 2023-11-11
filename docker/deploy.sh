@@ -198,7 +198,12 @@ prod)
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
     ELASTICSEARCH_IMPORTER_REPLICAS=1
     ELASTICSEARCH_IMPORTER_SHARDS=30
-    ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
+
+    # Disabled until tested in staging.
+    # Questions:
+    # 1. needs additional config?
+    # 2. will restart each time docker-compose deploy run??
+    #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
     VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
