@@ -113,8 +113,8 @@ FETCHER_NUM_BATCHES=20
 FETCHER_OPTIONS="--yesterday"
 
 NEWS_SEARCH_API_PORT=8000	# native port
-NEWS_SEARCH_IMAGE_NAME=colsearch	   # XXX news-search-api???
-NEWS_SEARCH_IMAGE_REGISTRY=localhost:5000/ # XXX replace with real registry!
+NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
+NEWS_SEARCH_IMAGE_REGISTRY=docker.io
 NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
