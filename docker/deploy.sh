@@ -106,7 +106,7 @@ fi
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
-ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
+ELASTICSEARCH_SNAPSHOT_CONTAINERS=-1 # disable container by default
 
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
@@ -200,10 +200,10 @@ prod)
     ELASTICSEARCH_IMPORTER_SHARDS=30
 
     # Disabled until tested in staging.
-    # Questions:
-    # 1. needs additional config?
-    # 2. will restart each time docker-compose deploy run??
+    # Disable starting at deployment, run periodically:
+    #ELASTICSEARCH_SNAPSHOT_CONTAINERS=0
     #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
+    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
 
     # for RabbitMQ and worker_data:
     VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
@@ -216,6 +216,13 @@ staging)
     ELASTICSEARCH_CONTAINERS=3
     ELASTICSEARCH_IMPORTER_REPLICAS=1
     ELASTICSEARCH_IMPORTER_SHARDS=5
+
+    # Disabled until snapshot configuration & keys set.
+    # (pass keys in environment, set ELASTICSEARCH_SNAPSHOT_ARGS w/ option?)
+    # Start at deployment, do not run periodically:
+    #ELASTICSEARCH_SNAPSHOT_CONTAINERS=1
+    #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
+    #ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
 
     # don't run daily, fetch 10x more than dev:
     FETCHER_CRONJOB_ENABLE=false
@@ -368,7 +375,7 @@ add() {
 	esac
 	;;
     int)
-	if ! echo $VALUE | egrep '^(0|[1-9][0-9]*)$' >/dev/null; then
+	if ! echo $VALUE | egrep '^(0|((|-)[1-9][0-9]*))$' >/dev/null; then
 	    echo "add: $VAR bad int: '$VALUE'" 1>&2; exit 1
 	fi
 	;;
@@ -409,7 +416,12 @@ add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
 add ELASTICSEARCH_IMPORTER_REPLICAS int
 add ELASTICSEARCH_IMPORTER_SHARDS int
-add ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE # NOT bool!
+add ELASTICSEARCH_SNAPSHOT_CONTAINERS int
+if [ $ELASTICSEARCH_SNAPSHOT_CONTAINERS -ge 0 ]; then
+    add ELASTICSEARCH_SNAPSHOT_ARGS allow-empty
+    add ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE # NOT bool, must be set
+    add ELASTICSEARCH_SNAPSHOT_REPO # must be set
+fi
 if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     # make these conditional rather than allow-empty
     add ELASTICSEARCH_IMAGE

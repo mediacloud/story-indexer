@@ -300,17 +300,22 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
-{% if elasticsearch_snapshot_cronjob_enable == 'true' %}
+{% if elasticsearch_snapshot_containers >= 0 %}
   # Elasticsearch Snaphost worker
   elastic-snapshots:
     <<: *worker-service-settings
     labels:
         swarm.cronjob.enable: "{{elasticsearch_snapshot_cronjob_enable}}"
-        swarm.cronjob.schedule: "0 0 * * *"
+        swarm.cronjob.replicas: 1
+        swarm.cronjob.schedule: "0 1 * * *"
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: {{elasticsearch_snapshot_containers}}
     environment:
       <<: *worker-environment-vars
       RUN: elastic-snapshots
-      ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
+      ARGS: "{{elasticsearch_snapshot_args}}"
+      ELASTICSEARCH_SNAPSHOT_REPO: {{elasticsearch_snapshot_repo}}
 {% endif %}
 
   ################ news search api (built elsewhere)
