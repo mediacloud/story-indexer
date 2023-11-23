@@ -51,6 +51,7 @@ x-base-service-settings: &base-service-settings
   environment: &base-environment-vars
     # Log everything in GMT!!!
     TZ: "GMT"
+    ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
 
 {% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
@@ -109,12 +110,12 @@ x-worker-service-settings: &worker-service-settings
     ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
+    SENTRY_DSN: {{sentry_dsn}}
+    SENTRY_ENVIRONMENT: {{sentry_environment}}
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
-
   image: {{worker_image_full}}
-
   volumes:
     - worker_data:/app/data/
 
@@ -255,9 +256,18 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
-      ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+
+  archiver-worker:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: archiver
+      ARCHIVER_S3_BUCKET: {{archiver_s3_bucket}}
+      ARCHIVER_S3_REGION: {{archiver_s3_region}}
+      ARCHIVER_S3_ACCESS_KEY_ID: {{archiver_s3_access_key_id}}
+      ARCHIVER_S3_SECRET_ACCESS_KEY: {{archiver_s3_secret_access_key}}
 
   ################ stats reporters
 
@@ -289,6 +299,19 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
+
+{% if elasticsearch_snapshot_cronjob_enable == 'true' %}
+  # Elasticsearch Snaphost worker
+  elastic-snapshots:
+    <<: *worker-service-settings
+    labels:
+        swarm.cronjob.enable: "{{elasticsearch_snapshot_cronjob_enable}}"
+        swarm.cronjob.schedule: "0 0 * * *"
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-snapshots
+      ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
+{% endif %}
 
   ################ news search api (built elsewhere)
 
