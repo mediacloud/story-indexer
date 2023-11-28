@@ -115,6 +115,8 @@ x-worker-service-settings: &worker-service-settings
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
+    SYSLOG_HOST: {{syslog_sink_container}}
+    SYSLOG_PORT: 5140
   image: {{worker_image_full}}
   volumes:
     - worker_data:/app/data/
@@ -147,6 +149,19 @@ services:
       replicas: 0
 
     image: {{worker_image_full}}
+
+  {{syslog_sink_container}}:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+      <<: *worker-environment-vars
+      LOG_DIR: /app/data/logs
+      RUN: syslog-sink
+      # gets SYSLOG_PORT via worker-environment-vars
 
   swarm-cronjob:
     <<: *base-service-settings

@@ -128,6 +128,9 @@ STATSD_REALM="$BRANCH"
 # depends on proxy running on tarbell
 STATSD_URL=statsd://stats.tarbell.mediacloud.org
 
+# must be a valid hostname (no underscores!)
+SYSLOG_SINK_CONTAINER=syslog-sink
+
 # Pushing to a local registry for now, while in dev loop.
 # set registry differently based on BRANCH?!
 # MUST have trailing slash unless empty
@@ -433,6 +436,7 @@ add SENTRY_ENVIRONMENT		# private
 add STACK_NAME
 add STATSD_REALM
 add STATSD_URL
+add SYSLOG_SINK_CONTAINER
 add VOLUME_DEVICE_PREFIX
 add WORKER_IMAGE_FULL
 add WORKER_IMAGE_NAME
