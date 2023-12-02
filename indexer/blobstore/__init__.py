@@ -1,9 +1,5 @@
 """
-Simple API for archive/cold storage.
-
-Enhance as needed.
-
-NOTE! Back ends like DO NOT have FULL filesystem semantics!
+Simple API for file transfer to archive/cold storage.
 """
 
 import importlib
@@ -42,6 +38,11 @@ class BlobStore:
         """
         return os.environ[self._conf_var(conf_item)]
 
+    def authorize(self) -> None:
+        """
+        place authorization code here!
+        """
+
     def store_from_local_file(self, local_path: str, remote_path: str) -> None:
         raise NotImplementedError
 
@@ -54,17 +55,17 @@ def blobstore(store_name: str) -> Optional[BlobStore]:
     """
     for finder, modname, ispkg in pkgutil.iter_modules(path=__path__):
         try:
-            n = f"{__name__}.{modname}"
-            m = importlib.import_module(n)
+            fullmodname = f"{__name__}.{modname}"
+            module = importlib.import_module(fullmodname)
         except ImportError as e:
             # in case dependencies not installed for unused providers
-            logger.debug("import of %s failed: %r", n, e)
+            logger.debug("import of %s failed: %r", fullmodname, e)
             continue
 
         # look for BlobStore subclasses in module and try to instantiate them!
-        for name in dir(m):
+        for name in dir(module):
             if name[0].isupper():
-                value = getattr(m, name)
+                value = getattr(module, name)
                 if (
                     name != "BlobStore"
                     and isinstance(value, type)
@@ -72,14 +73,21 @@ def blobstore(store_name: str) -> Optional[BlobStore]:
                 ):
                     logger.debug("found BlobStore class %s", name)
                     try:
-                        s = value(store_name)  # instantiate class
-                        for attr in ("PROVIDER", "EXCEPTIONS"):  # paranoia
-                            if not hasattr(s, attr):
-                                raise AttributeError(f"{n}.{name} missing {attr}")
-                        return s
-                    except (ImportError, KeyError) as e:
-                        logger.debug("could not instantiate BlobStore %s: %r", name, e)
+                        bs = value(store_name)  # instantiate class
+                    except ImportError as e:
+                        logger.debug("error importing BlobStore %s: %r", name, e)
+                        continue
+                    except KeyError as e:
+                        logger.debug("missing config for BlobStore %s: %r", name, e)
                         continue
 
-    logger.warning("no %s blobstore configuration?", store_name)
+                    try:
+                        bs.authorize()
+                        return bs
+                    except tuple(value.EXCEPTIONS) as e:
+                        logger.debug("error authorizng BlobStore %s: %r", name, e)
+                    except KeyError as e:
+                        logger.debug("missing config for BlobStore %s: %r", name, e)
+
+    logger.warning("no working blobstore for %s", store_name)
     return None
