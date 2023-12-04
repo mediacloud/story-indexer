@@ -25,6 +25,12 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
 
     name: str = "BatchSpider"
 
+    # Use the custom blacklist redirect middleware instead of the standard redirect middleware
+    DOWNLOADER_MIDDLEWARES = {
+        "indexer.workers.fetcher.BlacklistRedirectMiddleware": 500,
+        "scrapy.downloadermiddlewares.redirect.RedirectMiddleware": None,
+    }
+
     custom_settings: Dict[str, Any] = {
         "COOKIES_ENABLED": False,
         "AUTOTHROTTLE_ENABLED": True,
@@ -34,6 +40,8 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
         # donut bother with retrying on 500s
         "RETRY_HTTP_CODES": [502, 503, 504, 522, 524, 408, 429],
         "USER_AGENT": "mediacloud bot for open academic research (+https://mediacloud.org)",
+        "DOWNLOAD_TIMEOUT": 60,  # reduce load from long wait times.
+        "DOWNLOADER_MIDDLEWARES": DOWNLOADER_MIDDLEWARES,
     }
 
     def __init__(
