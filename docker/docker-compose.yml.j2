@@ -340,38 +340,28 @@ services:
     ports:
       - {{news_search_ui_port}}:8501
 
+{% macro define_volume(prefix, suffix='') %}
+  {{prefix}}{{suffix}}:
+{%- if volume_device_prefix %}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}{{prefix}}{{suffix}}
+{% endif -%}
+{% endmacro -%}
+
 volumes:
-{% if elasticsearch_containers > 0 %}
+{% if elasticsearch_containers > 0 -%}
 {% for i in range(1,elasticsearch_containers+1) %}
-  elasticsearch_data_{{"%02d" % i}}:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}elasticsearch_data_{{"%02d" % i}}
+{{ define_volume('elasticsearch_data',"_%02d" % i) }}
 {%- endfor %}
-  elasticsearch_data_backup:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}elasticsearch_data_backup
-{% endif %}
+{{ define_volume('elasticsearch_data_backup') }}
+{%- endif %}
 {% if rabbitmq_containers > 0 %}
-  rabbitmq_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}rabbitmq
+{{ define_volume('rabbitmq_data') }}
 {% endif %}
-  worker_data:
-    # Neccesary for diskstory, ideally not used:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}worker_data
+{{ define_volume('worker_data') }}
 
 networks:
   default:
