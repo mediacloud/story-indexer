@@ -318,16 +318,22 @@ class QApp(App):
 
         # start Pika I/O thread (ONLY ONE!)
         if self.START_PIKA_THREAD:
-            self._start_pika_thread()
+            self.start_pika_thread()
 
-    def _start_pika_thread(self) -> None:
+    def start_pika_thread(self) -> None:
         """
         Pika I/O thread. ONLY START ONE!
         Handles async messages from AMQP (ie; RabbitMQ) server,
         including connection keep-alive.
         """
+        assert self.connection
+
+        # need next check & _pika_thread set under a lock to allow
+        # calling from any thread:
+        assert threading.current_thread() == threading.main_thread()
+
         if self._pika_thread:
-            logger.error("_start_pika_thread called again")
+            logger.error("start_pika_thread called again")
             return
 
         self._pika_thread = threading.Thread(
@@ -384,7 +390,7 @@ class QApp(App):
             # here from a QApp
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
-            self._start_pika_thread()
+            self.start_pika_thread()
 
         self.connection.add_callback_threadsafe(cb)
 
@@ -700,10 +706,10 @@ class StoryProducer(QApp):
 
     def story_sender(self) -> StorySender:
         """
-        Call once PER THREAD in a producer (generates new messages)
-        MUST be called before Pika thread running
+        MUST be called after qconnect, before Pika thread running
         """
         assert self.connection
+        assert self._pika_thread is None
         return StorySender(self, self.connection.channel())
 
 
