@@ -119,7 +119,7 @@ NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
-RABBITMQ_CONTAINERS=1
+RABBITMQ_CONTAINERS=1		# integer to allow cluster in staging??
 RABBITMQ_PORT=5672		# native port
 
 STATSD_REALM="$BRANCH"
@@ -127,6 +127,9 @@ STATSD_REALM="$BRANCH"
 # XXX run local instance in stack if developer (don't clutter tarbell disk)??
 # depends on proxy running on tarbell
 STATSD_URL=statsd://stats.tarbell.mediacloud.org
+
+# must be a valid hostname (no underscores!)
+SYSLOG_SINK_CONTAINER=syslog-sink
 
 # Pushing to a local registry for now, while in dev loop.
 # set registry differently based on BRANCH?!
@@ -246,8 +249,7 @@ dev)
     MULTI_NODE_DEPLOYMENT=
     NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
-    # default volume storage location!
-    VOLUME_DEVICE_PREFIX=/var/lib/docker/volumes/${STACK_NAME}_
+    VOLUME_DEVICE_PREFIX=
     ;;
 esac
 
@@ -435,7 +437,8 @@ add SENTRY_ENVIRONMENT		# private
 add STACK_NAME
 add STATSD_REALM
 add STATSD_URL
-add VOLUME_DEVICE_PREFIX
+add SYSLOG_SINK_CONTAINER
+add VOLUME_DEVICE_PREFIX allow-empty
 add WORKER_IMAGE_FULL
 add WORKER_IMAGE_NAME
 add WORKER_PLACEMENT_CONSTRAINT
