@@ -27,7 +27,7 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
 
     # Use the custom blacklist redirect middleware instead of the standard redirect middleware
     DOWNLOADER_MIDDLEWARES = {
-        "indexer.workers.fetcher.BlacklistRedirectMiddleware": 500,
+        "indexer.workers.fetcher.BlacklistRedirectMiddleware.BlacklistRedirectMiddleware": 500,
         "scrapy.downloadermiddlewares.redirect.RedirectMiddleware": None,
     }
 
