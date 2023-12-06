@@ -25,5 +25,5 @@ def init() -> bool:
         )
         return True
     else:
-        logger.warning("SENTRY_DSN not found. Not logging errors to Sentry")
+        logger.info("SENTRY_DSN not found. Not logging errors to Sentry")
         return False
