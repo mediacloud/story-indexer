@@ -3,6 +3,7 @@ metadata parser pipeline worker
 """
 
 import logging
+from collections import Counter
 
 # PyPI:
 import mcmetadata
@@ -51,8 +52,9 @@ class Parser(StoryWorker):
 
         logger.info("parsing %s: %d characters", final_url, len(html))
 
+        extract_stats: Counter[str] = Counter()
         try:
-            mdd = mcmetadata.extract(final_url, html)
+            mdd = mcmetadata.extract(final_url, html, stats_accumulator=extract_stats)
         except mcmetadata.exceptions.BadContentError:
             story_status("too-short")
             # No quarantine error here, just discard
@@ -81,6 +83,13 @@ class Parser(StoryWorker):
 
         sender.send_story(story)
         story_status(f"OK-{method}")
+
+        skip_items = {"total", "fetch"}  # stackable, no fetch done
+        for item, sec in extract_stats.items():
+            if item not in skip_items:
+                # was tempted to replace 'content' with method,
+                # but is really sum of all methods tried!!
+                self.timing("extract", sec * 1000, labels=[("step", item)])
 
 
 if __name__ == "__main__":
