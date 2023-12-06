@@ -29,6 +29,7 @@ certifi==2023.7.22
     # via
     #   elastic-transport
     #   requests
+    #   sentry-sdk
     #   trafilatura
 cffi==1.16.0
     # via cryptography
@@ -204,6 +205,8 @@ s3transfer==0.7.0
     # via boto3
 scrapy==2.10.1
     # via story-indexer (pyproject.toml)
+sentry-sdk==1.34.0
+    # via story-indexer (pyproject.toml)
 service-identity==23.1.0
     # via scrapy
 sgmllib3k==1.0.0
@@ -259,6 +262,7 @@ urllib3==2.0.7
     #   elastic-transport
     #   htmldate
     #   requests
+    #   sentry-sdk
     #   trafilatura
 w3lib==2.1.2
     # via

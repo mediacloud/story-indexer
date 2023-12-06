@@ -210,6 +210,7 @@ prod)
 
     # for RabbitMQ and worker_data:
     VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
+    SENTRY_ENVIRONMENT="production"
     ;;
 staging)
     STACK_NAME=staging-$BASE_STACK_NAME
@@ -228,6 +229,7 @@ staging)
     MULTI_NODE_DEPLOYMENT=1
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
     VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
+    SENTRY_ENVIRONMENT="staging"
     ;;
 dev)
     # pick up from environment, so multiple dev stacks can run on same h/w cluster!
