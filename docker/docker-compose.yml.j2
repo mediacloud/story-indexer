@@ -256,11 +256,14 @@ services:
 
   parser-worker:
     <<: *worker-service-settings
-    # run multiple replicas?
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: 4
     environment:
       <<: *worker-environment-vars
+      # Run numpy dot operator single threaded:
+      OPENBLAS_NUM_THREADS: 1
       RUN: parser
-      # restrict (numpy/openblas??) threads? w/ OPENBLAS_NUM_THREADS: n??
 
   # PB: if running rabbitmq cluster (process on each ES node) w/ Docker
   # have numbered service instances: importer-workerN,
