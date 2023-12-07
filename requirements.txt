@@ -19,16 +19,17 @@ beautifulsoup4==4.12.2
     #   newspaper3k
 boilerpy3==1.0.7
     # via mediacloud-metadata
-boto3==1.28.78
+boto3==1.28.85
     # via story-indexer (pyproject.toml)
-botocore==1.31.78
+botocore==1.31.85
     # via
     #   boto3
     #   s3transfer
-certifi==2023.7.22
+certifi==2023.11.17
     # via
     #   elastic-transport
     #   requests
+    #   sentry-sdk
     #   trafilatura
 cffi==1.16.0
     # via cryptography
@@ -43,9 +44,9 @@ click==8.1.7
     # via nltk
 constantly==23.10.4
     # via twisted
-courlan==0.9.4
+courlan==0.9.5
     # via trafilatura
-cryptography==41.0.5
+cryptography==41.0.7
     # via
     #   pyopenssl
     #   scrapy
@@ -57,7 +58,7 @@ cssselect==1.2.0
     #   parsel
     #   readability-lxml
     #   scrapy
-dateparser==1.1.8
+dateparser==1.2.0
     # via
     #   htmldate
     #   mediacloud-metadata
@@ -79,13 +80,13 @@ furl==2.1.3
     # via mediacloud-metadata
 goose3==3.1.17
     # via mediacloud-metadata
-htmldate==1.4.3
+htmldate==1.6.0
     # via
     #   mediacloud-metadata
     #   trafilatura
 hyperlink==21.0.0
     # via twisted
-idna==3.4
+idna==3.6
     # via
     #   hyperlink
     #   requests
@@ -124,13 +125,13 @@ lxml==4.9.3
     #   readability-lxml
     #   scrapy
     #   trafilatura
-mediacloud-metadata==0.9.4
+mediacloud-metadata==0.10.0
     # via story-indexer (pyproject.toml)
 newspaper3k==0.2.8
     # via mediacloud-metadata
 nltk==3.8.1
     # via newspaper3k
-numpy==1.26.1
+numpy==1.26.2
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -155,7 +156,7 @@ py3langid==0.2.2
     # via mediacloud-metadata
 pyahocorasick==2.0.0
     # via goose3
-pyasn1==0.5.0
+pyasn1==0.5.1
     # via
     #   pyasn1-modules
     #   service-identity
@@ -204,6 +205,8 @@ s3transfer==0.7.0
     # via boto3
 scrapy==2.10.1
     # via story-indexer (pyproject.toml)
+sentry-sdk==1.34.0
+    # via story-indexer (pyproject.toml)
 service-identity==23.1.0
     # via scrapy
 sgmllib3k==1.0.0
@@ -233,7 +236,7 @@ tinysegmenter==0.3
     # via newspaper3k
 tld==0.13
     # via courlan
-tldextract==3.4.4
+tldextract==5.1.1
     # via
     #   mediacloud-metadata
     #   newspaper3k
@@ -241,7 +244,7 @@ tldextract==3.4.4
     #   surt
 tqdm==4.66.1
     # via nltk
-trafilatura==1.6.1
+trafilatura==1.6.3
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
@@ -259,6 +262,7 @@ urllib3==2.0.7
     #   elastic-transport
     #   htmldate
     #   requests
+    #   sentry-sdk
     #   trafilatura
 w3lib==2.1.2
     # via
@@ -267,7 +271,7 @@ w3lib==2.1.2
     #   scrapy
 warcio==1.7.4
     # via story-indexer (pyproject.toml)
-websocket-client==1.6.4
+websocket-client==1.7.0
     # via docker
 zope-interface==6.1
     # via
@@ -275,7 +279,7 @@ zope-interface==6.1
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==68.2.2
+setuptools==69.0.2
     # via
     #   scrapy
     #   supervisor

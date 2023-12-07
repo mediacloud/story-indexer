@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+import scrapy.utils.log
 from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
@@ -184,8 +185,17 @@ class FetchWorker(StoryProducer):
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
+        # UGH!! scrapy.utils.log.configure_logging, called from
+        # CrawlerProcess constructor calls
+        # logging.dictConfig(DEFAULT_LOGGING) which closes all
+        # existing handlers (ie; the SysLogHandler), so wack the
+        # config to be "incremental"!!!
+        scrapy.utils.log.DEFAULT_LOGGING["incremental"] = True
+
         # Fetch html as stories
-        process = CrawlerProcess()
+
+        # install_root_handler=False keeps scrapy from installing ANOTHER stderr handler!
+        process = CrawlerProcess(install_root_handler=False)
         logger.info(f"Launching Batch Spider Process for Batch {self.batch_index}")
         process.crawl(BatchSpider, batch=self.stories_to_fetch, cb=self.scrapy_cb)
         process.start()

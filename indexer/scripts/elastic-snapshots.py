@@ -1,23 +1,32 @@
 """
 schedule Elasticsearch snapshots
 """
+import argparse
 import logging
 import os
 import sys
 from datetime import date
 from logging import getLogger
-from typing import Any
+from typing import Any, Dict
 
 from indexer.app import App
-from indexer.elastic import ElasticSnapshotMixin
+from indexer.elastic import ElasticMixin
 
-logger = logging.getLogger(__name__)
+logger = getLogger("elastic-snapshosts")
 
 
-class ElasticSnapshots(ElasticSnapshotMixin, App):
+class ElasticSnapshots(ElasticMixin, App):
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--elasticsearch-snapshot-repo",
+            dest="elasticsearch_snapshot_repo",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
+            help="ES snapshot repository name",
+        )
+
     def process_args(self) -> None:
         super().process_args()
-        assert self.args
         assert self.args
         if not self.args.elasticsearch_snapshot_repo:
             logger.fatal(
@@ -27,6 +36,9 @@ class ElasticSnapshots(ElasticSnapshotMixin, App):
         self.elasticsearch_snapshot_repo = self.args.elasticsearch_snapshot_repo
 
     def main_loop(self) -> None:
+        def shards_incr(status: str, count: int) -> None:
+            self.incr("snap_shards", value=count, labels=[("status", status)])
+
         _TODAY = date.today().strftime("%Y.%m.%d")
         repository_name = self.elasticsearch_snapshot_repo
         snapshot_name = f"snapshot-{_TODAY}"
@@ -48,8 +60,14 @@ class ElasticSnapshots(ElasticSnapshotMixin, App):
         )
         snapshot_info = response.get("snapshot", {})
         if snapshot_info.get("state") == "SUCCESS":
-            self.incr("snapshots", labels=[("status", "success")])
             shards_info = snapshot_info.get("shards", {})
+            status_counts: Dict[str, int] = {
+                "failed": shards_info.get("failed", 0),
+                "successful": shards_info.get("successful", 0),
+            }
+            for status, count in status_counts.items():
+                shards_incr(status, count)
+
             logger.info(
                 "Snapshot Created Successfully Information - "
                 "N: %s "
@@ -62,7 +80,7 @@ class ElasticSnapshots(ElasticSnapshotMixin, App):
                 shards_info.get("failed", 0),
             )
         else:
-            self.incr("snapshots", labels=[("status", "failed")])
+            self.incr("snap_shards", labels=[("status", "failed")])
             error_message = snapshot_info["failures"]["reason"]
             logger.error("Snapshot creation failed :%s", error_message)
 
