@@ -54,7 +54,9 @@ class App(ArgsProtocol):
     """
 
     def __init__(self, process_name: str, descr: str):
-        self.process_name = process_name
+        # override of process_name allow alternate versions of pipeline
+        # (ie; processing historical data) from different queues
+        self.process_name = os.environ.get("PROCESS_NAME", process_name)
         self.descr = descr
         self.args: Optional[argparse.Namespace] = None  # set by main
         self._statsd: Optional[statsd.StatsdClient] = None

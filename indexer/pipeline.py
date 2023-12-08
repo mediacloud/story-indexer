@@ -347,4 +347,9 @@ if __name__ == "__main__":
             )
         ],
     )
+    # second pipeline for historical data, without archiver
+    p.add_producer(
+        "hist-fetcher",
+        [p.add_worker("hist-parser", [p.add_consumer("hist-importer")])],
+    )
     p.main()

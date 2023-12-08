@@ -261,7 +261,7 @@ services:
       replicas: 4
     environment:
       <<: *worker-environment-vars
-      # Run numpy dot operator single threaded:
+      # Run py3lang/numpy/openblas dot operator single threaded:
       OPENBLAS_NUM_THREADS: 1
       RUN: parser
 
@@ -287,6 +287,33 @@ services:
       ARCHIVER_S3_REGION: {{archiver_s3_region}}
       ARCHIVER_S3_ACCESS_KEY_ID: {{archiver_s3_access_key_id}}
       ARCHIVER_S3_SECRET_ACCESS_KEY: {{archiver_s3_secret_access_key}}
+
+  ################ historical parse/import pipeline (separate queues)
+
+  # no hist-fetcher container (yet?)
+
+  hist-parser-worker:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: 4
+    environment:
+      <<: *worker-environment-vars
+      # Run py3lang/numpy/openblas dot operator single threaded:
+      OPENBLAS_NUM_THREADS: 1
+      PROCESS_NAME: hist-parser
+      RUN: parser
+
+  hist-importer-worker:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      # archiving disabled (no process in importer/pipeline.py)
+      ARGS: "--no-output"
+      ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
+      ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+      PROCESS_NAME: hist-importer
+      RUN: importer
 
   ################ stats reporters
 
