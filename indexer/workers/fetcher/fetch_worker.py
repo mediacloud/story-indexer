@@ -140,7 +140,7 @@ class FetchWorker(StoryProducer):
             elif any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
                 status_label = "non-news"
             else:
-                if self.sender is None:  # type: ignore [has-type]
+                if not hasattr(self, "sender"):
                     self.qconnect()
                     self.sender = self.story_sender()
                 self.sender.send_story(story)
