@@ -139,12 +139,12 @@ class FetchWorker(StoryProducer):
             elif any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
                 status_label = "non-news"
             else:
-                if self.sender is None:
+                if self.sender is None:  # type: ignore [has-type]
                     self.qconnect()
                     self.sender = self.story_sender()
                 self.sender.send_story(story)
                 status_label = "success"
-                
+
         elif http_meta.response_code in (403, 404, 429):
             status_label = f"http-{http_meta.response_code}"
         else:
