@@ -125,7 +125,6 @@ class FetchWorker(StoryProducer):
         # Scrapy calls this when it's finished grabbing a story
         # NB both successes and failures end up here
         http_meta = story.http_metadata()
-        logger.info(f"story: {story}")
 
         if http_meta.final_url is None:
             status_label = "no-url"  # was an assert
