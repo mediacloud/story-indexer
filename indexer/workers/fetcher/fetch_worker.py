@@ -139,8 +139,12 @@ class FetchWorker(StoryProducer):
             elif any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
                 status_label = "non-news"
             else:
-                self.fetched_stories.append(story)
+                if self.sender is None:
+                    self.qconnect()
+                    self.sender = self.story_sender()
+                self.sender.send_story(story)
                 status_label = "success"
+                
         elif http_meta.response_code in (403, 404, 429):
             status_label = f"http-{http_meta.response_code}"
         else:
@@ -203,19 +207,6 @@ class FetchWorker(StoryProducer):
         logger.info(
             f"Fetched {len(self.fetched_stories)} stories in batch {self.batch_index}"
         )
-
-        # enqueue stories
-        self.qconnect()
-        sender = self.story_sender()
-
-        for story in self.fetched_stories:
-            http_meta = story.http_metadata()
-            resp = http_meta.response_code
-            if resp == 200:
-                sender.send_story(story)
-            else:
-                # SHOULD NOT HAPPEN (only good stories should be appended to list)
-                logger.warning("%s response %r", http_meta.final_url, resp)
 
 
 if __name__ == "__main__":
