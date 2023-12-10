@@ -83,8 +83,8 @@ class HistFetcher(StoryProducer):
         # expect local file for now
         with open(self.args.csv) as f:
             for row in csv.DictReader(f):
-                print(row)
                 # typ columns: collect_date,stories_id,media_id,downloads_id,feeds_id,[language,]url
+                logger.info("%r", row)
 
                 url = row.get("url", None)
                 if not url:
