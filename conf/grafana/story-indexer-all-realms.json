@@ -416,7 +416,7 @@
       "targets": [
         {
           "refId": "A",
-          "target": "stats.counters.mc.$realm.story-indexer.importer.imported-stories.*.rate"
+          "target": "stats.counters.mc.$realm.story-indexer.importer.stories.*.rate"
         }
       ],
       "thresholds": [],

@@ -151,10 +151,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(data)
-            # pass story along to archiver
-            # (have an option to disable, for previously archived data?)
-            sender.send_story(story)
+            response = self.import_story(data)
+            if response:
+                # pass story along to archiver
+                # (have an option to disable, for previously archived data?)
+                sender.send_story(story)
 
     def import_story(
         self,
@@ -174,15 +175,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             target_index = self.index_routing(publication_date)
             try:
                 response = self.connector.index(url_hash, target_index, data)
-            except ConflictError as e:
+            except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
-                # raise exception so that dups are not archived
-                raise AppException(
-                    "Conflict error occurred during indexing (duplicates detected)"
-                ) from e
-
             except RequestError as e:
                 self.incr("stories", labels=[("status", "reqerr")])
+                raise QuarantineException(getattr(e, "message", repr(e)))
+            except Exception as e:
+                # Capture other exceptions here
+                self.incr("stories", labels=[("status", "failed")])
                 raise QuarantineException(getattr(e, "message", repr(e)))
 
             if response and response.get("result") == "created":
@@ -190,13 +190,8 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     f"Story has been successfully imported. to index {target_index}"
                 )
                 import_status_label = "success"
-            else:
-                logger.info("Story was not imported.")
-                import_status_label = "failed"
-                # status="failed" for imports from unknown errors
-                raise QuarantineException("failed import")
+                self.incr("stories", labels=[("status", import_status_label)])
 
-        self.incr("imported-stories", labels=[("status", import_status_label)])
         return response
 
 
