@@ -13,7 +13,6 @@ from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
-from indexer.app import AppException
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StorySender, StoryWorker, run
