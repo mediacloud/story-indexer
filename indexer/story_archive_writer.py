@@ -11,7 +11,7 @@ import datetime as dt
 import json
 import os
 import time
-from io import BytesIO, RawIOBase
+from io import BufferedReader, BytesIO
 from logging import getLogger
 from typing import Any, Dict, Iterator, Tuple, Union
 
@@ -323,11 +323,8 @@ class StoryArchiveWriter:
         # self.timestamp: timestamp used to create filename
 
 
-# written for reading archives and re-writing with/without different
-# components (json indent, full text) for size comparison.
-# NOT FULLY VALIDATED, but too good to throw away!
-class _StoryArchiveReader:
-    def __init__(self, fileobj: BytesIO):
+class StoryArchiveReader:
+    def __init__(self, fileobj: BufferedReader):
         self.iterator = ArchiveIterator(fileobj)
 
     def read_stories(self) -> Iterator[BaseStory]:
