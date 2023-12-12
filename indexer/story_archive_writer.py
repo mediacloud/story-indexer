@@ -169,17 +169,17 @@ class StoryArchiveWriter:
     def __init__(
         self, *, prefix: str, hostname: str, fqdn: str, serial: int, work_dir: str
     ):
-        self.t = time.time()  # time used to generate archive name
+        self.timestamp = time.time()  # time used to generate archive name
         # WARC 1.1 Annex C suggests naming:
         # Prefix-Timestamp-Serial-Crawlhost.warc.gz
         # where Timestamp is "a 14-digit GMT time-stamp"
-        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.t))
+        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.timestamp))
         self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
-        self.path = os.path.join(work_dir, self.filename)
-        self.file = open(self.path, "wb")
+        self.full_path = os.path.join(work_dir, self.filename)
+        self._file = open(self.full_path, "wb")
         self.size = -1
 
-        self.writer = WARCWriter(self.file, gzip=True, warc_version=WARC_VERSION)
+        self.writer = WARCWriter(self._file, gzip=True, warc_version=WARC_VERSION)
 
         # write initial "warcinfo" record:
         info = {
@@ -308,12 +308,13 @@ class StoryArchiveWriter:
 
         return True  # written
 
-    def finish(self) -> Tuple[str, str, int, float]:
-        """
-        returns filename and full path of finished file
-        """
-        if self.file:
-            self.size = self.file.tell()
-            self.file.close()
+    def finish(self) -> None:
+        if self._file:
+            self.size = self._file.tell()
+            self._file.close()
 
-        return self.filename, self.path, self.size, self.t
+        # useful data now available:
+        # self.filename: archive file name
+        # self.full_path: full local path of output file
+        # self.size: size of (compressed) output file
+        # self.timestamp: timestamp used to create filename
