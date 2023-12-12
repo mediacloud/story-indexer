@@ -13,12 +13,15 @@ import os
 import time
 from io import BytesIO, RawIOBase
 from logging import getLogger
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Iterator, Tuple, Union
 
+from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
 from warcio.warcwriter import WARCWriter
 
-from indexer.story import BaseStory
+from indexer.story import BaseStory, StoryFactory
+
+Story = StoryFactory()
 
 # WARC spec readings (November 2023):
 # * http://bibnum.bnf.fr/WARC/
@@ -318,3 +321,42 @@ class StoryArchiveWriter:
         # self.full_path: full local path of output file
         # self.size: size of (compressed) output file
         # self.timestamp: timestamp used to create filename
+
+
+# written for reading archives and re-writing with/without different
+# components (json indent, full text) for size comparison.
+# NOT FULLY VALIDATED, but too good to throw away!
+class _StoryArchiveReader:
+    def __init__(self, fileobj: BytesIO):
+        self.iterator = ArchiveIterator(fileobj)
+
+    def read_stories(self) -> Iterator[BaseStory]:
+        # read WARC file:
+        expect = "warcinfo"
+        html = b""
+        for record in self.iterator:
+            if record.rec_type != expect:
+                continue
+            elif expect == "warcinfo":
+                expect = "response"
+            elif expect == "response":
+                html = record.raw_stream.read()
+                expect = "metadata"
+            elif expect == "metadata":
+                j = json.load(record.raw_stream)
+                story = Story()
+                with story.rss_entry() as rss:
+                    for key, value in j["rss_entry"].items():
+                        setattr(rss, key, value)
+                with story.http_metadata() as hmd:
+                    for key, value in j["http_metadata"].items():
+                        setattr(hmd, key, value)
+                with story.content_metadata() as cmd:
+                    for key, value in j["content_metadata"].items():
+                        setattr(cmd, key, value)
+                with story.raw_html() as rh:
+                    rh.html = html
+                    rh.encoding = j["http_metadata"]["encoding"]
+
+                yield story
+                expect = "response"
