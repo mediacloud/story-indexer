@@ -80,14 +80,16 @@ class QUtil(QApp):
             story = BaseStory.load(body)
             if not aw:
                 aw = StoryArchiveWriter(
-                    prefix="dump",
+                    prefix=self.get_queue(),
                     hostname=hostname,
                     fqdn=fqdn,
                     serial=serial,
                     work_dir=".",
                 )
 
-            aw.write_story(story)
+            # XXX just save headers that start with "x-mc-"?
+            extras = {"rabbitmq_headers": properties.headers}
+            aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
             if stories == 5000:

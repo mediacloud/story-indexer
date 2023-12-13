@@ -13,7 +13,7 @@ import os
 import time
 from io import BufferedReader, BytesIO
 from logging import getLogger
-from typing import Any, Dict, Iterator, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
@@ -198,9 +198,16 @@ class StoryArchiveWriter:
             self.writer.create_warcinfo_record(self.filename, info)
         )
 
-    def write_story(self, story: BaseStory) -> bool:
+    def write_story(
+        self,
+        story: BaseStory,
+        extra_metadata: Optional[Dict[str, Any]],
+        raise_errors: bool = True,
+    ) -> bool:
         """
         Append a Story to the archive
+
+        extra_metadata is for qutil dump_archives command to save rabbitmq headers
         """
         # started from https://pypi.org/project/warcio/#description
         # "Manual/Advanced WARC Writing"
@@ -215,16 +222,17 @@ class StoryArchiveWriter:
         rhtml = story.raw_html()
 
         original_url = cmd.original_url or re.link
-        url = hmd.final_url or cmd.url or original_url
-        html = rhtml.html
+        url = hmd.final_url or cmd.url or original_url or ""
+        html = rhtml.html or b""
 
-        logger.debug("write_story %s %s %d bytes", original_url, url, len(html or ""))
+        logger.debug("write_story %s %s %d bytes", original_url, url, len(html))
 
-        if not url:
-            raise ArchiveStoryError("no-url")  # NOTE! used as counter!
+        if raise_errors:
+            if not url:
+                raise ArchiveStoryError("no-url")  # NOTE! used as counter!
 
-        if html is None or not html:  # explicit None check for mypy
-            raise ArchiveStoryError("no-html")  # NOTE! used as counter!
+            if html is None or not html:  # explicit None check for mypy
+                raise ArchiveStoryError("no-html")  # NOTE! used as counter!
 
         ################ create a WARC "response" with the HTML (no request)
 
@@ -252,9 +260,7 @@ class StoryArchiveWriter:
             ("Content-Length", str(len(html))),
         ]
 
-        hmd_fetch = (
-            hmd.fetch_timestamp or time.time()
-        )  # XXX better default first choices??
+        hmd_fetch = hmd.fetch_timestamp or time.time()
 
         # no fractional seconds in WARC/1.0:
         fetch_date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(hmd_fetch))
@@ -287,6 +293,8 @@ class StoryArchiveWriter:
             "http_metadata": _massage_metadata(hmd.as_dict()),
             "content_metadata": _massage_metadata(cmd.as_dict()),
         }
+        if extra_metadata:
+            metadata_dict.update(extra_metadata)
 
         metadata_bytes = json.dumps(metadata_dict, indent=2).encode()
         metadata_length = len(metadata_bytes)
