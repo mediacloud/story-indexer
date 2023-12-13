@@ -165,8 +165,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         response = None
         if data:
-            url = str(data.get("url"))
-            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+            url_hash = str(data.get("unique_url_hash"))
             publication_date = str(data.get("publication_date"))
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date = datetime.now().isoformat()

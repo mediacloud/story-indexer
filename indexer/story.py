@@ -171,6 +171,7 @@ class ContentMetadata(StoryData):
     text_content: Optional[str] = None
     is_homepage: Optional[bool] = None
     is_shortened: Optional[bool] = None
+    unique_url_hash: Optional[str] = None
 
 
 CONTENT_METADATA = class_to_member_name(ContentMetadata)
