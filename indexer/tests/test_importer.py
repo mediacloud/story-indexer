@@ -63,6 +63,7 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "normalized_article_title": "example article",
     "text_content": "Lorem ipsum dolor sit amet",
     "indexed_date": datetime.now().isoformat(),
+    "unique_url_hash": hashlib.sha256("http://example.com".encode("utf-8")).hexdigest(),
 }
 
 
@@ -75,7 +76,7 @@ class TestElasticsearchConnection:
     def test_index_document(self, elasticsearch_client: Any) -> None:
         index_names = list(elasticsearch_client.indices.get_alias().keys())
         index_name = index_names[0]
-        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
+        test_id = test_data.get("unique_url_hash")
         response = elasticsearch_client.create(
             index=index_name, id=test_id, document=test_data
         )
@@ -97,7 +98,7 @@ class TestElasticsearchConnection:
             "id": "adrferdiyhyu9",
             "publication_date": None,
         }
-        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
+        test_id = test_data.get("unique_url_hash")
         response = elasticsearch_client.create(
             index=index_name,
             id=test_data_with_none_date["id"],
