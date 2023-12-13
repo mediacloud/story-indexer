@@ -81,6 +81,18 @@ class Archiver(BatchStoryWorker):
             self.incr("stories.{e}")
             raise QuarantineException(repr(e))  # for now
 
+    def maybe_unlink_local(self, path: str) -> None:
+        # quick-and-dirty change to prevent removal of archives
+        # any non-empty value causes removal:
+        if not os.getenv("ARCHIVER_REMOVE_LOCAL", ""):
+            return
+
+        try:
+            os.unlink(path)
+            logger.info("removed %s", path)
+        except OSError as e:
+            logger.warning("unlink %s failed: %r", path, e)
+
     def end_of_batch(self) -> None:
         """
         Here to process collected work.
@@ -123,10 +135,7 @@ class Archiver(BatchStoryWorker):
                     )
                     s3.upload_file(path, self.s3_bucket, s3_key)
                     logger.info("uploaded %s to %s:%s", path, self.s3_bucket, s3_key)
-                    try:
-                        os.unlink(path)
-                    except OSError as e:
-                        logger.info("unlink %s failed: %r", path, e)
+                    self.maybe_unlink_local(path)
                     status = "uploaded"
                 else:
                     logger.error("NO S3 CONFIGURATION!!!")
@@ -134,10 +143,7 @@ class Archiver(BatchStoryWorker):
                         # development: keeps temp files around
                         status = "noarchive"
                     else:
-                        try:
-                            os.unlink(path)
-                        except OSError as e:
-                            logger.info("unlink %s failed: %r", path, e)
+                        self.maybe_unlink_local(path)
 
                         # force retry to avoid loss of stories
                         raise Exception("no s3 config")
