@@ -407,6 +407,9 @@ echo '{' > $CONFIG
 
 # keep in alphabetical order to avoid duplicates
 
+# When adding a new variable, you almost certainly need to add an
+# environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
+
 add ARCHIVER_PREFIX
 add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
