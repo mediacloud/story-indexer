@@ -179,7 +179,8 @@ class StoryArchiveWriter:
         ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.timestamp))
         self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
         self.full_path = os.path.join(work_dir, self.filename)
-        self._file = open(self.full_path, "wb")
+        self.temp_path = f"{self.full_path}.tmp"
+        self._file = open(self.temp_path, "wb")
         self.size = -1
 
         self.writer = WARCWriter(self._file, gzip=True, warc_version=WARC_VERSION)
@@ -323,6 +324,10 @@ class StoryArchiveWriter:
         if self._file:
             self.size = self._file.tell()
             self._file.close()
+
+        if os.path.exists(self.temp_path):
+            os.rename(self.temp_path, self.full_path)
+            logger.info("renamed %s", self.full_path)
 
         # useful data now available:
         # self.filename: archive file name
