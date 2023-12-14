@@ -25,18 +25,26 @@ HOSTNAME = socket.gethostname()  # for filenames
 class Archiver(BatchStoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
+
         self.archive: Optional[StoryArchiveWriter] = None
+        self.archive_prefix = os.environ.get("ARCHIVER_PREFIX", "mc")
+        self.blobstore: Optional[indexer.blobstore.BlobStore] = None
+
         self.stories = 0  # stories written to current archive
         self.archives = 0  # number of archives written
 
-        # default to Docker worker volume so files persist if not blobstored
+        # default to Docker worker volume so files persist if not uploaded
         self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", "/app/data/archiver")
+
+    def process_args(self) -> None:
+        super().process_args()
+
+        # here so logging configured
         if not os.path.isdir(self.work_dir):
             os.makedirs(self.work_dir)
             logger.info("created work directory %s", self.work_dir)
 
         self.blobstore = indexer.blobstore.blobstore("ARCHIVER")
-        self.archive_prefix = os.environ.get("ARCHIVER_PREFIX", "mc")
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -60,7 +68,7 @@ class Archiver(BatchStoryWorker):
             self.archive.write_story(story)
             self.stories += 1
         except ArchiveStoryError as e:
-            logger.info("caught %r", e)
+            logger.info("write_story: %r", e)
             self.incr("stories.{e}")
             raise QuarantineException(repr(e))  # for now
 
@@ -106,7 +114,7 @@ class Archiver(BatchStoryWorker):
             elif self.blobstore:
                 # S3 rate limits requests to
                 #  3500 PUTs/s and 5500 GETs/s per prefix.
-                #  So varying the prefix allows faster retrieval.
+                #  Varying the prefix allows faster retrieval.
                 prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
                 remote_path = prefix + name
 
@@ -118,9 +126,10 @@ class Archiver(BatchStoryWorker):
                         self.blobstore.PROVIDER,
                         remote_path,
                     )
-                    self.maybe_unlink_local(path)
+                    self.maybe_unlink_local(local_path)
                     status = "uploaded"
-                except indexer.blobstore.BlobStoreError:
+                except tuple(self.blobstore.EXCEPTIONS) as e:
+                    logger.error("archive %s upload failed: %r", name, e)  # exc_info?
                     status = "noupload"
             else:
                 status = "nostore"

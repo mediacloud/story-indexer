@@ -201,7 +201,7 @@ class StoryArchiveWriter:
     def write_story(
         self,
         story: BaseStory,
-        extra_metadata: Optional[Dict[str, Any]],
+        extra_metadata: Optional[Dict[str, Any]] = {},
         raise_errors: bool = True,
     ) -> bool:
         """
