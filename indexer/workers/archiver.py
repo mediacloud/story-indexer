@@ -76,6 +76,7 @@ class Archiver(BatchStoryWorker):
         # quick-and-dirty change to prevent removal of archives
         # any non-empty value causes removal:
         if not os.getenv("ARCHIVER_REMOVE_LOCAL", ""):
+            # XXX maybe rename to prefixed directory structure?
             return
 
         try:
