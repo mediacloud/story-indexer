@@ -240,6 +240,7 @@ services:
       RUN: configure-pipeline
       ARGS: "configure_and_loop"
 
+{% if fetcher_type == 'current' %}
   fetcher-worker:
     <<: *worker-service-settings
     deploy:
@@ -253,6 +254,11 @@ services:
       <<: *worker-environment-vars
       RUN: fetcher
       ARGS: "{{fetcher_options}} --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
+{% elif fetcher_type == 'hist-s3-csv' %}
+  # stuff here for hist-s3-fetcher service
+{% elif fetcher_type == 'warc' %}
+  # stuff here to fetch and process WARC archives
+{% endif %}
 
   parser-worker:
     <<: *worker-service-settings
@@ -274,6 +280,7 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
+      ARGS: {{importer_args}}
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
 
@@ -287,33 +294,6 @@ services:
       ARCHIVER_S3_REGION: {{archiver_s3_region}}
       ARCHIVER_S3_ACCESS_KEY_ID: {{archiver_s3_access_key_id}}
       ARCHIVER_S3_SECRET_ACCESS_KEY: {{archiver_s3_secret_access_key}}
-
-  ################ historical parse/import pipeline (separate queues)
-
-  # no hist-fetcher container (yet?)
-
-  hist-parser-worker:
-    <<: *worker-service-settings
-    deploy:
-      <<: *worker-deploy-settings
-      replicas: 4
-    environment:
-      <<: *worker-environment-vars
-      # Run py3lang/numpy/openblas dot operator single threaded:
-      OPENBLAS_NUM_THREADS: 1
-      PROCESS_NAME: hist-parser
-      RUN: parser
-
-  hist-importer-worker:
-    <<: *worker-service-settings
-    environment:
-      <<: *worker-environment-vars
-      # archiving disabled (no process in importer/pipeline.py)
-      ARGS: "--no-output"
-      ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
-      ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
-      PROCESS_NAME: hist-importer
-      RUN: importer
 
   ################ stats reporters
 

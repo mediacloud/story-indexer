@@ -42,16 +42,18 @@ usage() {
     echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
     echo "  -d      enable debug output (for template parameters)"
     echo "  -h      output this help and exit"
+    echo "  -i      launch hIstorical stack" # also alpbetically after h!
     echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u      allow running as non-root user"
     exit 1
 }
-while getopts B:abdhnu OPT; do
+while getopts B:abdhinu OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
    B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
+   i) HIST_PFX=hist-; BASE_STACK_NAME=$HIST_PFX$BASE_STACK_NAME;;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    ?) usage;;		# here on 'h' '?' or unhandled option
@@ -111,6 +113,7 @@ ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 FETCHER_CRONJOB_ENABLE=true
 FETCHER_NUM_BATCHES=20
 FETCHER_OPTIONS="--yesterday"
+FETCHER_TYPE=current
 
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
@@ -189,11 +192,12 @@ TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
     ARCHIVER_PREFIX=mc
+    PORT_BIAS=0
     STACK_NAME=$BASE_STACK_NAME
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-prod
+    TAG=$DATE_TIME-${HIST_PFX}prod
 
     MULTI_NODE_DEPLOYMENT=1
 
@@ -210,7 +214,7 @@ prod)
     #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/${HIST_PFX}indexer/
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
@@ -230,7 +234,7 @@ staging)
 
     MULTI_NODE_DEPLOYMENT=1
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${HIST_PFX}indexer/
     SENTRY_ENVIRONMENT="staging"
     ;;
 dev)
@@ -255,6 +259,15 @@ dev)
     VOLUME_DEVICE_PREFIX=
     ;;
 esac
+
+if [ "x$HIST_PFX" != x ]; then
+    FETCHER_TYPE=hist-s3-csv
+    # for now, no WARC files for archival input
+    IMPORTER_ARGS=--no-output
+    # offset exported ports by 100
+    # (in addition to any biases for staging/dev)
+    PORT_BIAS=$(expr $PORT_BIAS + 100)
+fi
 
 # NOTE! in-network containers see native (unmapped) ports,
 # so set environment variable values BEFORE applying PORT_BIAS!!
@@ -431,6 +444,8 @@ fi
 add FETCHER_CRONJOB_ENABLE	# NOT bool!
 add FETCHER_NUM_BATCHES int
 add FETCHER_OPTIONS
+add FETCHER_TYPE
+add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_IMAGE

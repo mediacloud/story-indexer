@@ -339,17 +339,15 @@ if __name__ == "__main__":
     # or "python indexer/pipeline.py"
     # configure the default queues.
     p = Pipeline("pipeline", "configure story-indexer queues")
-    p.add_producer(
-        "fetcher",
-        [
-            p.add_worker(
-                "parser", [p.add_worker("importer", [p.add_consumer("archiver")])]
-            )
-        ],
+
+    # parse/import/archive
+    p_i_a = p.add_worker(
+        "parser", [p.add_worker("importer", [p.add_consumer("archiver")])]
     )
-    # second pipeline for historical data, without archiver
-    p.add_producer(
-        "hist-fetcher",
-        [p.add_worker("hist-parser", [p.add_consumer("hist-importer")])],
-    )
+
+    # create exchanges to route outputs to regular parse/import/archive chain
+    p.add_producer("fetcher", [p_i_a])
+    p.add_producer("hist-fetcher", [p_i_a])
+    #   p.add_producer("warc-fetcher", [p_i_a])
+
     p.main()
