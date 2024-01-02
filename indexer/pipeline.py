@@ -271,11 +271,28 @@ class Pipeline(QApp):
         print("Commands (use --help for options):")
         for cmd in COMMANDS:
             descr = self.get_command_func(cmd).__doc__
-            print(f"{cmd:12.12} {descr}")
+            print(f"{cmd:18.18} {descr}")
+
+    @command
+    def qlen(self) -> None:
+        """show queue lengths"""
+
+        assert self.connection
+        chan = self.connection.channel()
+
+        defns = self.get_definitions()
+        qnames = [q["name"] for q in defns["queues"]]
+        qnames.sort()  # sort in place
+        for qname in qnames:
+            ret = chan.queue_declare(qname, passive=True)  # should never fail!
+            meth = ret.method
+            print(
+                f"{qname}: {meth.message_count} messages; {meth.consumer_count} consumers"
+            )
 
     @command
     def show(self) -> None:
-        """show queues"""
+        """show queues, exchanges, bindings"""
         defns = self.get_definitions()
         for what in ("queues", "exchanges", "bindings"):
             things = defns[what]

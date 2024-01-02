@@ -8,7 +8,7 @@ import botocore.exceptions
 import indexer.blobstore
 
 
-class S3Exception(RuntimeError):
+class S3Error(indexer.blobstore.BlobStoreError):
     """
     thrown on operation failure
     """
@@ -16,7 +16,7 @@ class S3Exception(RuntimeError):
 
 class S3Store(indexer.blobstore.BlobStore):
     PROVIDER = "S3"  # for config names
-    EXCEPTIONS = [botocore.exceptions.BotoCoreError, S3Exception]
+    EXCEPTIONS = [botocore.exceptions.BotoCoreError, S3Error]
 
     def __init__(self, store_name: str):
         super().__init__(store_name)
@@ -31,4 +31,4 @@ class S3Store(indexer.blobstore.BlobStore):
     def store_from_local_file(self, local_path: str, remote_path: str) -> None:
         if self.s3.upload_file(local_path, self.s3_bucket, remote_path):
             return
-        raise S3Exception("upload_file returned False")
+        raise S3Error("upload_file returned False")

@@ -47,6 +47,12 @@ class BlobStore:
         raise NotImplementedError
 
 
+class BlobStoreError(RuntimeError):
+    """
+    class for BlobStore errors
+    """
+
+
 def blobstore(store_name: str) -> Optional[BlobStore]:
     """
     return the first blobstore provider that has complete configuration.
