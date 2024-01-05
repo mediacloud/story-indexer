@@ -87,7 +87,10 @@ class Queuer(StoryProducer):
         assert self.input_group is not None
         self.input_group.add_argument("input_files", nargs="*", default=None)
 
-    def queue_story(self, story: BaseStory) -> None:
+    def incr_stories(self, status: str) -> None:
+        self.incr("stories", labels=[("status", status)])
+
+    def send_story(self, story: BaseStory) -> None:
         assert self.args
         if self.args.dry_run:
             return
@@ -95,7 +98,7 @@ class Queuer(StoryProducer):
             self.sender = self.story_sender()
         self.sender.send_story(story)
         self.queued_stories += 1
-        self.incr("stories")
+        self.incr_stories("success")
         if (
             self.args.max_stories is not None
             and self.queued_stories >= self.args.max_stories
