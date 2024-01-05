@@ -3,9 +3,8 @@ Fetch stories archived on s3 by downloads_id by legacy system
 using Stories created from CSV by hist-queuer
 
 TODO:
-handle database B/D overlap!
 check for HTML too large!!
-deal with non-utf8 files!
+add content charset detection to parser!!!
 """
 
 import argparse
@@ -15,10 +14,9 @@ import io
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import Any, Optional
 
 import boto3
-from mcmetadata.urls import NON_NEWS_DOMAINS
 
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StorySender, Worker, run
@@ -62,9 +60,13 @@ class HistFetcher(Worker):
 
         # XXX use blobstore, or get keys from environment
         s3 = boto3.resource("s3")
+        # XXX use client.list_object_versions ??
         self.bucket = s3.Bucket(DOWNLOADS_BUCKET)
 
     def pick_version(self, dlid: int, s3path: str, fetch_date: Optional[str]) -> Any:
+        """
+        returns None or a versionid
+        """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
             return None
 
@@ -88,7 +90,6 @@ class HistFetcher(Worker):
 
             lmdate = objdata["LastModified"].isoformat(sep=" ")
 
-            # ensure is string, fix return type??
             vid = objdata["VersionId"]
 
             logger.debug("dlid %d fd %s lm %s v %s", dlid, fetch_date, lmdate, vid)
@@ -121,6 +122,8 @@ class HistFetcher(Worker):
         else:
             extras = None
 
+        # need to have whole story in memory (Story object),
+        # so download to a memory-based file object
         with io.BytesIO() as bio:
             # XXX inside try??
             self.bucket.download_fileobj(s3path, bio, ExtraArgs=extras)
