@@ -391,11 +391,18 @@ class IntervalMixin(ArgsProtocol):
         time.sleep(sleep_sec)
 
 
+def run(klass: type[App], *args: Any, **kw: Any) -> None:
+    """
+    run app process
+    """
+    app = klass(*args, **kw)
+    app.main()
+
+
 if __name__ == "__main__":
 
     class Test(App):
         def main_loop(self) -> None:
             print("here")
 
-    t = Test("test", "test of app class")
-    t.main()
+    run(Test, "test", "test of app class")

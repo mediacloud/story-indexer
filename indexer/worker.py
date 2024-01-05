@@ -33,7 +33,7 @@ from pika.connection import URLParameters
 from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
-from indexer.app import App, AppException
+from indexer.app import App, AppException, run
 from indexer.story import BaseStory
 
 logger = logging.getLogger(__name__)
@@ -859,12 +859,3 @@ class BatchStoryWorker(StoryWorker):
 
     def end_of_batch(self) -> None:
         raise NotImplementedError("BatchStoryWorker.end_of_batch not overridden")
-
-
-def run(klass: type[App], *args: Any, **kw: Any) -> None:
-    """
-    run app process
-    could, in theory create threads or asyncio tasks.
-    """
-    worker = klass(*args, **kw)
-    worker.main()
