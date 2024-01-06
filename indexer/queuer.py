@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, BinaryIO, List, Optional, cast
 
 import boto3
 import botocore
@@ -106,7 +106,7 @@ class Queuer(StoryProducer):
             logger.info("queued %s stories; quitting", self.queued_stories)
             sys.exit(0)
 
-    def process_file(self, fname: str, fobj: io.IOBase) -> None:
+    def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
         Override, calling "self.queue_story" for each Story
         NOTE! fobj is a binary file!
@@ -175,12 +175,14 @@ class Queuer(StoryProducer):
         # assumes s3:// prefix: returns at most two items
         return objname[5:].split("/", 1)
 
-    def open_file(self, fname: str) -> io.IOBase:
+    def open_file(self, fname: str) -> BinaryIO:
         if fname.startswith("http:") or fname.startswith("https:"):
             resp = requests.get(fname)
             if resp and resp.status_code == 200:
-                assert isinstance(resp.raw, urllib3.response.HTTPResponse)
-                return resp.raw
+                # (resp.raw is urllib3.response.HTTPResponse,
+                # which is a subclass of io.IOBase)
+                assert isinstance(resp.raw, io.IOBase)
+                return cast(BinaryIO, resp.raw)
             raise AppException(str(resp))
 
         if fname.startswith("s3://"):
@@ -197,6 +199,9 @@ class Queuer(StoryProducer):
     def maybe_process_files(self, fname: str) -> None:
         """
         supports simple prefix matching for s3 URLs
+        _COULD_ do full wildcarding by fetching all and applying glob.glob.
+        (would be more efficient to do prefix (as below), stopping at
+        first wildcard character
         """
         if fname.startswith("s3://") and fname.endswith("*"):
             bucket, prefix = self.split_s3_url(fname[:-1])
