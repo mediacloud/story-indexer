@@ -1,10 +1,12 @@
 """
-Fetch stories archived on s3 by downloads_id by legacy system
+Fetch stories archived on S3 by legacy system
 using Stories created from CSV by hist-queuer
+(reading CSV files from S3)
 
-TODO:
-check for HTML too large!!
-add content charset detection to parser!!!
+Separate from hist-queuer because S3 latency prevents a single process
+from getting anything near the (single-prefix) fetch limit of 4500
+objects/second, AND to make it so that crashes/interruptions in the
+fetch keep track of what has already been handled.
 """
 
 import argparse
@@ -14,12 +16,14 @@ import io
 import logging
 import os
 import sys
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import boto3
 
+from indexer.app import run
 from indexer.story import BaseStory
-from indexer.worker import QuarantineException, StorySender, Worker, run
+from indexer.storyapp import StorySender, StoryWorker
+from indexer.worker import QuarantineException
 
 logger = logging.getLogger("hist-fetcher")
 
@@ -50,11 +54,8 @@ DB_D_END = "2022-01-26"
 DOWNLOADS_BUCKET = "mediacloud-downloads-backup"
 DOWNLOADS_PREFIX = "downloads/"
 
-# XXX get this from common config?
-MAX_HTML_SIZE = 10000000  # 10MB
 
-
-class HistFetcher(Worker):
+class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -63,8 +64,14 @@ class HistFetcher(Worker):
         # XXX use client.list_object_versions ??
         self.bucket = s3.Bucket(DOWNLOADS_BUCKET)
 
-    def pick_version(self, dlid: int, s3path: str, fetch_date: Optional[str]) -> Any:
+    def pick_version(
+        self, dlid: int, s3path: str, fetch_date: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
         """
+        Determine if download id is in the range where multiple versions
+        of the S3 object (named by dlid) can exist, and if so, pick the right
+        version.
+
         returns None or a versionid
         """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
@@ -94,12 +101,15 @@ class HistFetcher(Worker):
 
             logger.debug("dlid %d fd %s lm %s v %s", dlid, fetch_date, lmdate, vid)
 
+            ret = {"VersionID": vid}
+
             # declare victory if both from same epoch
+            # NOT checking how close...
             if fetch_epoch == "B" and DB_B_START < lmdate < DB_B_END:
-                return vid
+                return ret
 
             if fetch_epoch == "D" and DB_D_START < lmdate < DB_D_END:
-                return vid
+                return ret
 
         raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no match?")
 
@@ -115,40 +125,27 @@ class HistFetcher(Worker):
 
         s3path = DOWNLOADS_PREFIX + str(dlid)
 
-        # vid = pick_version(dlid, s3path, rss.fetch_date)
-        vid = None
-        if vid:
-            extras = {"VersionId": vid}
-        else:
-            extras = None
-
-        # need to have whole story in memory (Story object),
-        # so download to a memory-based file object
+        # need to have whole story in memory (for Story object),
+        # so download to a memory-based file object and decompress
+        extras = self.pick_version(dlid, s3path, rss.fetch_date)
         with io.BytesIO() as bio:
-            # XXX inside try??
+            # let any Exception cause retry/quarantine
             self.bucket.download_fileobj(s3path, bio, ExtraArgs=extras)
 
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
-        # legacy system as running in 2023 only saved utf-8 to S3?
-        # may need to auto-detect older files???
-        encoding = "utf-8"
+        # hist-queuer should have checked URL
+        url = rss.link
+        if not self.check_story_length(html, url):
+            return  # counted and logged
 
-        hmd = story.http_metadata()
-
-        logger.info("%d %s: %d bytes", dlid, hmd.final_url, len(html))
-        # XXX check length, count & discard if too long
-
-        with hmd:
-            hmd.encoding = encoding
-
+        logger.info("%d %s: %d bytes", dlid, url, len(html))
         with story.raw_html() as raw:
-            raw.encoding = encoding
             raw.html = html
 
-        # XXX counter?
         sender.send_story(story)
+        self.incr_stories("success", url)
 
 
 if __name__ == "__main__":

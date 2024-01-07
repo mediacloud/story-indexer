@@ -19,10 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveQueuer(Queuer):
+    HANDLE_GZIP = False  # handled by warcio
+
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         reader = StoryArchiveReader(fobj)
         for story in reader.read_stories():
-            self.send_story(story)  # increments counter
+            self.send_story(story, check_html=True)
 
 
 if __name__ == "__main__":

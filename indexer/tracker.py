@@ -15,6 +15,9 @@ from typing import Any, Callable, Type, cast
 
 from indexer.app import AppException
 
+# basename assumes URLs and local paths both use "/":
+assert os.path.sep == "/"
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,8 +43,32 @@ class FileStatus(Enum):
 class FileTracker:
     def __init__(self, app_name: str, fname: str):
         self.app_name = app_name
-        self.fname = fname
-        # raise exception FileStatus.THING if status not NOT_STARTED??
+        self.full_name = fname  # saved
+        self.fname = self.basename(fname)
+        # subclass should
+        # raise TrackerException(getattr(FileStatus, status).name)
+        # if status != NOT_STARTED!
+
+    def basename(self, fname: str) -> str:
+        """
+        trim URL/pathname to base file name (no directory or .gz)
+
+        All input file types have date-distinct canonical file names:
+        warc: prefix-YYYYMMDDhhmmss-{serial}-{hostname}.warc.gz
+        hist csv: YYYY_MM_DD.csv
+        rss: mc-YYYY-MM-DD.rss.gz
+        """
+        # NOTE!!! This assumes local filesystem uses "/"
+        # as path separator, just like URLs!!!
+        base = os.path.basename(fname)
+
+        # look for "extension" suffixes associated with gzip and remove
+        if "." in base:
+            # get final "extension"
+            prefix, ext = base.rsplit(".")
+            if ext.lower() in ("gz", "gzip"):
+                return prefix
+        return base
 
     def __enter__(self) -> "FileTracker":
         self._set_status(FileStatus.STARTED)
@@ -93,7 +120,8 @@ class DBMFileTracker(LocalFileTracker):
         path = os.path.join(self._work_dir, "file-tracker.db")
         # GDBM takes advisory lock!!! cleanup *MUST* be called!!!
         self._dbm = dbm.open(path, "c", 0o644)
-        status, ts = self._dbm.get(fname, b"NOT_STARTED,0").decode().split(",")
+        # NOTE! self.fname is "basename" without path or .gz
+        status, ts = self._dbm.get(self.fname, b"NOT_STARTED,0").decode().split(",")
         if status != "NOT_STARTED":
             self._cleanup()
             raise TrackerException(getattr(FileStatus, status).name)

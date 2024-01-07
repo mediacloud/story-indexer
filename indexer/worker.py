@@ -1,5 +1,9 @@
 """
-Pipeline Worker Definitions
+Pipeline Worker Definitions.
+Written to be a generic utility package.
+Tries to hide Pika/RabbitMQ/AMQP as much as reasonably possible.
+
+Story-specific things are in storyworker.py
 """
 
 # NOTE!!!! This file has been CAREFULLY coded to NOT assume consumers
@@ -34,7 +38,6 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
 from indexer.app import App, AppException, run
-from indexer.story import BaseStory
 
 logger = logging.getLogger(__name__)
 ptlogger = logging.getLogger("Pika-thread")  # used for logging from Pika-thread
@@ -75,7 +78,6 @@ class InputMessage(NamedTuple):
     """
     would prefer _channel, but not allowed for NamedTuple,
     maybe a DataObject would be better?
-    And/or have this inherit from StorySender??
     """
 
     channel: BlockingChannel
@@ -83,27 +85,6 @@ class InputMessage(NamedTuple):
     properties: BasicProperties
     body: bytes
     mtime: float  # time.monotonic() recv time
-
-
-class StorySender:
-    """
-    object to hide channel.
-    Stories must be sent on the channel they came in on,
-    so transmission and ACK of original can be made atomic
-    with tx_commit.
-    """
-
-    def __init__(self, app: "QApp", channel: BlockingChannel):
-        self.app = app
-        self._channel = channel
-
-    def send_story(
-        self,
-        story: BaseStory,
-        exchange: Optional[str] = None,
-        routing_key: str = DEFAULT_ROUTING_KEY,
-    ) -> None:
-        self.app._send_message(self._channel, story.dump(), exchange, routing_key)
 
 
 # NOTE!! base_queue_name depends on the following
@@ -186,7 +167,10 @@ class QApp(App):
     """
     Base class for AMQP/pika based App.
     Producers (processes that have no input queue)
-    should derive from this class
+    should derive from this class.
+
+    BUT, this class knows nothing about Stories.
+    BY DESIGN (see StoryMixin)
     """
 
     # set to False to delay connecting until self.qconnect called
@@ -215,9 +199,6 @@ class QApp(App):
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
         self.delay_queue_name = delay_queue_name(self.process_name)
-
-        # avoid needing to create senders on the fly
-        self.senders: Dict[BlockingChannel, StorySender] = {}
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -465,7 +446,10 @@ class QApp(App):
 
 
 class Worker(QApp):
-    """Base class for Workers that consume messages"""
+    """
+    Base class for Workers that consume messages
+    (knows nothing about stories)
+    """
 
     START_PIKA_THREAD = True
 
@@ -695,167 +679,4 @@ class Worker(QApp):
         raise NotImplementedError("Worker.process_message not overridden")
 
 
-################################################################
-# classes above this line are independent of Story object
-
-
-class StoryProducer(QApp):
-    """
-    QApp that sends stories
-    """
-
-    def story_sender(self) -> StorySender:
-        """
-        MUST be called after qconnect, before Pika thread running
-        """
-        assert self.connection
-        assert self._pika_thread is None
-        return StorySender(self, self.connection.channel())
-
-
-class StoryWorker(Worker):
-    """
-    Process Stories in Queue Messages
-    """
-
-    def process_message(self, im: InputMessage) -> None:
-        chan = im.channel
-        if chan in self.senders:
-            sender = self.senders[chan]
-        else:
-            sender = self.senders[chan] = StorySender(self, chan)
-
-        # raised exceptions will cause retry; quarantine immediately?
-        story = BaseStory.load(im.body)
-
-        self.process_story(sender, story)
-
-    def process_story(self, sender: StorySender, story: BaseStory) -> None:
-        raise NotImplementedError("StoryWorker.process_story not overridden")
-
-
-class BatchStoryWorker(StoryWorker):
-    """
-    A worker processing batches of stories
-    """
-
-    # Default values: just guesses, should be tuned.
-    # Can be overridden in subclass.
-    BATCH_SECONDS = 15 * 60  # time to wait for full batch
-    BATCH_SIZE = 5000  # max batch size
-    WORK_TIME = 5 * 60  # time to reserve for end_of_batch
-
-    def define_options(self, ap: argparse.ArgumentParser) -> None:
-        super().define_options(ap)
-
-        ap.add_argument(
-            "--batch-size",
-            type=int,
-            default=self.BATCH_SIZE,
-            help=f"set batch size in stories (default {self.BATCH_SIZE})",
-        )
-        ap.add_argument(
-            "--batch-seconds",
-            type=int,
-            default=self.BATCH_SECONDS,
-            help=f"set batch timeout in seconds (default {self.BATCH_SECONDS})",
-        )
-
-    def process_args(self) -> None:
-        super().process_args()
-
-        batch_seconds_max = CONSUMER_TIMEOUT_SECONDS - self.WORK_TIME
-        assert self.args
-        if self.args.batch_seconds > batch_seconds_max:
-            logger.error(
-                "--batch-seconds %d too large (must be <= %d)",
-                self.args.batch_seconds,
-                batch_seconds_max,
-            )
-            sys.exit(1)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
-        assert self.args
-        chan.basic_qos(prefetch_count=self.args.batch_size)
-
-    def _process_messages(self) -> None:
-        """
-        Blocking loop for running Worker processing code on batches.
-        Processes messages queued by _on_message (called from Pika thread).
-        NOTE! Assumes all messages received on same channel!!
-        """
-        assert self.args
-        batch_size = int(self.args.batch_size)
-        batch_seconds = self.args.batch_seconds
-        batch_deadline = 0.0  # deadline for starting batch processing
-        batch_start_time = 0.0
-        msg_number = 1
-        msgs: List[InputMessage] = []
-
-        logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._running:
-            while msg_number <= batch_size:  # msg_number is one-based
-                if msg_number == 1:
-                    logger.info("waiting for first batch message")  # move to debug?
-                    im = self._message_queue.get()  # blocking
-                    batch_start_time = time.monotonic()  # for logging
-
-                    # base on when recieved from channel by Pika thread!!
-                    batch_deadline = im.mtime + batch_seconds
-                else:
-                    try:
-                        timeout = batch_deadline - time.monotonic()
-                        if timeout <= 0:
-                            break  # time is up! break batch loop
-                        logger.info(  # move to debug?
-                            "waiting %.3f seconds for batch message %d",
-                            timeout,
-                            msg_number,
-                        )
-                        im = self._message_queue.get(timeout=timeout)
-                    except queue.Empty:
-                        # exhausted the clock
-                        break  # break batch loop
-
-                if self._process_one_message(im):
-                    # only keep & count if processed ok
-                    msgs.append(im)
-                    msg_number += 1
-            # end of batch loop
-
-            # here with at least one message and time expired,
-            # or a full batch
-
-            logger.info(
-                "collected %d msg(s) in %.3f seconds",
-                len(msgs),
-                time.monotonic() - batch_start_time,
-            )
-            try:
-                with self.timer("batch"):
-                    self.end_of_batch()
-            except Exception as e:
-                # log as error, w/ exc_info=True?
-                logger.info("end_of_batch caught %r", e)
-
-                for im in msgs:
-                    self._retry(im, e)
-                self.incr("batches", labels=[("status", "retry")])
-
-            # assumes all msgs from same channel:
-            last_msg = msgs[-1]
-            assert last_msg
-            self._ack_and_commit(last_msg, multiple=True)
-            msg_number = 1
-            msgs = []
-
-        sys.stdout.flush()  # for redirection, supervisord
-        logger.info("_process_messages exiting")
-        sys.exit(1)  # give error status so docker restarts
-
-    def end_of_batch(self) -> None:
-        raise NotImplementedError("BatchStoryWorker.end_of_batch not overridden")
+# story-related classes etc moved to storyworker.py

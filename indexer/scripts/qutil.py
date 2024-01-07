@@ -22,7 +22,8 @@ from pika.spec import Basic, Queue
 
 from indexer.story import BaseStory
 from indexer.story_archive_writer import StoryArchiveReader, StoryArchiveWriter
-from indexer.worker import DEFAULT_ROUTING_KEY, QApp, StorySender
+from indexer.storyapp import StorySender
+from indexer.worker import DEFAULT_ROUTING_KEY, QApp
 
 logger = getLogger("qutil")
 

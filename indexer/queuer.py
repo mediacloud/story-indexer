@@ -35,16 +35,19 @@ import urllib3
 from mypy_boto3_s3.client import S3Client
 
 from indexer.app import AppException
+from indexer.story import BaseStory
+from indexer.storyapp import StoryProducer, StorySender
 from indexer.tracker import TrackerException, get_tracker
-from indexer.worker import BaseStory, StoryProducer, StorySender
 
 logger = logging.getLogger(__name__)
 
 
 class Queuer(StoryProducer):
-    MAX_QUEUE = 100000
+    MAX_QUEUE = 100000  # don't queue if dest longer than this
 
     AWS_PREFIX: str  # prefix for environment vars
+
+    HANDLE_GZIP: bool  # True to intervene if .gz present
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -80,25 +83,35 @@ class Queuer(StoryProducer):
             "-1",  # digit one
             action="store_true",
             default=False,
-            help="Try at most one file and quit; for crontab use",
+            help="Try at most input one file and quit; for crontab use",
         )
 
         self.input_group = ap.add_argument_group()
         assert self.input_group is not None
         self.input_group.add_argument("input_files", nargs="*", default=None)
 
-    def incr_stories(self, status: str) -> None:
-        self.incr("stories", labels=[("status", status)])
-
-    def send_story(self, story: BaseStory) -> None:
+    def send_story(self, story: BaseStory, check_html: bool = False) -> None:
         assert self.args
+
+        url = story.http_metadata().final_url or story.rss_entry().link or ""
+        if not self.check_story_url(url):
+            return  # logged and counted
+
+        if check_html:
+            html = story.raw_html().html or b""
+            if not self.check_story_length(html, url):
+                return  # logged and counted
+
         if self.args.dry_run:
+            self.incr_stories("dry-run", url)
             return
+
         if self.sender is None:
             self.sender = self.story_sender()
+
         self.sender.send_story(story)
+        self.incr_stories("success", url)  # AFTER send_story return
         self.queued_stories += 1
-        self.incr_stories("success")
         if (
             self.args.max_stories is not None
             and self.queued_stories >= self.args.max_stories
@@ -193,6 +206,11 @@ class Queuer(StoryProducer):
             s3.download_fileobj(bucket, objname, tmpf)
             tmpf.seek(0)  # rewind
             return tmpf
+
+        if self.HANDLE_GZIP and fname.endswith(".gz"):
+            gzio = gzip.GzipFile(fname, "rb")
+            assert isinstance(gzio, io.IOBase)
+            return cast(BinaryIO, gzio)
 
         return open(fname, "rb")
 

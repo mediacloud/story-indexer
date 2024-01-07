@@ -12,9 +12,11 @@ from io import BytesIO, RawIOBase
 from typing import List, Optional
 
 import indexer.blobstore
+from indexer.app import run
 from indexer.story import BaseStory
 from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
-from indexer.worker import BatchStoryWorker, QuarantineException, StorySender, run
+from indexer.storyapp import BatchStoryWorker, StorySender
+from indexer.worker import QuarantineException
 
 logger = logging.getLogger("indexer.workers.archiver")
 

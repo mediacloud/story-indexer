@@ -37,9 +37,10 @@ class AppException(RuntimeError):
     """
 
 
-class ArgsProtocol(Protocol):
+class AppProtocol(Protocol):
     """
-    class for "self" in App mixins that declare & access command line args
+    class for "self" in App mixins that declare & access command line args,
+    or want access to stats
     """
 
     args: Optional[argparse.Namespace]
@@ -47,8 +48,20 @@ class ArgsProtocol(Protocol):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         ...
 
+    def incr(self, name: str, value: int = 1, labels: Labels = []) -> None:
+        ...
 
-class App(ArgsProtocol):
+    def gauge(self, name: str, value: float, labels: Labels = []) -> None:
+        ...
+
+    def timing(self, name: str, ms: float, labels: Labels = []) -> None:
+        ...
+
+    def timer(self, name: str) -> "_TimingContext":
+        ...
+
+
+class App(AppProtocol):
     """
     Base class for command line applications (ie; Worker)
     """
@@ -365,7 +378,7 @@ class _TimingContext:
         self.t0 = -1.0
 
 
-class IntervalMixin(ArgsProtocol):
+class IntervalMixin(AppProtocol):
     """
     Mixin for Apps that report stats at a fixed interval
     """

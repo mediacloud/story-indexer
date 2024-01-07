@@ -14,17 +14,17 @@ from urllib.parse import urlparse
 from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
 
-from indexer.app import ArgsProtocol
+from indexer.app import AppProtocol
 
 logger = getLogger(__name__)
 
 
-class ElasticMixin:
+class ElasticMixin(AppProtocol):
     """
     mixin class for Apps that use Elastic Search API
     """
 
-    def define_options(self: ArgsProtocol, ap: argparse.ArgumentParser) -> None:
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
 
         ap.add_argument(
@@ -34,7 +34,7 @@ class ElasticMixin:
             help="comma separated list of ES server URLs",
         )
 
-    def elasticsearch_client(self: ArgsProtocol) -> Elasticsearch:
+    def elasticsearch_client(self) -> Elasticsearch:
         assert self.args
         hosts = self.args.elasticsearch_hosts
         if not hosts:
