@@ -666,6 +666,11 @@ class Worker(QApp):
         #    When setting per-message TTL expired messages can queue
         #    up behind non-expired ones until the latter are consumed
         #    or expired.
+        # ie; expiration only happens at head of queue (FIFO), and
+        # all messages must have uniform expiration.
+        #
+        # The alternative, the delayed-message-exchange plugin has many
+        # limitations (no clustering), and is not supported.
         expiration_ms_str = str(int(RETRY_DELAY_MINUTES * MS_PER_MINUTE))
 
         # send to retry delay queue via default exchange
