@@ -23,11 +23,13 @@ import pika
 from pika.exchange_type import ExchangeType
 
 # local:
+from indexer.app import run
 from indexer.worker import (
     DEFAULT_ROUTING_KEY,
     QApp,
     base_queue_name,
     delay_queue_name,
+    fast_queue_name,
     input_queue_name,
     output_exchange_name,
     quarantine_queue_name,
@@ -42,24 +44,33 @@ class PipelineError(RuntimeError):
     """Pipeline exception"""
 
 
-class Process:
+class _Process:
     """Virtual base class describing a pipeline process (producer, worker, consumer)"""
 
     def __init__(
-        self, pipeline: "Pipeline", name: str, consumer: bool, outputs: "Outputs"
+        self,
+        pipeline: "Pipeline",
+        name: str,
+        consumer: bool,
+        outputs: "Outputs",
+        fast_delay: bool = False,
     ):
         if name in pipeline.procs:
             raise PipelineError(f"process {name} is already defined")
 
+        if fast_delay and not consumer:
+            raise PipelineError(f"process {name} fast_delay but not consumer?")
+
         self.name: str = name
-        self.pipeline: "Pipeline" = pipeline
-        self.consumer: bool = consumer
+        self.pipeline = pipeline
+        self.consumer = consumer
         self.outputs = outputs
+        self.fast_delay = fast_delay
 
         pipeline.procs[name] = self
 
 
-class ProducerBase(Process):
+class _ProducerBase(_Process):
     """
     Base class for Process with outputs.
     NOT meant for direct use!
@@ -71,8 +82,9 @@ class ProducerBase(Process):
         name: str,
         consumer: bool,
         outputs: "Outputs",
+        fast_delay: bool = False,
     ):
-        super().__init__(pipeline, name, consumer, outputs)
+        super().__init__(pipeline, name, consumer, outputs, fast_delay)
         if len(outputs) == 0:
             raise PipelineError(f"{self.__class__.__name__} {name} has no outputs")
 
@@ -83,21 +95,27 @@ class ProducerBase(Process):
         self.outputs = outputs
 
 
-class Producer(ProducerBase):
+class Producer(_ProducerBase):
     """Process with outputs only"""
 
     def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
         super().__init__(pipeline, name, False, outputs)
 
 
-class Worker(ProducerBase):
+class Worker(_ProducerBase):
     """Process with inputs and output"""
 
-    def __init__(self, pipeline: "Pipeline", name: str, outputs: "Outputs"):
-        super().__init__(pipeline, name, True, outputs)
+    def __init__(
+        self,
+        pipeline: "Pipeline",
+        name: str,
+        outputs: "Outputs",
+        fast_delay: bool = False,
+    ):
+        super().__init__(pipeline, name, True, outputs, fast_delay)
 
 
-class Consumer(Process):
+class Consumer(_Process):
     """Process with inputs but no output"""
 
     def __init__(self, pipeline: "Pipeline", name: str):
@@ -117,23 +135,42 @@ def command(func: CommandMethod) -> CommandMethod:
 
 
 class Pipeline(QApp):
+    PIPE_TYPES: List[str]
+    DEFAULT_TYPE: str
+
     PIKA_LOG_DEFAULT = logging.WARNING
     WAIT_FOR_QUEUE_CONFIGURATION = False
 
     def __init__(self, name: str, descr: str):
-        self.procs: Dict[str, Process] = {}
+        self.procs: Dict[str, _Process] = {}
         super().__init__(name, descr)
 
     #### QApp methods
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("command", nargs=1, type=str, choices=COMMANDS, help="Command")
+        ap.add_argument(
+            "--type",
+            nargs=1,
+            type=str,
+            choices=self.PIPE_TYPES,
+            help=f"pipeline type (default: {self.DEFAULT_TYPE})",
+            default=self.DEFAULT_TYPE,
+        )
+
+    def lay_pipe(self) -> None:
+        """
+        override this to define pipeline topology
+        """
+        raise NotImplementedError("lay_pipe not overridden")
 
     def main_loop(self) -> None:
         """Not a loop!"""
         assert self.args
         cmds = self.args.command
         assert cmds
+
+        self.lay_pipe()
 
         cmd = cmds[0]
         self.get_command_func(cmd)()
@@ -143,8 +180,10 @@ class Pipeline(QApp):
         """Add a Process with no inputs"""
         return Producer(self, name, outputs)
 
-    def add_worker(self, name: str, outputs: Outputs) -> Worker:
-        return Worker(self, name, outputs)
+    def add_worker(
+        self, name: str, outputs: Outputs, fast_delay: bool = False
+    ) -> Worker:
+        return Worker(self, name, outputs, fast_delay)
 
     def add_consumer(self, name: str) -> Consumer:
         """Add a Process with no output"""
@@ -224,6 +263,8 @@ class Pipeline(QApp):
                 queue(input_queue_name(name))
                 queue(quarantine_queue_name(name))
                 queue(delay_queue_name(name), delay=True)
+                if proc.fast_delay:
+                    queue(fast_queue_name(name), delay=True)
 
             if proc.outputs:
                 ename = output_exchange_name(proc.name)
@@ -271,28 +312,11 @@ class Pipeline(QApp):
         print("Commands (use --help for options):")
         for cmd in COMMANDS:
             descr = self.get_command_func(cmd).__doc__
-            print(f"{cmd:18.18} {descr}")
-
-    @command
-    def qlen(self) -> None:
-        """show queue lengths"""
-
-        assert self.connection
-        chan = self.connection.channel()
-
-        defns = self.get_definitions()
-        qnames = [q["name"] for q in defns["queues"]]
-        qnames.sort()  # sort in place
-        for qname in qnames:
-            ret = chan.queue_declare(qname, passive=True)  # should never fail!
-            meth = ret.method
-            print(
-                f"{qname}: {meth.message_count} messages; {meth.consumer_count} consumers"
-            )
+            print(f"{cmd:12.12} {descr}")
 
     @command
     def show(self) -> None:
-        """show queues, exchanges, bindings"""
+        """show queues"""
         defns = self.get_definitions()
         for what in ("queues", "exchanges", "bindings"):
             things = defns[what]
@@ -334,20 +358,37 @@ class Pipeline(QApp):
         return defns
 
 
+class MyPipeline(Pipeline):
+    PIPE_TYPES = ["batch-fetcher", "queue-fetcher", "historical", "warc"]
+    DEFAULT_TYPE = "batch-fetcher"
+
+    def lay_pipe(self) -> None:
+        """
+        define pipeline topology
+        """
+        assert self.args
+        pt = self.args.type
+
+        importer = self.add_worker("importer", [self.add_consumer("archiver")])
+        # parse/import/archive
+        p_i_a = self.add_worker("parser", [importer])
+
+        # create exchanges to route outputs to regular parse/import/archive chain
+        # XXX option for queue-rss producer, feeding fetcher as worker!
+        if pt == "batch-fetcher":
+            self.add_producer("fetcher", [p_i_a])
+        elif pt == "queue-fetcher":
+            self.add_producer(
+                "queue-rss", [self.add_worker("fetcher", [p_i_a], fast_delay=True)]
+            )
+        elif pt == "historical":
+            self.add_producer("hist-queuer", [self.add_worker("hist-fetcher", [p_i_a])])
+            # XXX don't want archiver??
+        elif pt == "warc":
+            self.add_producer("warc-queuer", [importer])
+            # XXX don't want archiver??
+
+
 if __name__ == "__main__":
     # when invoked via "python -m indexer.pipeline"
-    # or "python indexer/pipeline.py"
-    # configure the default queues.
-    p = Pipeline("pipeline", "configure story-indexer queues")
-
-    # parse/import/archive
-    p_i_a = p.add_worker(
-        "parser", [p.add_worker("importer", [p.add_consumer("archiver")])]
-    )
-
-    # create exchanges to route outputs to regular parse/import/archive chain
-    p.add_producer("fetcher", [p_i_a])
-    p.add_producer("hist-fetcher", [p_i_a])
-    #   p.add_producer("warc-fetcher", [p_i_a])
-
-    p.main()
+    run(MyPipeline, "pipeline", "configure story-indexer queues")

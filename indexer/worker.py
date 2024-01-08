@@ -119,6 +119,11 @@ def delay_queue_name(procname: str) -> str:
     return procname + "-delay"
 
 
+def fast_queue_name(procname: str) -> str:
+    """take process name, return fast delay queue name"""
+    return procname + "-fast"
+
+
 def base_queue_name(qname: str) -> str:
     """
     take a queue name, and return base (app) name
@@ -448,7 +453,7 @@ class Worker(QApp):
         super().__init__(process_name, descr)
         self._message_queue: queue.Queue[InputMessage] = queue.Queue()
 
-     def define_options(self, ap: argparse.ArgumentParser) -> None:
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
         ap.add_argument(
             "--from-quarantine",
             action="store_true",
