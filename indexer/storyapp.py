@@ -173,8 +173,14 @@ class StoryWorker(StoryMixin, Worker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        # avoid needing to create senders on the fly
-        # for each incomming message.
+        # avoid needing to create senders on the fly.
+        # Stories MUST be forwarded on the same channel they
+        # came in on for transactions to quarantee atomic forward+ack.
+        # NOTE: Currently only subscribing (chan.basic_consume)
+        # on a single channel, but if you want to take input from
+        # multiple queues, with different qos/prefetch values,
+        # this would be necessary, so implement it now,
+        # and avoid possible (if unlikely) surprise later.
         self.senders: Dict[BlockingChannel, StorySender] = {}
 
     def process_message(self, im: InputMessage) -> None:
