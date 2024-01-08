@@ -64,23 +64,24 @@ class Parser(StoryWorker):
         # the encoding, so might as well put the call where we use the
         # result.
 
-        raw = story.raw_html()
-        encoding = raw.encoding or hmd.encoding
-        if encoding:
-            kde = [encoding]
-        else:
-            kde = None
-        try:
-            raw_html = raw.html or ""
-            ud = UnicodeDammit(raw_html, is_html=True, known_definite_encodings=kde)
-        except UnicodeError as e:
-            # careful printing exception! may contain entire string!!
-            err = type(e).__name__
-            self.incr_stories("no-decode", final_url)  # want level=NOTICE
-            if QUARANTINE_DECODE_ERROR:
-                raise QuarantineException(err)
+        with self.timer("encoding"):
+            raw = story.raw_html()
+            encoding = raw.encoding or hmd.encoding
+            if encoding:
+                kde = [encoding]
             else:
-                return
+                kde = None
+            try:
+                raw_html = raw.html or ""
+                ud = UnicodeDammit(raw_html, is_html=True, known_definite_encodings=kde)
+            except UnicodeError as e:
+                # careful printing exception! may contain entire string!!
+                err = type(e).__name__
+                self.incr_stories("no-decode", final_url)  # want level=NOTICE
+                if QUARANTINE_DECODE_ERROR:
+                    raise QuarantineException(err)
+                else:
+                    return
 
         # XXX also unicode_markup??
         html = ud.markup  # decoded HTML
