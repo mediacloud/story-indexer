@@ -213,12 +213,6 @@ class QApp(App):
             default=default_url,
             help="override RABBITMQ_URL ({default_url}",
         )
-        ap.add_argument(
-            "--from-quarantine",
-            action="store_true",
-            default=False,
-            help="Take input from quarantine queue",
-        )
 
         if self.PIKA_LOG_DEFAULT is not None:
             logging.getLogger("pika").setLevel(self.PIKA_LOG_DEFAULT)
@@ -230,9 +224,6 @@ class QApp(App):
         if not self.args.amqp_url:
             logger.fatal("need --rabbitmq-url or RABBITMQ_URL")
             sys.exit(1)
-
-        if self.args.from_quarantine:
-            self.input_queue_name = quarantine_queue_name(self.process_name)
 
         if self.AUTO_CONNECT:
             self.qconnect()
@@ -456,6 +447,19 @@ class Worker(QApp):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._message_queue: queue.Queue[InputMessage] = queue.Queue()
+
+     def define_options(self, ap: argparse.ArgumentParser) -> None:
+        ap.add_argument(
+            "--from-quarantine",
+            action="store_true",
+            default=False,
+            help="Take input from quarantine queue",
+        )
+
+    def process_args(self) -> None:
+        assert self.args
+        if self.args.from_quarantine:
+            self.input_queue_name = quarantine_queue_name(self.process_name)
 
     def main_loop(self) -> None:
         """
