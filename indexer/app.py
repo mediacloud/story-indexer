@@ -419,6 +419,11 @@ if __name__ == "__main__":
 
     class Test(App):
         def main_loop(self) -> None:
-            print("here")
+            # allow testing of --help, --debug, --log-level
+            logger.critical("critical")
+            logger.error("error")
+            logger.warning("warning")
+            logger.info("info")
+            logger.debug("debug")
 
     run(Test, "test", "test of app class")
