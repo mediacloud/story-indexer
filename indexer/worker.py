@@ -507,15 +507,14 @@ class Worker(QApp):
         set "prefetch" limit: distributes messages among workers
         processes, limits the number of unacked messages queued
         """
+        # double buffered: one to work on, one on deck
         chan.basic_qos(prefetch_count=2)
 
     def _process_messages(self) -> None:
         """
         Blocking loop for running Worker processing code.  Processes
         messages queued by _on_message (called from Pika thread).
-        _COULD_ run more than one thread processing messages, but
-        running multiple instances of the process is easier to see and
-        control.
+        May run in multiple threads!
         """
 
         while self._running:
