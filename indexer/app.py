@@ -48,6 +48,9 @@ class AppProtocol(Protocol):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         ...
 
+    def process_args(self) -> None:
+        ...
+
     def incr(self, name: str, value: int = 1, labels: Labels = []) -> None:
         ...
 
