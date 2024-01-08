@@ -640,8 +640,9 @@ class Worker(QApp):
         )
 
     def _retry(self, im: InputMessage, e: Exception) -> bool:
-        # XXX if debugging re-raise exception???
-
+        """
+        returns False if retries exhausted
+        """
         oh = im.properties.headers  # old headers
         if oh:
             retries = oh.get(RETRIES_HDR, 0)
