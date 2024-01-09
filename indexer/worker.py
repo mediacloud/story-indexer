@@ -12,9 +12,6 @@ Story-specific things are in storyworker.py
 # * The code DOES assume there is only one Pika connection.
 # * For code processing messages: Pika ops MUST be done from Pika thread
 
-# log.debug calls w/ "move to debug?" comments
-# can be acted upon once the Pika-thread code is trusted.
-
 import argparse
 import logging
 import os
@@ -23,7 +20,7 @@ import queue
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, NamedTuple, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import pika.credentials
 import pika.exceptions
@@ -40,7 +37,9 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 from indexer.app import App, AppException, run
 
 logger = logging.getLogger(__name__)
-ptlogger = logging.getLogger("Pika-thread")  # used for logging from Pika-thread
+
+# for use w/ -L option:
+msglogger = logging.getLogger(__name__ + ".msgs")
 
 DEFAULT_EXCHANGE = ""  # routes to queue named by routing key
 DEFAULT_ROUTING_KEY = "default"
@@ -57,11 +56,8 @@ _CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
 RETRIES_HDR = "x-mc-retries"
 EXCEPTION_HDR = "x-mc-what"
 
-# MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
-# before quarantine:
-MAX_RETRIES = 10
-RETRY_DELAY_MINUTES = 60
 MS_PER_MINUTE = 60 * 1000
+SECONDS_PER_DAY = 24 * 60 * 60
 
 
 class QuarantineException(AppException):
@@ -332,10 +328,13 @@ class QApp(App):
         """
         Body for Pika-thread.  Processes all Pika I/O events.
 
+        Pika is not thread aware, so once started, the connection
+        is owned by this thread!!!
+
         ALL channel methods MUST be executed via
         self._call_in_pika_thread to run here.
         """
-        ptlogger.info("Pika thread starting")
+        logger.info("Pika thread starting")
 
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
@@ -345,19 +344,28 @@ class QApp(App):
             # Timeout value means _running can be set to False and main thread
             # may have to wait for timeout before this thread wakes up and exits.
             while self._running and self.connection and self.connection.is_open:
-                # process_data_events is called by conn.sleep,
-                # but may return sooner:
-                self.connection.process_data_events(10)
+                # add_callback_threadsafe will wake.
+                # Pika 1.3.2 sources accept None as an argument
+                # (block indefinitely), but types-pika 1.2.0b3 doesn't
+                # reflect that.
+                self.connection.process_data_events(SECONDS_PER_DAY)
+
         finally:
+            # tell _process_messages
+            # (some completed work won't be queued/acked)
+            # XXX race here still possible w/ _call_in_pika_thread?
+            self._running = False
+
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
             if self.connection and self.connection.is_open:
+                logger.info("closing Pika connection")
                 self.connection.close()
             self.connection = None
             self._running = False  # tell _process_messages
 
             # here if _running was set False, connection closed, exception thrown
-            ptlogger.info("Pika thread exiting")
+            logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
         assert self.connection
@@ -368,7 +376,16 @@ class QApp(App):
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()
+        elif not self._pika_thread.is_alive():
+            logger.info("Pika thread not running: %s", cb.__name__)
+            return
+        elif not (self.connection and self.connection.is_open):
+            logger.info("No Pika connection: %s", cb.__name__)
+            return
+        # RACE HERE, but only on shutdown?
 
+        # NOTE! add_callback_threadsafe is documented (in the Pika
+        # 1.3.2 comments) as the ONLY thread-safe connection method!!!
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
@@ -387,7 +404,6 @@ class QApp(App):
 
                 # could issue join with timeout.
                 self._pika_thread.join()
-            self._pika_thread = None
 
     def cleanup(self) -> None:
         super().cleanup()
@@ -422,7 +438,7 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def sender() -> None:
-            ptlogger.debug(
+            logger.debug(
                 "send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data)
             )
             chan.basic_publish(exchange, routing_key, data, properties)
@@ -455,6 +471,15 @@ class Worker(QApp):
     (knows nothing about stories)
     """
 
+    # MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
+    # before quarantine:
+    MAX_RETRIES = 10
+    RETRY_DELAY_MINUTES = 60
+
+    # exception classes to discard instead of quarantine
+    NO_QUARANTINE: Tuple[Type[Exception], ...] = ()
+
+    # always start Pika thread:
     START_PIKA_THREAD = True
 
     def __init__(self, process_name: str, descr: str):
@@ -483,6 +508,7 @@ class Worker(QApp):
         """
 
         self._process_messages()
+        sys.exit(1)
 
     def _on_message(
         self,
@@ -497,7 +523,7 @@ class Worker(QApp):
         ack will be done back in Pika thread.
         """
         im = InputMessage(chan, method, properties, body, time.monotonic())
-        ptlogger.info("on_message tag #%s", method.delivery_tag)  # move to debug?
+        msglogger.debug("on_message tag #%s", method.delivery_tag)
         self._message_queue.put(im)
 
     def _subscribe(self) -> None:
@@ -536,10 +562,7 @@ class Worker(QApp):
             im = self._message_queue.get()  # blocking
             self._process_one_message(im)
             self._ack_and_commit(im)
-
-            sys.stdout.flush()  # for redirection, supervisord
-        logger.info("_process_messages exiting")
-        sys.exit(1)  # give error status so docker restarts
+        logger.info("_process_messages returning")
 
     def _process_one_message(self, im: InputMessage) -> bool:
         """
@@ -547,7 +570,7 @@ class Worker(QApp):
         """
         tag = im.method.delivery_tag
         assert tag is not None
-        logger.info("_process_one_message #%s", tag)  # move to debug?
+        msglogger.debug("_process_one_message #%s", tag)
         t0 = time.monotonic()
         # XXX report t0-im.mtime as latency since message queued timing stat?
 
@@ -566,9 +589,7 @@ class Worker(QApp):
         ms = 1000 * (time.monotonic() - t0)
         # NOTE! statsd timers have .count but not .rate
         self.timing("message", ms, [("stat", status)])
-        logger.info(
-            "processed #%s in %.3f ms, status: %s", tag, ms, status
-        )  # move to debug?
+        msglogger.debug("processed #%s in %.3f ms, status: %s", tag, ms, status)
 
         return status == "ok"
 
@@ -590,7 +611,7 @@ class Worker(QApp):
         assert tag is not None
 
         def acker() -> None:
-            ptlogger.info("ack and commit #%s", tag)  # move to debug?
+            msglogger.info("ack and commit #%s", tag)
 
             im.channel.basic_ack(delivery_tag=tag, multiple=multiple)
 
@@ -661,8 +682,11 @@ class Worker(QApp):
         oh = im.properties.headers  # old headers
         if oh:
             retries = oh.get(RETRIES_HDR, 0)
-            if retries >= MAX_RETRIES:
-                self._quarantine(im, e)
+            if retries >= self.MAX_RETRIES:
+                if isinstance(e, self.NO_QUARANTINE):
+                    logger.info("discard %r", e)  # TEMP: change to debug
+                else:
+                    self._quarantine(im, e)
                 return False  # retries exhausted
         else:
             retries = 0
@@ -672,7 +696,7 @@ class Worker(QApp):
 
         logger.info(f"retry #{retries} failed: {headers[EXCEPTION_HDR]}")
 
-        # Queue message to -delay queue, which has no consumers with
+        # Queue message to -delay queue, which has no consumers, with
         # an expiration/TTL; when messages expire, they are routed
         # back to the -in queue via dead-letter-{exchange,routing-key}.
 
@@ -686,7 +710,7 @@ class Worker(QApp):
         #
         # The alternative, the delayed-message-exchange plugin has many
         # limitations (no clustering), and is not supported.
-        expiration_ms_str = str(int(RETRY_DELAY_MINUTES * MS_PER_MINUTE))
+        expiration_ms_str = str(int(self.RETRY_DELAY_MINUTES * MS_PER_MINUTE))
 
         # send to retry delay queue via default exchange
         props = BasicProperties(headers=headers, expiration=expiration_ms_str)

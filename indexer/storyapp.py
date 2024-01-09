@@ -153,14 +153,15 @@ class StorySender:
 
 class StoryProducer(StoryMixin, QApp):
     """
-    QApp that queues new Story objects
+    QApp that queues new Story objects (w/o receiving any)
     """
 
     def story_sender(self) -> StorySender:
         """
-        MUST be called after qconnect, before Pika thread running
+        MUST be called after qconnect, but before Pika thread running
         """
         assert self.connection
+        # if pika thread running, it owns the connection:
         assert self._pika_thread is None
         return StorySender(self, self.connection.channel())
 
@@ -249,6 +250,7 @@ class BatchStoryWorker(StoryWorker):
         processes, limits the number of unacked messages queued
         """
         assert self.args
+        # buffer exactly one full batch:
         chan.basic_qos(prefetch_count=self.args.batch_size)
 
     def _process_messages(self) -> None:
@@ -280,7 +282,7 @@ class BatchStoryWorker(StoryWorker):
                         timeout = batch_deadline - time.monotonic()
                         if timeout <= 0:
                             break  # time is up! break batch loop
-                        logger.info(  # move to debug?
+                        logger.debug(
                             "waiting %.3f seconds for batch message %d",
                             timeout,
                             msg_number,
