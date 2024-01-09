@@ -1,6 +1,7 @@
 """
 Worker to read archive files, and queue.
-Can read from S3, http, and local, monitors output queue.
+Can read from S3, http, and local files.
+Keeps track of files already queued.
 """
 
 import argparse
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveQueuer(Queuer):
+    AWS_PREFIX = "ARCH"  # S3 env var prefix
     HANDLE_GZIP = False  # handled by warcio
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
