@@ -151,7 +151,6 @@ class Pipeline(QApp):
         ap.add_argument("command", nargs=1, type=str, choices=COMMANDS, help="Command")
         ap.add_argument(
             "--type",
-            nargs=1,
             type=str,
             choices=self.PIPE_TYPES,
             help=f"pipeline type (default: {self.DEFAULT_TYPE})",
@@ -369,6 +368,8 @@ class MyPipeline(Pipeline):
         assert self.args
         pt = self.args.type
 
+        logger.info("pipe type: %s", pt)
+
         importer = self.add_worker("importer", [self.add_consumer("archiver")])
         # parse/import/archive
         p_i_a = self.add_worker("parser", [importer])
@@ -379,7 +380,7 @@ class MyPipeline(Pipeline):
             self.add_producer("fetcher", [p_i_a])
         elif pt == "queue-fetcher":
             self.add_producer(
-                "queue-rss", [self.add_worker("fetcher", [p_i_a], fast_delay=True)]
+                "rss-queuer", [self.add_worker("fetcher", [p_i_a], fast_delay=True)]
             )
         elif pt == "historical":
             self.add_producer("hist-queuer", [self.add_worker("hist-fetcher", [p_i_a])])
