@@ -375,8 +375,16 @@ class QApp(App):
         if self._pika_thread:
             if self._pika_thread.is_alive():
                 self._running = False
+
                 # Log message in case Pika thread hangs.
                 logger.info("Waiting for Pika thread to exit")
+
+                # wake up Pika thread:
+                def nop() -> None:
+                    logger.info("nop")
+
+                self._call_in_pika_thread(nop)
+
                 # could issue join with timeout.
                 self._pika_thread.join()
             self._pika_thread = None
