@@ -238,9 +238,25 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: configure-pipeline
-      ARGS: "configure_and_loop"
+      ARGS: "--type {{pipeline_type}} configure_and_loop"
 
-{% if fetcher_type == 'current' %}
+{% if queuer_type != '' %}
+  {{queuer_type}}:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      labels:
+         swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
+         swarm.cronjob.schedule: "45 0 * * *"
+      replicas: 1
+    environment:
+      <<: *worker-environment-vars
+      RUN: {{queuer_type}}
+      ARGS: "{{queuer_args}}"
+{% endif %}
+
+{% if pipeline_type == 'batch-fetcher' %}
+  # scrapy batch-based fetcher:
   fetcher-worker:
     <<: *worker-service-settings
     deploy:
@@ -248,32 +264,53 @@ services:
       labels:
          swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
          swarm.cronjob.schedule: "0 0 * * *"
-         swarm.cronjob.replicas: {{fetcher_num_batches}}
-      replicas: {{fetcher_num_batches}}
+         swarm.cronjob.replicas: {{fetcher_replicas}}
+      replicas: {{fetcher_replicas}}
     environment:
       <<: *worker-environment-vars
       RUN: fetcher
-      ARGS: "{{fetcher_options}} --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
-{% elif fetcher_type == 'hist-s3-csv' %}
-  # stuff here for hist-s3-fetcher service
-{% elif fetcher_type == 'warc' %}
-  # stuff here to fetch and process WARC archives
+      ARGS: "{{fetcher_options}} --num-batches={{fetcher_replicas}} --batch-index={{ '{{.Task.Slot}}' }}"
+{% elif pipeline_type == 'historical' %}
+  # fetches historical articles from S3, using Stories queued by hist-queuer:
+  hist-fetcher:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: {{fetcher_replicas}}
+    environment:
+      <<: *worker-environment-vars
+      RUN: hist-fetcher
+{% elif pipeline_type == 'queue-fetcher' %}
+  # queue-based HTTP fetcher, using Stories queued by rss-queuer:
+  queue-fetcher:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: queue-fetcher
+      # pass ARGS: -Wn based on fetcher_replicas??
+{% elif pipeline_type == 'archive' %}
+   # no fetcher for loading archives (yet, anyway)
+   # hopefully archives have enough stories in each one
+   # to keep pipeline busy.
 {% endif %}
 
   parser-worker:
     <<: *worker-service-settings
     deploy:
       <<: *worker-deploy-settings
-      replicas: 4
+      replicas: {{parser_replicas}}
     environment:
       <<: *worker-environment-vars
       # Run py3lang/numpy/openblas dot operator single threaded:
       OPENBLAS_NUM_THREADS: 1
       RUN: parser
 
-  # PB: if running rabbitmq cluster (process on each ES node) w/ Docker
-  # have numbered service instances: importer-workerN,
-  # each tied to corresponding storage node?
+  # Have at least one importer-worker running on each storage node
+  # (connecting only to the local ES process)?
+  # If RabbitMQ cluster running (on each storage node)
+  # have the importer connect only to the local RabbitMQ??
   importer-worker:
     <<: *worker-service-settings
     # run multiple replicas? on es nodes??

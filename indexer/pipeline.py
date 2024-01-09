@@ -358,7 +358,7 @@ class Pipeline(QApp):
 
 
 class MyPipeline(Pipeline):
-    PIPE_TYPES = ["batch-fetcher", "queue-fetcher", "historical", "warc"]
+    PIPE_TYPES = ["batch-fetcher", "queue-fetcher", "historical", "archive"]
     DEFAULT_TYPE = "batch-fetcher"
 
     def lay_pipe(self) -> None:

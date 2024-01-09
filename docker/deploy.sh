@@ -14,6 +14,13 @@
 # indicates application for peaceful coexistence!!
 BASE_STACK_NAME=indexer
 
+# in addition to developer/staging/production deployment types, there
+# are now pipeline types, set by -T for handling ingest of historical
+# or archival data.  They run as separate stacks, with private
+# RabbitMQ servers so the data is not co-mingled, and back-fill can be
+# managed separately.  Within a instance type there is only one ES
+# server/cluster (all roads lead to Rome).
+
 SCRIPT=$0
 SCRIPT_DIR=$(dirname $SCRIPT)
 
@@ -34,6 +41,7 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+PIPELINE_TYPE=queue-fetcher
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -42,25 +50,54 @@ usage() {
     echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
     echo "  -d      enable debug output (for template parameters)"
     echo "  -h      output this help and exit"
-    echo "  -i      launch hIstorical stack" # also alpbetically after h!
+    echo "  -T TYPE select pipeline type: $PIPELINE_TYPES"
     echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u      allow running as non-root user"
     exit 1
 }
-while getopts B:abdhinu OPT; do
+while getopts B:abdhinT:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
    B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
-   i) HIST_PFX=hist-; BASE_STACK_NAME=$HIST_PFX$BASE_STACK_NAME;;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
+   T) PIPELINE_TYPE=$OPTARG;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
 
-# XXX complain if anything remaining?
+PORT_BIAS=0
+PIPE_TYPE_PORT_BIAS=0
+
+# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
+QUEUER_ARGS=''
+
+# PIPE_PFX effects stack (and service) name, volume directories
+case "$PIPELINE_TYPE" in
+batch-fetcher) PIPE_PFX=''; QUEUER_TYPE='';;
+historical) PIPE_PFX='hist-'; QUEUER_TYPE='hist-queuer'; PIPE_TYPE_PORT_BIAS=100;;
+archive) PIPE_PFX='arch-'; QUEUER_TYPE='arch-queuer'; PIPE_TYPE_PORT_BIAS=200;;
+queue-fetcher) PIPE_PFX=''; QUEUER_TYPE='rss-queuer';;
+*) echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2; usage;;
+esac
+
+# alter stack name based on pipeline type:
+BASE_STACK_NAME=$PIPE_PFX$BASE_STACK_NAME
+
+if [ "x$HIST_PFX" != x ]; then
+    # for now, no WARC files for archival input
+    IMPORTER_ARGS=--no-output
+    # offset exported ports by 100
+    # (in addition to any biases for staging/dev)
+    PORT_BIAS=$(expr $PORT_BIAS + 100)
+else
+    IMPORTER_ARGS=
+fi
+
+# XXX complain if anything extra on command line?
 
 # may not be needed if user is in right (docker?) group(s)?
 if [ "x$AS_USER" = x -a $(whoami) != root ]; then
@@ -110,10 +147,9 @@ ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 
-FETCHER_CRONJOB_ENABLE=true
-FETCHER_NUM_BATCHES=20
-FETCHER_OPTIONS="--yesterday"
-FETCHER_TYPE=current
+FETCHER_CRONJOB_ENABLE=true	# used for queuers too!
+FETCHER_REPLICAS=20
+FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
@@ -121,6 +157,8 @@ NEWS_SEARCH_IMAGE_REGISTRY=docker.io/
 NEWS_SEARCH_IMAGE_TAG=v1.0.0b3
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
+
+PARSER_REPLICAS=4
 
 RABBITMQ_CONTAINERS=1		# integer to allow cluster in staging??
 RABBITMQ_PORT=5672		# native port
@@ -197,7 +235,7 @@ prod)
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-${HIST_PFX}prod
+    TAG=$DATE_TIME-${PIPE_PFX}prod
 
     MULTI_NODE_DEPLOYMENT=1
 
@@ -214,7 +252,7 @@ prod)
     #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/${HIST_PFX}indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/${PIPE_PFX}indexer/
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
@@ -230,11 +268,11 @@ staging)
     # don't run daily, fetch 10x more than dev:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
-    FETCHER_NUM_BATCHES=10
+    FETCHER_REPLICAS=10
 
     MULTI_NODE_DEPLOYMENT=1
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${HIST_PFX}indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
     SENTRY_ENVIRONMENT="staging"
     ;;
 dev)
@@ -251,7 +289,7 @@ dev)
     # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
-    FETCHER_NUM_BATCHES=10
+    FETCHER_REPLICAS=10
 
     MULTI_NODE_DEPLOYMENT=
     NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
@@ -260,26 +298,26 @@ dev)
     ;;
 esac
 
-if [ "x$HIST_PFX" != x ]; then
-    FETCHER_TYPE=hist-s3-csv
-    # for now, no WARC files for archival input
-    IMPORTER_ARGS=--no-output
-    # offset exported ports by 100
-    # (in addition to any biases for staging/dev)
-    PORT_BIAS=$(expr $PORT_BIAS + 100)
-else
-    IMPORTER_ARGS=
-fi
+ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
 
 # NOTE! in-network containers see native (unmapped) ports,
 # so set environment variable values BEFORE applying PORT_BIAS!!
 if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
+    # if production switches to using an external (non-docker)
+    # RabbitMQ cluster, set RABBITMQ_VHOST (to "/${PIPELINE_TYPE}" for
+    # anything but batch-fetcher) to give each pipe-type it's own
+    # queue namespace (would want to clear PIPE_TYPE_BIAS for
+    # RABBITMQ_PORT!), and have index.pipeline "configure" make sure
+    # vhost exists.
     echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
     exit 1
 else
     RABBITMQ_HOST=rabbitmq
 fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
     ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
@@ -288,13 +326,6 @@ if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
 	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
 	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
     done
-fi
-
-if [ "x$PORT_BIAS" != x ]; then
-    ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
-    NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PORT_BIAS)
-    NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PORT_BIAS)
-    RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PORT_BIAS)
 fi
 
 # XXX set all of this above separately for prod/staging/dev?!
@@ -443,16 +474,19 @@ if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     add ELASTICSEARCH_PORT_BASE int
     add ELASTICSEARCH_NODES
 fi
-add FETCHER_CRONJOB_ENABLE	# NOT bool!
-add FETCHER_NUM_BATCHES int
-add FETCHER_OPTIONS
-add FETCHER_TYPE
+add FETCHER_CRONJOB_ENABLE	# NOT bool! used by queuers too!!
+add FETCHER_REPLICAS int
+add FETCHER_OPTIONS		# batch-fetcher only (see QUEUER_ARGS)
 add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_IMAGE
 add NEWS_SEARCH_UI_PORT int
 add NEWS_SEARCH_UI_TITLE
+add PIPELINE_TYPE
+add QUEUER_ARGS allow-empty
+add QUEUER_TYPE
+add PARSER_REPLICAS int
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
 add RABBITMQ_URL
