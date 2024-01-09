@@ -267,6 +267,8 @@ if [ "x$HIST_PFX" != x ]; then
     # offset exported ports by 100
     # (in addition to any biases for staging/dev)
     PORT_BIAS=$(expr $PORT_BIAS + 100)
+else
+    IMPORTER_ARGS=
 fi
 
 # NOTE! in-network containers see native (unmapped) ports,
