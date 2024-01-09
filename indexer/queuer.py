@@ -1,20 +1,23 @@
 """
-Queuer: a StoryProducer class for reading (possibly remote) input
-files, processing them, and queuing Stories for "fetching"
+Queuer: base class for programs that read (possibly remote) input
+files, processing them, and queuing Stories.
 
-Supports http(s) and S3 file sources, with limited S3 "globbing"
+Supports http(s) and S3 file sources, with limited S3
+globbing/wildcard (suffix * only).
 
-Uses "indexer.tracker" to keep track of already processed files.
+Skips files that have already been processed using "indexer.tracker"
+keep track.
 
 Made into a class because several input paths need the same logic:
 1. Historical Ingest: reading CSV files of db dumps, fetching HTTP from S3
 2. Queue based fetcher: reading rss-fetcher generated RSS files
 3. Reading and replaying WARC archive files
 
-By default will loop for all files on command line (checking queue
-lengths and sleeping).  Alternative "one-file" mode finds at most one
-file to process and exits, which is (more) suitable for use from a
-crontab.
+Default "one-file" mode finds at most one file to process and exits,
+which is (more) suitable for use from a crontab.
+
+With --loop will loop for all files (and implied files) from command
+line (checking queue lengths and sleeping).
 """
 
 import argparse
@@ -79,11 +82,10 @@ class Queuer(StoryProducer):
             help="Number of stories to queue. Default (None) is 'all of them'",
         )
         ap.add_argument(
-            "--one-file",
-            "-1",  # digit one
+            "--loop",
             action="store_true",
             default=False,
-            help="Try at most input one file and quit; for crontab use",
+            help="Run until all files processed (sleeping if needed)",
         )
 
         self.input_group = ap.add_argument_group()
@@ -161,13 +163,17 @@ class Queuer(StoryProducer):
                 # here when all queues short enough
                 return
 
-            if self.args and self.args.one_file:
+            if self.args.loop:
+                logger.debug("sleeping until output queue(s) shorter")
+                time.sleep(60)
+            else:
                 logger.info("queue(s) full enough: quitting")
                 sys.exit(0)
-            logger.debug("sleeping until output queue(s) shorter")
-            time.sleep(60)
 
     def s3_client(self) -> S3Client:
+        """
+        return an S3 client object.
+        """
         if not self.s3_client_object:
             app = self.AWS_PREFIX.upper()
             # NOTE! None values should default to using ~/.aws/credentials
