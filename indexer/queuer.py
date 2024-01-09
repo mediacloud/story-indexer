@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 class Queuer(StoryProducer):
-    MAX_QUEUE = 100000  # don't queue if dest longer than this
+    MAX_QUEUE_LEN = 100000  # don't queue if (any) dest queue longer than this
 
     AWS_PREFIX: str  # prefix for environment vars
 
@@ -70,10 +70,10 @@ class Queuer(StoryProducer):
             help="don't queue stories",
         )
         ap.add_argument(
-            "--max-queue",
+            "--max-queue-len",
             type=int,
-            default=self.MAX_QUEUE,
-            help=f"Maximum queue length at which to send a new batch (default: {self.MAX_QUEUE})",
+            default=self.MAX_QUEUE_LEN,
+            help=f"Maximum queue length at which to send a new batch (default: {self.MAX_QUEUE_LEN})",
         )
         ap.add_argument(
             "--max-stories",
@@ -85,7 +85,7 @@ class Queuer(StoryProducer):
             "--loop",
             action="store_true",
             default=False,
-            help="Run until all files processed (sleeping if needed)",
+            help="Run until all files processed (sleeping if needed), else process one file and quit.",
         )
 
         self.input_group = ap.add_argument_group()
