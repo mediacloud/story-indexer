@@ -103,20 +103,19 @@ class Queuer(StoryProducer):
                 return  # logged and counted
 
         if self.args.dry_run:
-            self.incr_stories("dry-run", url)
-            return
-
-        if self.sender is None:
-            self.sender = self.story_sender()
-
-        self.sender.send_story(story)
-        self.incr_stories("success", url)  # AFTER send_story return
+            status = "parsed"
+        else:
+            if self.sender is None:
+                self.sender = self.story_sender()
+            self.sender.send_story(story)
+            status = "success"
         self.queued_stories += 1
+        self.incr_stories(status, url)
         if (
             self.args.max_stories is not None
             and self.queued_stories >= self.args.max_stories
         ):
-            logger.info("queued %s stories; quitting", self.queued_stories)
+            logger.info("%s %s stories; quitting", status, self.queued_stories)
             sys.exit(0)
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
