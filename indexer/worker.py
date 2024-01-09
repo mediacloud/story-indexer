@@ -454,6 +454,7 @@ class Worker(QApp):
         self._message_queue: queue.Queue[InputMessage] = queue.Queue()
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
         ap.add_argument(
             "--from-quarantine",
             action="store_true",
@@ -462,6 +463,7 @@ class Worker(QApp):
         )
 
     def process_args(self) -> None:
+        super().process_args()
         assert self.args
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
