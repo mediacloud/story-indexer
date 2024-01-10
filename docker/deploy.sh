@@ -179,7 +179,6 @@ prod|staging)
     ;;
 esac
 
-FETCHER_OPTIONS=--yesterday	# batch fetcher
 IMPORTER_ARGS=''
 
 # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
@@ -383,11 +382,12 @@ NETWORK_NAME=$STACK_NAME
 # construct QUEUER_ARGS for {arch,hist,rss}-queuers
 if [ "x$QUEUER_TYPE" != x ]; then
     if [ "x$STORY_LIMIT" != x ]; then
-	QUEUER_ARGS="--force --max-stories $STORY_LIMIT"
+	# pick random sample:
+	QUEUER_ARGS="--force --sample-size $STORY_LIMIT"
     fi
     QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
 else
-    QUEUER_ARGS=''
+    QUEUER_ARGS='N/A'
 fi
 
 # calculate exported port numbers using pipeline-type and deployment-type biases:
@@ -532,7 +532,7 @@ add NEWS_SEARCH_UI_PORT int
 add NEWS_SEARCH_UI_PORT_EXPORTED int
 add NEWS_SEARCH_UI_TITLE
 add PIPELINE_TYPE
-add QUEUER_ARGS allow-empty
+add QUEUER_ARGS
 add QUEUER_S3_ACCESS_KEY_ID	# private
 add QUEUER_S3_REGION		# private
 add QUEUER_S3_SECRET_ACCESS_KEY # private

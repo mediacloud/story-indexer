@@ -57,6 +57,8 @@ class Queuer(StoryProducer):
 
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
+    SAMPLE_PERCENT = 0.1
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self.input_group: Optional[argparse._ArgumentGroup] = None
@@ -107,9 +109,41 @@ class Queuer(StoryProducer):
             help="Percentage of stories to queue for testing (default: all)",
         )
 
+        # _could_ be mutually exclusive with --max-count and --random-sample
+        # instead, warnings output below
+        ap.add_argument(
+            "--sample-size",
+            type=int,
+            default=None,
+            metavar="N",
+            help=f"Implies --max-stories N --random-sample {self.SAMPLE_PERCENT}",
+        )
+
         self.input_group = ap.add_argument_group()
         assert self.input_group is not None
         self.input_group.add_argument("input_files", nargs="*", default=None)
+
+    def process_args(self) -> None:
+        super().process_args()
+        args = self.args
+        assert args
+
+        if args.sample_size is not None:
+            # could make options mutually exclusive, but would rather just complain:
+            if args.max_stories is not None:
+                logger.warning(
+                    "--sample-size %s with --max-stories %s",
+                    args.sample_size,
+                    args.max_stories,
+                )
+            if args.max_stories is not None:
+                logger.warning(
+                    "--sample-size %s with --random-sample %s",
+                    args.sample_size,
+                    args.random_sample,
+                )
+            args.max_stories = args.sample_size
+            args.random_sample = self.SAMPLE_PERCENT
 
     def send_story(self, story: BaseStory, check_html: bool = False) -> None:
         assert self.args
@@ -125,8 +159,9 @@ class Queuer(StoryProducer):
 
         if self.args.dry_run:
             status = "parsed"
-        if self.args.random_sample is not None and (
-            random.random() * 100 > self.args.random_sample
+        if (
+            self.args.random_sample is not None
+            and random.random() * 100 > self.args.random_sample
         ):
             status = "dropped"
         else:
