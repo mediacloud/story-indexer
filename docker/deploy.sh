@@ -358,7 +358,7 @@ fi
 if [ "x$IS_DIRTY" = x ]; then
     # use git tag for image tag.
     # in development this means old tagged images will pile up until removed
-    WORKER_IMAGE_TAG=$TAG
+    WORKER_IMAGE_TAG=$(echo $TAG | sed 's/[^a-zA-Z0-9_.-]/_/g')
 else
     # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
@@ -595,7 +595,7 @@ fi
 
 if [ "x$BUILD_ONLY" = x ]; then
     echo ''
-    echo -n "Deploy from branch $BRANCH as stack $STACK_NAME? [no] "
+    echo -n "Deploy from branch $BRANCH stack $STACK_NAME ($PIPELINE_TYPE)? [no] "
     read CONFIRM
     case "$CONFIRM" in
     [yY]|[yY][eE][sS]) ;;
