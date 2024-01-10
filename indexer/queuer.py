@@ -57,7 +57,7 @@ class Queuer(StoryProducer):
 
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
-    SAMPLE_PERCENT = 0.1
+    SAMPLE_PERCENT = 0.1  # for --sample-size
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -138,8 +138,7 @@ class Queuer(StoryProducer):
                 )
             if args.max_stories is not None:
                 logger.warning(
-                    "--sample-size %s with --random-sample %s",
-                    args.sample_size,
+                    "--sample-size with --random-sample %s",
                     args.random_sample,
                 )
             args.max_stories = args.sample_size
@@ -157,20 +156,23 @@ class Queuer(StoryProducer):
             if not self.check_story_length(html, url):
                 return  # logged and counted
 
-        if self.args.dry_run:
-            status = "parsed"
         if (
             self.args.random_sample is not None
             and random.random() * 100 > self.args.random_sample
         ):
-            status = "dropped"
+            status = "dropped"  # should not be seen in production!!!
+        elif self.args.dry_run:
+            status = "parsed"
         else:
             if self.sender is None:
                 self.sender = self.story_sender()
             self.sender.send_story(story)
             status = "success"
-        self.queued_stories += 1
+
         self.incr_stories(status, url)
+        if status != "dropped":
+            self.queued_stories += 1
+
         if (
             self.args.max_stories is not None
             and self.queued_stories >= self.args.max_stories

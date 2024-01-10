@@ -1,8 +1,8 @@
 """
-keep track of queued files.
+Keep track of queued work files.
 
-isolates implementation of record keeping for queuers.
-would prefer something replicated/durable (S3, AWS SimpleDB, ES)
+Isolates implementation of record keeping for Queuers.
+Would prefer something replicated/durable (S3, AWS SimpleDB, ES)
 see https://github.com/mediacloud/story-indexer/issues/203
 """
 
@@ -65,7 +65,7 @@ class FileTracker:
         # look for "extension" suffixes associated with gzip and remove
         if "." in base:
             # get final "extension"
-            prefix, ext = base.rsplit(".")
+            prefix, ext = base.rsplit(".", 1)
             if ext.lower() in ("gz", "gzip"):
                 return prefix
         return base
