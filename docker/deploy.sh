@@ -310,11 +310,6 @@ dev)
     ;;
 esac
 
-ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
-NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
-NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
-RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
-
 # NOTE! in-network containers see native (unmapped) ports,
 # so set environment variable values BEFORE applying PORT_BIAS!!
 if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
@@ -329,7 +324,8 @@ if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
 else
     RABBITMQ_HOST=rabbitmq
 fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
+# BEFORE biases applied!!
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_BASE_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
     ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
@@ -393,6 +389,12 @@ if [ "x$QUEUER_TYPE" != x ]; then
 else
     QUEUER_ARGS=''
 fi
+
+# calculate exported port numbers using pipeline-type and deployment-type biases:
+ELASTICSEARCH_PORT_BASE_EXPORTED=$(expr $ELASTICSEARCH_PORT_BASE + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_API_PORT_EXPORTED=$(expr $NEWS_SEARCH_API_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_UI_PORT_EXPORTED=$(expr $NEWS_SEARCH_UI_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+RABBITMQ_PORT_EXPORTED=$(expr $RABBITMQ_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
@@ -515,6 +517,7 @@ if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     add ELASTICSEARCH_IMAGE
     add ELASTICSEARCH_PLACEMENT_CONSTRAINT
     add ELASTICSEARCH_PORT_BASE int
+    add ELASTICSEARCH_PORT_BASE_EXPORTED int
     add ELASTICSEARCH_NODES
 fi
 add FETCHER_CRONJOB_ENABLE	# NOT bool! used by queuers too!!
@@ -523,8 +526,10 @@ add FETCHER_OPTIONS		# batch-fetcher only (see QUEUER_ARGS)
 add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
+add NEWS_SEARCH_API_PORT_EXPORTED int
 add NEWS_SEARCH_IMAGE
 add NEWS_SEARCH_UI_PORT int
+add NEWS_SEARCH_UI_PORT_EXPORTED int
 add NEWS_SEARCH_UI_TITLE
 add PIPELINE_TYPE
 add QUEUER_ARGS allow-empty
@@ -535,6 +540,7 @@ add QUEUER_TYPE allow-empty
 add PARSER_REPLICAS int
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
+add RABBITMQ_PORT_EXPORTED int
 add RABBITMQ_URL
 add SENTRY_DSN allow-empty	# private: empty to disable
 add SENTRY_ENVIRONMENT		# private

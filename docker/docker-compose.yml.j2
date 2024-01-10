@@ -100,6 +100,9 @@ x-es-service-settings: &es-service-settings
       hard: -1
 
 # common volume for elasticsearch containers
+# (would be nice to declare default volumes list above,
+# but YAML doesn't have a list merge operator (like <<: does for mappings)
+# see https://github.com/yaml/yaml/issues/48)
 x-es-backup-volume: &es-backup-volume "elasticsearch_data_backup:/var/backups/elasticsearch"
 {% endif %}
 
@@ -206,8 +209,8 @@ services:
     hostname: rabbitmq
     image: rabbitmq:3.11-management-alpine
     ports:
-      - "{{rabbitmq_port}}:5672"
-      - "{{rabbitmq_port+10000}}:15672"
+      - "{{rabbitmq_port_exported}}:{{rabbitmq_port}}"
+      - "{{rabbitmq_port_exported+10000}}:{{rabbitmq_port+10000}}"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 {% endif %}
@@ -223,8 +226,6 @@ services:
         condition: none
     image: {{elasticsearch_image}}
     user: root
-    volumes:
-      - *es-backup-volume
 
 {% for i in range(1,elasticsearch_containers+1) %}
   elasticsearch{{i}}:
@@ -233,9 +234,9 @@ services:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
     ports:
-      {% set port9200mapping = elasticsearch_port_base + i - 1 -%}
-      - {{port9200mapping}}:9200
-      - {{port9200mapping+100}}:9300
+      {% set port9200mapping = elasticsearch_port_base_exported + i - 1 -%}
+      - {{port9200mapping}}:{{elasticsearch_port_base}}
+      - {{port9200mapping+100}}:{{elasticsearch_port_base+100}}
     volumes:
       - *es-backup-volume
       - elasticsearch_data_{{"%02d" % i}}:/usr/share/elasticsearch/data
@@ -409,7 +410,7 @@ services:
       TERMAGGRS: top,significant,rare
       TERMFIELDS: article_title,text_content
     ports:
-      - {{news_search_api_port}}:8000
+      - {{news_search_api_port_exported}}:{{news_search_api_port}}
 
   news-search-ui:
     <<: *news-search-service-settings
@@ -419,7 +420,7 @@ services:
       APIURL: http://news-search-api:8000/v1
       TITLE: {{news_search_ui_title}}
     ports:
-      - {{news_search_ui_port}}:8501
+      - {{news_search_ui_port_exported}}:{{news_search_ui_port}}
 
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
