@@ -156,11 +156,16 @@ class Queuer(StoryProducer):
             if not self.check_story_length(html, url):
                 return  # logged and counted
 
+        level = logging.INFO
+        count = True
         if (
             self.args.random_sample is not None
             and random.random() * 100 > self.args.random_sample
         ):
+            # here for randomly selecting URLs for testing
             status = "dropped"  # should not be seen in production!!!
+            level = logging.DEBUG
+            count = False  # don't count against limit!
         elif self.args.dry_run:
             status = "parsed"
         else:
@@ -169,10 +174,12 @@ class Queuer(StoryProducer):
             self.sender.send_story(story)
             status = "success"
 
-        self.incr_stories(status, url)
-        if status != "dropped":
-            self.queued_stories += 1
+        self.incr_stories(status, url, log_level=level)
 
+        if not count:
+            return
+
+        self.queued_stories += 1
         if (
             self.args.max_stories is not None
             and self.queued_stories >= self.args.max_stories
@@ -256,30 +263,41 @@ class Queuer(StoryProducer):
         return objname[5:].split("/", 1)
 
     def open_file(self, fname: str) -> BinaryIO:
-        if fname.startswith("http:") or fname.startswith("https:"):
-            resp = requests.get(fname)
-            if resp and resp.status_code == 200:
-                # (resp.raw is urllib3.response.HTTPResponse,
-                # which is a subclass of io.IOBase)
-                assert isinstance(resp.raw, io.IOBase)
-                return cast(BinaryIO, resp.raw)
-            raise AppException(str(resp))
+        if os.path.isfile(fname):
+            if self.HANDLE_GZIP and fname.endswith(".gz"):
+                # read/uncompress local gzip'ed file
+                gzio = gzip.GzipFile(fname, "rb")
+                assert isinstance(gzio, io.IOBase)
+                return cast(BinaryIO, gzio)
+            # read local file:
+            return open(fname, "rb")
 
-        if fname.startswith("s3://"):
+        if fname.startswith("http:") or fname.startswith("https:"):
+            resp = requests.get(fname, stream=True, timeout=60)
+            if not resp or resp.status_code != 200:
+                raise AppException(str(resp))
+            # (resp.raw is urllib3.response.HTTPResponse,
+            # which is a subclass of io.IOBase)
+            assert isinstance(resp.raw, io.IOBase)
+            fobj = cast(BinaryIO, resp.raw)
+        elif fname.startswith("s3://"):  # XXX handle any "blobstore" url?
             bucket, objname = self.split_s3_url(fname)
             s3 = self.s3_client()
             # anonymous temp file: maybe cache in named file?
             tmpf = tempfile.TemporaryFile()
             s3.download_fileobj(bucket, objname, tmpf)
             tmpf.seek(0)  # rewind
-            return tmpf
+            fobj = cast(BinaryIO, tmpf)
+        else:
+            raise AppException("file not found or unknown URL")
 
+        # uncompress on the fly?
         if self.HANDLE_GZIP and fname.endswith(".gz"):
-            gzio = gzip.GzipFile(fname, "rb")
-            assert isinstance(gzio, io.IOBase)
+            logger.debug("zcat ")
+            gzio = gzip.GzipFile(filename=fname, mode="rb", fileobj=fobj)
             return cast(BinaryIO, gzio)
 
-        return open(fname, "rb")
+        return fobj
 
     def maybe_process_files(self, fname: str) -> None:
         """
@@ -288,6 +306,9 @@ class Queuer(StoryProducer):
         (would be more efficient to do prefix (as below), stopping at
         first wildcard character
         """
+
+        # XXX handle "expansion" of local directories (and wildcards??)
+
         if fname.startswith("s3://") and fname.endswith("*"):
             bucket, prefix = self.split_s3_url(fname[:-1])
             s3 = self.s3_client()
@@ -309,7 +330,8 @@ class Queuer(StoryProducer):
             self.maybe_process_file(fname)
 
     def maybe_process_file(self, fname: str) -> None:
-        assert self.args
+        args = self.args
+        assert args
 
         # wait until queue(s) low enough, or quit:
         self.check_output_queues()
@@ -317,8 +339,12 @@ class Queuer(StoryProducer):
         def incr_files(status: str) -> None:
             self.incr("files", labels=[("status", status)])
 
+        # no tracking if testing:
+        testing = (
+            args.force or args.max_stories is not None or args.random_sample is not None
+        )
         try:
-            tracker = get_tracker(self.process_name, fname, self.args.force)
+            tracker = get_tracker(self.process_name, fname, testing)
             try:
                 with tracker:
                     f = self.open_file(fname)
@@ -326,11 +352,12 @@ class Queuer(StoryProducer):
                     self.process_file(fname, f)
                 incr_files("success")
                 if self.args and not self.args.loop:
+                    # you CAN eat just one!
                     sys.exit(0)
-            except RuntimeError as e:  # YIKES!!!
+            except Exception as e:  # YIKES (reraised)
                 logger.error("%s failed: %r", fname, e)
                 incr_files("failed")
-                # XXX re-raise???
+                raise
         except TrackerException as exc:
             # here if file state other than "NOT_STARTED"
             logger.info("%s: %r", fname, exc)
@@ -338,6 +365,11 @@ class Queuer(StoryProducer):
 
     def main_loop(self) -> None:
         assert self.args
+
+        if not self.args.input_files:
+            logger.error("no inputs!")
+            sys.exit(1)
+
         # command line items may include S3 wildcards
         for item in self.args.input_files:
             self.maybe_process_files(item)
