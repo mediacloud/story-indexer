@@ -41,6 +41,9 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+# capture command line
+DEPLOYMENT_OPTIONS="$*"
+
 PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
 usage() {
     echo "Usage: $SCRIPT [options]"
@@ -176,38 +179,40 @@ prod|staging)
     ;;
 esac
 
+FETCHER_OPTIONS=--yesterday	# batch fetcher
 IMPORTER_ARGS=''
 
 # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
 # and to PIPELINE_TYPES (above the usage function)!
 
-# PIPE_PFX effects stack (and service) name, volume directories
+# PIPE_TYPE_PFX effects stack (and service) name, volume directories
 case "$PIPELINE_TYPE" in
 batch-fetcher)
-    PIPE_PFX=''
+    PIPE_TYPE_PFX=''
     PIPE_TYPE_PORT_BIAS=0	# native ports
     QUEUER_TYPE=''
-    PROD_OPTIONS=--yesterday
     ;;
 historical)
     IMPORTER_ARGS=--no-output	# no archives (??)
-    PIPE_PFX='hist-'		# own stack name/queues
+    PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=100	# own port range
+    # maybe require command line option to select file(s)?
     QUEUER_FILES=s3://mediacloud-database-X-files/csv_files/YYYY_MM_
-    QUEUER_TYPE='hist-queuer'
+    QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
 archive)
     IMPORTER_ARGS=--no-output	# no archives!!!
-    PIPE_PFX='arch-'		# own stack name/queues
+    PIPE_TYPE_PFX='arch-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range
+    # maybe require command line option to select file(s)?
     QUEUER_FILES=s3://mediacloud-indexer-archive/2023/12/
-    QUEUER_TYPE='arch-queuer'
+    QUEUER_TYPE='arch-queuer'	# name of run- script
     ;;
 queue-fetcher)
-    PIPE_PFX=''
+    PIPE_TYPE_PFX=''
     PIPE_TYPE_PORT_BIAS=0	# native ports
     QUEUER_FILES='--days 7'	# check last seven days
-    QUEUER_TYPE='rss-queuer'
+    QUEUER_TYPE='rss-queuer'	# name of run- script
     ;;
 *)
     echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2
@@ -216,7 +221,7 @@ queue-fetcher)
 esac
 
 # alter stack name based on pipeline type:
-BASE_STACK_NAME=$PIPE_PFX$BASE_STACK_NAME
+BASE_STACK_NAME=$PIPE_TYPE_PFX$BASE_STACK_NAME
 
 # check if in sync with remote
 # (send stderr to /dev/null in case remote branch does not exist)
@@ -363,7 +368,15 @@ fi
 
 # identification unique to this deployment
 # used as an exchange name to signal pipeline config complete
-DEPLOYMENT_ID=mc-configuration-$(date +%Y%m%d%H%M%S)-${STACK_NAME}
+# MUST start with mc-configuration- and be less than 256 bytes:
+DEPLOYMENT_ID=mc-configuration-${DATE_TIME}-${STACK_NAME}
+
+# for context comments at top of generated docker-compose.yml:
+DEPLOYMENT_BRANCH=$BRANCH
+DEPLOYMENT_DATE_TIME=$DATE_TIME
+DEPLOYMENT_GIT_HASH=$(git rev-parse HEAD)$DIRTY
+DEPLOYMENT_HOST=$HOSTNAME
+DEPLOYMENT_USER=$LOGIN_USER
 
 NEWS_SEARCH_IMAGE=$NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME:$NEWS_SEARCH_IMAGE_TAG
 WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
@@ -484,7 +497,13 @@ add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
 add ARCHIVER_S3_SECRET_ACCESS_KEY  # private
 add ARCHIVER_S3_ACCESS_KEY_ID	   # private
-add DEPLOYMENT_ID
+add DEPLOYMENT_BRANCH		   # for context
+add DEPLOYMENT_DATE_TIME	   # for context
+add DEPLOYMENT_GIT_HASH		   # for context
+add DEPLOYMENT_HOST		   # for context
+add DEPLOYMENT_ID		   # for RabbitMQ sentinal
+add DEPLOYMENT_OPTIONS		   # for context
+add DEPLOYMENT_USER		   # for context
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
