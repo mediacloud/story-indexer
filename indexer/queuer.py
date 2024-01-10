@@ -39,6 +39,8 @@ import urllib3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
+else:
+    S3Client = Any
 
 from indexer.app import AppException
 from indexer.story import BaseStory
@@ -101,7 +103,8 @@ class Queuer(StoryProducer):
             "--random-sample",
             type=float,
             default=None,
-            help="Percentage of stories queue (default: all)",
+            metavar="PERCENT",
+            help="Percentage of stories to queue for testing (default: all)",
         )
 
         self.input_group = ap.add_argument_group()
