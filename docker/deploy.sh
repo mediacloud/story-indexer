@@ -674,7 +674,7 @@ fi
 
 # TEMP OFF (only run if repo not localhost?)
 echo docker compose push:
-docker compose push
+docker compose push --quiet
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo docker compose push failed: $STATUS 1>&2
