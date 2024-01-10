@@ -41,6 +41,7 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -54,7 +55,8 @@ usage() {
     echo "  -u      allow running as non-root user"
     exit 1
 }
-PIPELINE_TYPE=batch-fetcher
+
+PIPELINE_TYPE=batch-fetcher	# default
 while getopts B:abdhinT:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
@@ -176,8 +178,9 @@ esac
 
 IMPORTER_ARGS=''
 
-# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method
-PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
+# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
+# and to PIPELINE_TYPES (above the usage function)!
+
 # PIPE_PFX effects stack (and service) name, volume directories
 case "$PIPELINE_TYPE" in
 batch-fetcher)
