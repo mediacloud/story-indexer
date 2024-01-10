@@ -88,6 +88,18 @@ class FileTracker:
         raise NotImplementedError("_cleanup not overridden")
 
 
+class DummyFileTracker(FileTracker):
+    """
+    file tracker that never says no (for debug/test)
+    """
+
+    def _set_status(self, status: FileStatus) -> None:
+        pass
+
+    def _cleanup(self) -> None:
+        pass
+
+
 class LocalFileTracker(FileTracker):
     """
     a file tracker that uses a local directory for data storage
@@ -146,6 +158,11 @@ class DBMFileTracker(LocalFileTracker):
             del self._dbm
 
 
-def get_tracker(app_name: str, fname: str) -> FileTracker:
-    cls = DBMFileTracker  # complex decision process
+def get_tracker(app_name: str, fname: str, force: bool) -> FileTracker:
+    # complex decision process:
+    cls: Type[FileTracker]
+    if force:
+        cls = DummyFileTracker  # always says yes
+    else:
+        cls = DBMFileTracker
     return cls(app_name, fname)

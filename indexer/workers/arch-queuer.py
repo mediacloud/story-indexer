@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveQueuer(Queuer):
-    AWS_PREFIX = "ARCH"  # S3 env var prefix
+    AWS_PREFIX = "ARCHIVER"  # same as archiver.py
     HANDLE_GZIP = False  # handled by warcio
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:

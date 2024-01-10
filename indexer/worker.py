@@ -48,9 +48,14 @@ DEFAULT_ROUTING_KEY = "default"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT_SECONDS = 30 * 60
 
-# semaphore in the sense of railway signal tower!
-# an exchange rather than a queue to avoid crocks to not monitor it!
-_CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
+# Semaphore in the sense of railway signal tower!
+# An exchange rather than a queue to avoid crocks to not monitor it!
+# deploy.sh puts a unique ID in DEPLOYMENT_ID in docker-compose.yml,
+# so workers will wait until the matching version of pipeline.py has
+# configured things.
+
+DEPLOYMENT_ID = "DEPLOYMENT_ID"
+_CONFIGURED_SEMAPHORE_EXCHANGE = os.environ.get(DEPLOYMENT_ID)
 
 # Media Cloud headers where code examines values:
 RETRIES_HDR = "x-mc-retries"
@@ -238,6 +243,11 @@ class QApp(App):
         url = self.args.amqp_url
         conn = None
 
+        if not _CONFIGURED_SEMAPHORE_EXCHANGE:
+            # allow user testing outside docker
+            logger.warning("%s not set", DEPLOYMENT_ID)
+            return True
+
         for handler in logging.root.handlers:
             handler.addFilter(_pika_message_filter)
 
@@ -269,6 +279,23 @@ class QApp(App):
 
     def _set_configured(self, chan: BlockingChannel, set_true: bool) -> None:
         """INTERNAL: for use by indexer.pipeline ONLY!"""
+        if not _CONFIGURED_SEMAPHORE_EXCHANGE:
+            # error to run pipeline.py configure command without
+            # a deployment id set in environment.
+            raise Exception(f"{DEPLOYMENT_ID} not set")
+
+        # remove old semaphores.  (deploy on a running stack doesn't
+        # restart RabbitMQ container?  and RabbitMQ outside a
+        # container will keep old semaphores indefinitely)
+        api = self.admin_api()
+        for exchange in api.list_exchanges():
+            name = exchange["name"]
+            if (
+                name.startswith("mc-configuration-")
+                and name != _CONFIGURED_SEMAPHORE_EXCHANGE
+            ):
+                chan.exchange_delete(name)
+
         if set_true:
             chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE)
         else:

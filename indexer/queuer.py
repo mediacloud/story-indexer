@@ -70,6 +70,13 @@ class Queuer(StoryProducer):
             help="don't queue stories",
         )
         ap.add_argument(
+            "--force",
+            "-f",
+            action="store_true",
+            default=False,
+            help="ignore tracking database (for test)",
+        )
+        ap.add_argument(
             "--max-queue-len",
             type=int,
             default=self.MAX_QUEUE_LEN,
@@ -135,7 +142,7 @@ class Queuer(StoryProducer):
         """
 
         assert self.args
-        max_queue = self.args.max_queue
+        max_queue = self.args.max_queue_len
 
         # get list of queues fed from this app's output exchange
         admin = self.admin_api()
@@ -175,12 +182,14 @@ class Queuer(StoryProducer):
         return an S3 client object.
         """
         if not self.s3_client_object:
-            app = self.AWS_PREFIX.upper()
             # NOTE! None values should default to using ~/.aws/credentials
             # for command line debug/test.
-            region = os.environ.get(f"{app}_S3_REGION")
-            access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
-            secret_access_key = os.environ.get(f"{app}_S3_SECRET_ACCESS_KEY")
+            for app in [self.AWS_PREFIX.upper(), "QUEUER"]:
+                region = os.environ.get(f"{app}_S3_REGION")
+                access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
+                secret_access_key = os.environ.get(f"{app}_S3_SECRET_ACCESS_KEY")
+                if region and access_key_id and secret_access_key:
+                    break
             self.s3_client_object = boto3.client(
                 "s3",
                 region_name=region,
@@ -247,6 +256,8 @@ class Queuer(StoryProducer):
             self.maybe_process_file(fname)
 
     def maybe_process_file(self, fname: str) -> None:
+        assert self.args
+
         # wait until queue(s) low enough, or quit:
         self.check_output_queues()
 
@@ -254,14 +265,14 @@ class Queuer(StoryProducer):
             self.incr("files", labels=[("status", status)])
 
         try:
-            tracker = get_tracker(self.process_name, fname)
+            tracker = get_tracker(self.process_name, fname, self.args.force)
             try:
                 with tracker:
                     f = self.open_file(fname)
                     logger.info("process_file %s", fname)
                     self.process_file(fname, f)
                 incr_files("success")
-                if self.args and self.args.one_file:
+                if self.args and not self.args.loop:
                     sys.exit(0)
             except RuntimeError as e:  # YIKES!!!
                 logger.error("%s failed: %r", fname, e)

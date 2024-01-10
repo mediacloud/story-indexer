@@ -41,7 +41,6 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
-PIPELINE_TYPE=queue-fetcher
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -55,6 +54,7 @@ usage() {
     echo "  -u      allow running as non-root user"
     exit 1
 }
+PIPELINE_TYPE=batch-fetcher
 while getopts B:abdhinT:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
@@ -67,35 +67,6 @@ while getopts B:abdhinT:u OPT; do
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
-
-PORT_BIAS=0
-PIPE_TYPE_PORT_BIAS=0
-
-# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method
-PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
-QUEUER_ARGS=''
-
-# PIPE_PFX effects stack (and service) name, volume directories
-case "$PIPELINE_TYPE" in
-batch-fetcher) PIPE_PFX=''; QUEUER_TYPE='';;
-historical) PIPE_PFX='hist-'; QUEUER_TYPE='hist-queuer'; PIPE_TYPE_PORT_BIAS=100;;
-archive) PIPE_PFX='arch-'; QUEUER_TYPE='arch-queuer'; PIPE_TYPE_PORT_BIAS=200;;
-queue-fetcher) PIPE_PFX=''; QUEUER_TYPE='rss-queuer';;
-*) echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2; usage;;
-esac
-
-# alter stack name based on pipeline type:
-BASE_STACK_NAME=$PIPE_PFX$BASE_STACK_NAME
-
-if [ "x$HIST_PFX" != x ]; then
-    # for now, no WARC files for archival input
-    IMPORTER_ARGS=--no-output
-    # offset exported ports by 100
-    # (in addition to any biases for staging/dev)
-    PORT_BIAS=$(expr $PORT_BIAS + 100)
-else
-    IMPORTER_ARGS=
-fi
 
 # XXX complain if anything extra on command line?
 
@@ -122,8 +93,6 @@ run_as_login_user() {
 	$*
     fi
 }
-
-#GIT_HASH=$(git rev-parse --short HEAD)
 
 dirty() {
     if [ "x$INDEXER_ALLOW_DIRTY" = x ]; then
@@ -179,16 +148,6 @@ WORKER_IMAGE_REGISTRY=localhost:5000/
 # PLB: maybe indexer-common, now that it's used for config & stats reporting?
 WORKER_IMAGE_NAME=indexer-worker
 
-# news-search-api sources in separate repo, by popular opinion,
-# but deploying from our docker-compose file for network access.
-# but not yet/currently building it from there.
-echo looking for news-search-api docker image:
-if ! docker images 2>/dev/null | grep $NEWS_SEARCH_IMAGE_REGISTRY/$NEWS_SEARCH_IMAGE_NAME; then
-    # XXX "docker images" needs docker group or to be run as root
-    echo $NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME docker image not found. 1>&2
-    echo 'run "docker compose build" in news-search-api repo' 1>&2
-fi
-
 # set DEPLOY_TIME, check remotes up to date
 case "$BRANCH" in
 prod|staging)
@@ -214,6 +173,47 @@ prod|staging)
     REMOTE=origin
     ;;
 esac
+
+IMPORTER_ARGS=''
+
+# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
+# PIPE_PFX effects stack (and service) name, volume directories
+case "$PIPELINE_TYPE" in
+batch-fetcher)
+    PIPE_PFX=''
+    PIPE_TYPE_PORT_BIAS=0	# native ports
+    QUEUER_TYPE=''
+    PROD_OPTIONS=--yesterday
+    ;;
+historical)
+    IMPORTER_ARGS=--no-output	# no archives (??)
+    PIPE_PFX='hist-'		# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=100	# own port range
+    QUEUER_FILES=s3://mediacloud-database-X-files/csv_files/YYYY_MM_
+    QUEUER_TYPE='hist-queuer'
+    ;;
+archive)
+    IMPORTER_ARGS=--no-output	# no archives!!!
+    PIPE_PFX='arch-'		# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=200	# own port range
+    QUEUER_FILES=s3://mediacloud-indexer-archive/2023/12/
+    QUEUER_TYPE='arch-queuer'
+    ;;
+queue-fetcher)
+    PIPE_PFX=''
+    PIPE_TYPE_PORT_BIAS=0	# native ports
+    QUEUER_FILES='--days 7'	# check last seven days
+    QUEUER_TYPE='rss-queuer'
+    ;;
+*)
+    echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2
+    usage
+    ;;
+esac
+
+# alter stack name based on pipeline type:
+BASE_STACK_NAME=$PIPE_PFX$BASE_STACK_NAME
 
 # check if in sync with remote
 # (send stderr to /dev/null in case remote branch does not exist)
@@ -265,9 +265,11 @@ staging)
     ELASTICSEARCH_IMPORTER_REPLICAS=1
     ELASTICSEARCH_IMPORTER_SHARDS=5
 
+    STORY_LIMIT=50000
+
     # don't run daily, fetch 10x more than dev:
     FETCHER_CRONJOB_ENABLE=false
-    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
     FETCHER_REPLICAS=10
 
     MULTI_NODE_DEPLOYMENT=1
@@ -286,9 +288,11 @@ dev)
     ELASTICSEARCH_IMPORTER_REPLICAS=0
     ELASTICSEARCH_IMPORTER_SHARDS=2
 
+    STORY_LIMIT=5000
+
     # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
-    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
     FETCHER_REPLICAS=10
 
     MULTI_NODE_DEPLOYMENT=
@@ -350,13 +354,29 @@ if [ "x$IS_DIRTY" = x ]; then
 else
     # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
+    # for use with git hash
+    DIRTY=-dirty
 fi
+
+# identification unique to this deployment
+# used as an exchange name to signal pipeline config complete
+DEPLOYMENT_ID=mc-configuration-$(date +%Y%m%d%H%M%S)-${STACK_NAME}
 
 NEWS_SEARCH_IMAGE=$NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME:$NEWS_SEARCH_IMAGE_TAG
 WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
+
+# construct QUEUER_ARGS for {arch,hist,rss}-queuers
+if [ "x$QUEUER_TYPE" != x ]; then
+    if [ "x$STORY_LIMIT" != x ]; then
+	QUEUER_ARGS="--force --max-stories $STORY_LIMIT"
+    fi
+    QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
+else
+    QUEUER_ARGS=''
+fi
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
@@ -461,6 +481,7 @@ add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
 add ARCHIVER_S3_SECRET_ACCESS_KEY  # private
 add ARCHIVER_S3_ACCESS_KEY_ID	   # private
+add DEPLOYMENT_ID
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
@@ -485,7 +506,10 @@ add NEWS_SEARCH_UI_PORT int
 add NEWS_SEARCH_UI_TITLE
 add PIPELINE_TYPE
 add QUEUER_ARGS allow-empty
-add QUEUER_TYPE
+add QUEUER_S3_ACCESS_KEY_ID	# private
+add QUEUER_S3_REGION		# private
+add QUEUER_S3_SECRET_ACCESS_KEY # private
+add QUEUER_TYPE allow-empty
 add PARSER_REPLICAS int
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
