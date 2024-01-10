@@ -25,6 +25,7 @@ import gzip
 import io
 import logging
 import os
+import random
 import sys
 import tempfile
 import time
@@ -96,6 +97,12 @@ class Queuer(StoryProducer):
             default=False,
             help="Run until all files processed (sleeping if needed), else process one file and quit.",
         )
+        ap.add_argument(
+            "--random-sample",
+            type=float,
+            default=None,
+            help="Percentage of stories queue (default: all)",
+        )
 
         self.input_group = ap.add_argument_group()
         assert self.input_group is not None
@@ -115,6 +122,10 @@ class Queuer(StoryProducer):
 
         if self.args.dry_run:
             status = "parsed"
+        if self.args.random_sample is not None and (
+            random.random() * 100 > self.args.random_sample
+        ):
+            status = "dropped"
         else:
             if self.sender is None:
                 self.sender = self.story_sender()
