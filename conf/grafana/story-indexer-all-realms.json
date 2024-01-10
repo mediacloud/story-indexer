@@ -16,12 +16,13 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 7,
-  "iteration": 1699211246168,
+  "iteration": 1704217645649,
   "links": [],
   "panels": [
     {
       "aliasColors": {
         "stats.counters.mc.prod.story-indexer.fetcher.fetched-stories.status_success.rate": "green",
+        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_http-2xx.rate": "blue",
         "stats.counters.mc.prod.story-indexer.fetcher.stories.status_non-news.rate": "yellow",
         "stats.counters.mc.prod.story-indexer.fetcher.stories.status_success.rate": "green"
       },
@@ -154,8 +155,15 @@
       "steppedLine": true,
       "targets": [
         {
+          "refCount": 0,
           "refId": "A",
           "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.name_fetcher-worker",
+          "textEditor": false
+        },
+        {
+          "refCount": 0,
+          "refId": "B",
+          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.name_queue-rss",
           "textEditor": false
         }
       ],
@@ -203,8 +211,15 @@
       }
     },
     {
-      "aliasColors": {},
-      "bars": false,
+      "aliasColors": {
+        "stats.counters.mc.prod.story-indexer.parser.stories.status_OK-readability.rate": "semi-dark-yellow",
+        "stats.counters.mc.prod.story-indexer.parser.stories.status_OK-trafilatura.rate": "green",
+        "stats.counters.mc.prod.story-indexer.parser.stories.status_no-html.rate": "red",
+        "stats.counters.mc.staging.story-indexer.parser.stories.status_OK-readability.rate": "blue",
+        "stats.counters.mc.staging.story-indexer.parser.stories.status_OK-trafilatura.rate": "green",
+        "stats.counters.mc.staging.story-indexer.parser.stories.status_no-decode.rate": "dark-yellow"
+      },
+      "bars": true,
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
@@ -226,7 +241,7 @@
         "total": false,
         "values": false
       },
-      "lines": true,
+      "lines": false,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -238,7 +253,7 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": false,
+      "stack": true,
       "steppedLine": false,
       "targets": [
         {
@@ -289,7 +304,12 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "scale(stats.timers.mc.prod.story-indexer.parser.message.stat_error.count,0.1)": "red",
+        "scale(stats.timers.mc.prod.story-indexer.parser.message.stat_ok.count,0.1)": "green",
+        "scale(stats.timers.mc.staging.story-indexer.parser.message.stat_error.count,0.1)": "red",
+        "scale(stats.timers.mc.staging.story-indexer.parser.message.stat_ok.count,0.1)": "green"
+      },
       "bars": true,
       "dashLength": 10,
       "dashes": false,
@@ -375,8 +395,12 @@
       }
     },
     {
-      "aliasColors": {},
-      "bars": false,
+      "aliasColors": {
+        "stats.counters.mc.prod.story-indexer.importer.imported-stories.status_failed.rate": "red",
+        "stats.counters.mc.prod.story-indexer.importer.imported-stories.status_success.rate": "green",
+        "stats.counters.mc.staging.story-indexer.importer.imported-stories.status_failed.rate": "red"
+      },
+      "bars": true,
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
@@ -399,7 +423,7 @@
         "total": false,
         "values": false
       },
-      "lines": true,
+      "lines": false,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -411,7 +435,7 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": false,
+      "stack": true,
       "steppedLine": false,
       "targets": [
         {
@@ -461,7 +485,10 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "scale(stats.timers.mc.staging.story-indexer.importer.message.stat_error.count,0.1)": "red",
+        "scale(stats.timers.mc.staging.story-indexer.importer.message.stat_ok.count,0.1)": "green"
+      },
       "bars": true,
       "dashLength": 10,
       "dashes": false,
@@ -502,7 +529,7 @@
         {
           "refId": "A",
           "target": "scale(stats.timers.mc.$realm.story-indexer.importer.message.*.count, 0.1)",
-          "textEditor": false
+          "textEditor": true
         }
       ],
       "thresholds": [],
@@ -548,6 +575,177 @@
     },
     {
       "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 30,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "stats.counters.mc.$realm.story-indexer.archiver.batches.*.count"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Archiver files",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 34,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "scale(stats.timers.mc.$realm.story-indexer.archiver.message.*.count, 0.1)",
+          "textEditor": true
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Archiver message status/sec (stacked)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
@@ -559,7 +757,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "id": 12,
       "legend": {
@@ -587,15 +785,17 @@
       "steppedLine": false,
       "targets": [
         {
+          "refCount": 0,
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.rabbitmq-stats.queues.ready.*"
+          "target": "stats.gauges.mc.$realm.story-indexer.rabbitmq-stats.queues.ready.*",
+          "textEditor": false
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Queues",
+      "title": "Queue messages ready",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -638,16 +838,15 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "description": "",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 33
       },
-      "id": 16,
+      "id": 32,
       "legend": {
         "avg": false,
         "current": false,
@@ -674,7 +873,7 @@
       "targets": [
         {
           "refId": "A",
-          "target": "stats.counters.mc.$realm.story-indexer.*.sent-msgs.*.rate",
+          "target": "stats.gauges.mc.$realm.story-indexer.rabbitmq-stats.queues.unacked.*",
           "textEditor": false
         }
       ],
@@ -682,7 +881,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "messages sent per second",
+      "title": "Queue messages unacked",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -731,7 +930,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "id": 18,
       "legend": {
@@ -817,7 +1016,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 41
       },
       "id": 22,
       "legend": {
@@ -904,7 +1103,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 49
       },
       "id": 20,
       "legend": {
@@ -979,12 +1178,101 @@
       }
     },
     {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "description": "",
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 49
+      },
+      "id": 16,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "stats.counters.mc.$realm.story-indexer.*.sent-msgs.*.rate",
+          "textEditor": false
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "messages sent per second (stacked)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
       "aliasColors": {
         "stats.gauges.mc.pbudne.story-indexer.elastic-stats.indices.health.color_red": "dark-red",
         "stats.gauges.mc.pbudne.story-indexer.elastic-stats.indices.health.color_yellow": "yellow",
         "stats.gauges.mc.prod.story-indexer.elastic-stats.indices.health.color_green": "green",
         "stats.gauges.mc.prod.story-indexer.elastic-stats.indices.health.color_red": "red",
-        "stats.gauges.mc.prod.story-indexer.elastic-stats.indices.health.color_yellow": "yellow"
+        "stats.gauges.mc.prod.story-indexer.elastic-stats.indices.health.color_yellow": "yellow",
+        "stats.gauges.mc.staging.story-indexer.elastic-stats.indices.health.color_red": "red",
+        "stats.gauges.mc.staging.story-indexer.elastic-stats.indices.health.color_yellow": "yellow"
       },
       "bars": false,
       "dashLength": 10,
@@ -995,8 +1283,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 41
+        "x": 0,
+        "y": 57
       },
       "id": 24,
       "legend": {
@@ -1083,10 +1371,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 57
       },
       "id": 8,
       "legend": {
@@ -1160,6 +1448,91 @@
         "align": false,
         "alignLevel": null
       }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 65
+      },
+      "id": 36,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "stats.timers.mc.$realm.story-indexer.parser.extract.*.mean"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "parser metadata extract times stacked",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "ms",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
     }
   ],
   "refresh": false,
@@ -1171,7 +1544,7 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
+          "selected": false,
           "text": "prod",
           "value": "prod"
         },
@@ -1229,5 +1602,5 @@
   "timezone": "",
   "title": "story-indexer (all realms)",
   "uid": "qeNJ29WSz",
-  "version": 37
+  "version": 53
 }
