@@ -30,7 +30,7 @@ import sys
 import tempfile
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, BinaryIO, List, Optional, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Generator, List, Optional, cast
 
 import boto3
 import botocore
@@ -117,6 +117,12 @@ class Queuer(StoryProducer):
             default=None,
             metavar="N",
             help=f"Implies --max-stories N --random-sample {self.SAMPLE_PERCENT}",
+        )
+        ap.add_argument(
+            "--test",
+            action="store_true",
+            default=False,
+            help="Enumerate, but do not process files for testing",
         )
 
         self.input_group = ap.add_argument_group()
@@ -311,25 +317,25 @@ class Queuer(StoryProducer):
 
     def maybe_process_files(self, fname: str) -> None:
         """
-        supports simple prefix matching for s3 URLs
-        _COULD_ do full wildcarding by fetching all and applying glob.glob.
-        (would be more efficient to do prefix (as below), stopping at
-        first wildcard character
+        supports simple prefix matching for s3 URLs, local directories
         """
         if os.path.isdir(fname):  # local directory
             logger.debug("walking directory tree %s", fname)
             for root, dirs, files in os.walk(fname, topdown=False):
                 for name in files:
                     self.maybe_process_file(os.path.join(root, name))
-        elif os.path.isfile(fname):  # local file
-            self.maybe_process_file(fname)
         elif fname.startswith("s3://"):  # XXX handle any blobstore URL?
-            self.maybe_process_s3_prefix(fname)
-        else:
-            logger.warning("bad path or url: %s", fname)
+            for url in self.s3_prefix_matches(fname):
+                self.maybe_process_file(url)
+        else:  # local files, http, https
+            self.maybe_process_file(fname)
 
-    def maybe_process_s3_prefix(self, url: str) -> None:
-        # enumerate all matching objects
+    def s3_prefix_matches(self, url: str) -> Generator:
+        """
+        generator to enumerate all matching objects
+        (push into blobstore?)
+        """
+        logger.debug("s3_prefix_matches: %s", url)
         bucket, prefix = self.split_s3_url(url)
         s3 = self.s3_client()
         marker = ""
@@ -337,8 +343,9 @@ class Queuer(StoryProducer):
             res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
             for item in res["Contents"]:
                 key = item["Key"]
-                logger.debug("key %s", key)
-                self.maybe_process_file(f"s3://{bucket}/{key}")
+                out = f"s3://{bucket}/{key}"
+                logger.debug("match: %s", out)
+                yield out
             if not res["IsTruncated"]:
                 break
             marker = key  # see https://github.com/boto/boto3/issues/470
@@ -350,6 +357,10 @@ class Queuer(StoryProducer):
         args = self.args
         assert args
 
+        if args.test:
+            logger.info("maybe_process_file %s", fname)
+            return
+
         # wait until queue(s) low enough, or quit:
         self.check_output_queues()
 
@@ -358,7 +369,10 @@ class Queuer(StoryProducer):
 
         # no tracking if ignoring tracker or sampling/testing
         testing = (
-            args.force or args.max_stories is not None or args.random_sample is not None
+            args.force
+            or args.max_stories is not None
+            or args.random_sample is not None
+            or args.text
         )
         try:
             tracker = get_tracker(self.process_name, fname, testing)
