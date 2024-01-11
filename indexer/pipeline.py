@@ -319,11 +319,22 @@ class Pipeline(QApp):
         print("Commands (use --help for options):")
         for cmd in COMMANDS:
             descr = self.get_command_func(cmd).__doc__
-            print(f"{cmd:12.12} {descr}")
+            print(f"{cmd:20.20s} {descr}")
+
+    @command
+    def qlen(self) -> None:
+        """show queue lengths"""
+        api = self.admin_api()
+        queues = api._api_get("/api/queues")
+        for q in queues:
+            name = q["name"]
+            msgs = q["messages"]
+            bytes = q["message_bytes"]
+            print(f"{name:16.16s} {msgs:9d} msgs {bytes:9d} bytes")
 
     @command
     def show(self) -> None:
-        """show queues"""
+        """show queues, exchanges, bindings"""
         defns = self.get_definitions()
         for what in ("queues", "exchanges", "bindings"):
             things = defns[what]
