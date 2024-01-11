@@ -226,6 +226,8 @@ services:
         condition: none
     image: {{elasticsearch_image}}
     user: root
+    volumes:
+      - *es-backup-volume
 
 {% for i in range(1,elasticsearch_containers+1) %}
   elasticsearch{{i}}:
