@@ -13,6 +13,7 @@ from typing import List, Optional
 
 import indexer.blobstore
 from indexer.app import run
+from indexer.path import DATAROOT
 from indexer.story import BaseStory
 from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
 from indexer.storyapp import BatchStoryWorker, StorySender
@@ -36,7 +37,7 @@ class Archiver(BatchStoryWorker):
         self.archives = 0  # number of archives written
 
         # default to Docker worker volume so files persist if not uploaded
-        self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", "/app/data/archiver")
+        self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", DATAROOT() + "archiver")
 
     def process_args(self) -> None:
         super().process_args()
