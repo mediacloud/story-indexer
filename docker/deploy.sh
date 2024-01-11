@@ -504,7 +504,7 @@ add DEPLOYMENT_DATE_TIME	   # for context
 add DEPLOYMENT_GIT_HASH		   # for context
 add DEPLOYMENT_HOST		   # for context
 add DEPLOYMENT_ID		   # for RabbitMQ sentinal
-add DEPLOYMENT_OPTIONS		   # for context
+add DEPLOYMENT_OPTIONS allow-empty # for context
 add DEPLOYMENT_USER		   # for context
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
