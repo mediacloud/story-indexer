@@ -184,7 +184,7 @@ IMPORTER_ARGS=''
 # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
 # and to PIPELINE_TYPES (above the usage function)!
 
-# PIPE_TYPE_PFX effects stack (and service) name, volume directories
+# PIPE_TYPE_PFX effects stack (and service) name, volume directories, stats realm
 case "$PIPELINE_TYPE" in
 batch-fetcher)
     PIPE_TYPE_PFX=''
@@ -219,8 +219,9 @@ queue-fetcher)
     ;;
 esac
 
-# alter stack name based on pipeline type:
+# prefix stack name, stats realm with pipeline type:
 BASE_STACK_NAME=$PIPE_TYPE_PFX$BASE_STACK_NAME
+STATSD_REALM=$PIPE_TYPE_PFX$STATSD_REALM
 
 # check if in sync with remote
 # (send stderr to /dev/null in case remote branch does not exist)
