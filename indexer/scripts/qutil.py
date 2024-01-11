@@ -64,6 +64,13 @@ class QUtil(QApp):
     #### commands (in alphabetical order, docstring is help)
 
     @command
+    def delete(self) -> None:
+        q = self.get_queue()  # takes command line argument
+        chan = self.get_channel()
+        resp = chan.queue_delete(queue=q)
+        print(resp)
+
+    @command
     def dump_archives(self) -> None:
         """dump messages as archive files"""
 
