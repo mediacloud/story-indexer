@@ -6,12 +6,10 @@ But wait, this file is also a script for configuring
 the default pipeline.... It's a floor wax AND a desert topping!
 
 https://www.nbc.com/saturday-night-live/video/shimmer-floor-wax/2721424
-"""
 
-# PLB: Maybe this should write out RabbitMQ configuration file
-# (instead of configuring queues) so that RabbitMQ comes up configured
-# on restart?!!! *BUT* this assumes there is ONE true configuration
-# (ie; that any queues for backfill processing are included).
+With the addition of the --type option, it seems to have taken a turn
+to be a utility, rather than a library...
+"""
 
 import argparse
 import logging
@@ -255,7 +253,16 @@ class Pipeline(QApp):
         #### _configure function body:
 
         if not create:
-            self._set_configured(chan, False)  # MUST be first!!!
+            # MUST be first!!!
+            # remove semaphore
+            # (do this regardless?)
+            self._set_configured(chan, False)
+
+        # XXX maybe delete should remove everything
+        # (keep non-empty queues unless --force'ed?)
+
+        # XXX maybe remove exchanges before creating any
+        # (or at least confirm that existing ones should be kept)?
 
         # create queues and exchanges
         for name, proc in self.procs.items():
@@ -365,6 +372,9 @@ class MyPipeline(Pipeline):
     def lay_pipe(self) -> None:
         """
         define pipeline topology
+
+        NOTE!  Any major rearrangement of routing (bindings)
+        likely requires removing old bindings first!!
         """
         assert self.args
         pt = self.args.type
