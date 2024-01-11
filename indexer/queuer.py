@@ -259,10 +259,20 @@ class Queuer(StoryProducer):
         return self.s3_client_object
 
     def split_s3_url(self, objname: str) -> List[str]:
-        # assumes s3:// prefix: returns at most two items
-        return objname[5:].split("/", 1)
+        """
+        assumes starts with s3://
+        returns [bucket, key]
+        """
+        path = objname[5:]
+        if "/" in path:
+            return path.split("/", 1)
+        return [path, ""]
 
     def open_file(self, fname: str) -> BinaryIO:
+        """
+        take local file path or a URL
+        return BinaryIO file object (optionally decompressed)
+        """
         if os.path.isfile(fname):
             if self.HANDLE_GZIP and fname.endswith(".gz"):
                 # read/uncompress local gzip'ed file
@@ -306,28 +316,35 @@ class Queuer(StoryProducer):
         (would be more efficient to do prefix (as below), stopping at
         first wildcard character
         """
-
-        # XXX handle "expansion" of local directories (and wildcards??)
-
-        if fname.startswith("s3://") and fname.endswith("*"):
-            bucket, prefix = self.split_s3_url(fname[:-1])
-            s3 = self.s3_client()
-
-            marker = ""  # try handling pagination
-            while True:
-                res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
-                for item in res["Contents"]:
-                    key = item["Key"]
-                    logger.info("key %s", key)
-                    self.maybe_process_file(f"s3://{bucket}/{key}")
-                if not res["IsTruncated"]:
-                    break
-                marker = key  # see https://github.com/boto/boto3/issues/470
-                logger.info("object list truncated; next marker: %s", marker)
-                if not marker:
-                    break
-        else:
+        if os.path.isdir(fname):  # local directory
+            logger.debug("walking directory tree %s", fname)
+            for root, dirs, files in os.walk(fname, topdown=False):
+                for name in files:
+                    self.maybe_process_file(os.path.join(root, name))
+        elif os.path.isfile(fname):  # local file
             self.maybe_process_file(fname)
+        elif fname.startswith("s3://"):  # XXX handle any blobstore URL?
+            self.maybe_process_s3_prefix(fname)
+        else:
+            logger.warning("bad path or url: %s", fname)
+
+    def maybe_process_s3_prefix(self, url: str) -> None:
+        # enumerate all matching objects
+        bucket, prefix = self.split_s3_url(url)
+        s3 = self.s3_client()
+        marker = ""
+        while True:
+            res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
+            for item in res["Contents"]:
+                key = item["Key"]
+                logger.debug("key %s", key)
+                self.maybe_process_file(f"s3://{bucket}/{key}")
+            if not res["IsTruncated"]:
+                break
+            marker = key  # see https://github.com/boto/boto3/issues/470
+            logger.debug("object list truncated; next marker: %s", marker)
+            if not marker:
+                break
 
     def maybe_process_file(self, fname: str) -> None:
         args = self.args
@@ -339,7 +356,7 @@ class Queuer(StoryProducer):
         def incr_files(status: str) -> None:
             self.incr("files", labels=[("status", status)])
 
-        # no tracking if testing:
+        # no tracking if ignoring tracker or sampling/testing
         testing = (
             args.force or args.max_stories is not None or args.random_sample is not None
         )
