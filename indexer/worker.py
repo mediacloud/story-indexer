@@ -638,7 +638,7 @@ class Worker(QApp):
         assert tag is not None
 
         def acker() -> None:
-            msglogger.info("ack and commit #%s", tag)
+            msglogger.debug("ack and commit #%s", tag)
 
             im.channel.basic_ack(delivery_tag=tag, multiple=multiple)
 
