@@ -196,7 +196,7 @@ historical)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=100	# own port range
     # maybe require command line option to select file(s)?
-    QUEUER_FILES=s3://mediacloud-database-X-files/csv_files/YYYY_MM_
+    QUEUER_FILES=s3://mediacloud-database-files/2023/stories_2023-12-06.csv
     QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
 archive)
@@ -204,7 +204,7 @@ archive)
     PIPE_TYPE_PFX='arch-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range
     # maybe require command line option to select file(s)?
-    QUEUER_FILES=s3://mediacloud-indexer-archive/2023/12/
+    QUEUER_FILES=s3://mediacloud-indexer-archive/2023/11/12/mc-20231112015211-1-a332941ae45f.warc.gz
     QUEUER_TYPE='arch-queuer'	# name of run- script
     ;;
 queue-fetcher)
@@ -319,13 +319,12 @@ if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
     # queue namespace (would want to clear PIPE_TYPE_BIAS for
     # RABBITMQ_PORT!), and have index.pipeline "configure" make sure
     # vhost exists.
-    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
+    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_(V)HOST!!!" 1>&2
     exit 1
 else
     RABBITMQ_HOST=rabbitmq
 fi
-# BEFORE biases applied!!
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_BASE_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
     ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
