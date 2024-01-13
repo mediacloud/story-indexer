@@ -192,6 +192,7 @@ batch-fetcher)
     QUEUER_TYPE=''
     ;;
 historical)
+    FETCHER_REPLICAS=4		# needs tuning
     IMPORTER_ARGS=--no-output	# no archives (??)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=100	# own port range
