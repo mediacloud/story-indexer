@@ -59,10 +59,21 @@ class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        # XXX use blobstore, or get keys from environment
-        s3 = boto3.resource("s3")
-        # XXX use client.list_object_versions ??
-        self.bucket = s3.Bucket(DOWNLOADS_BUCKET)
+        # XXX use blobstore?!
+        for app in ["HIST", "QUEUER"]:
+            region = os.environ.get(f"{app}_S3_REGION")
+            access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
+            secret_access_key = os.environ.get(f"{app}_S3_SECRET_ACCESS_KEY")
+            if region and access_key_id and secret_access_key:
+                break
+
+        # None values will check ~/.aws/credentials
+        self.s3 = boto3.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+        )
 
     def pick_version(
         self, dlid: int, s3path: str, fetch_date: Optional[str]
@@ -72,7 +83,7 @@ class HistFetcher(StoryWorker):
         of the S3 object (named by dlid) can exist, and if so, pick the right
         version.
 
-        returns None or a versionid
+        returns None or ExtraArgs dict w/ VersionId
         """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
             return None
@@ -87,17 +98,15 @@ class HistFetcher(StoryWorker):
         else:
             raise QuarantineException(f"{dlid}: unknown epoch for {fetch_date}")
 
-        versions = self.bucket.object_versions.filter(Prefix=s3path, MaxKeys=1)
-        for version in versions:
-            if version.key != s3path:
+        resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
+        for version in resp.get("Versions", []):
+            # Dict w/ ETag, Size, StorageClass, Key, VersionID, IsLatest, LastModified (datetime)
+            if version["Key"] != s3path:  # paranoia
                 break
 
-            # Dict w/ VersionId, ContentLength, LastModified (datetime)
-            objdata = version.get()
+            lmdate = version["LastModified"].isoformat(sep=" ")
 
-            lmdate = objdata["LastModified"].isoformat(sep=" ")
-
-            vid = objdata["VersionId"]
+            vid = version["VersionId"]
 
             logger.debug("dlid %d fd %s lm %s v %s", dlid, fetch_date, lmdate, vid)
 
@@ -130,13 +139,16 @@ class HistFetcher(StoryWorker):
         extras = self.pick_version(dlid, s3path, rss.fetch_date)
         with io.BytesIO() as bio:
             # let any Exception cause retry/quarantine
-            self.bucket.download_fileobj(s3path, bio, ExtraArgs=extras)
+            self.s3.download_fileobj(
+                Bucket=DOWNLOADS_BUCKET, Key=s3path, Fileobj=bio, ExtraArgs=extras
+            )
 
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
         # hist-queuer should have checked URL
-        url = rss.link
+        url = story.http_metadata().final_url or ""
+
         if not self.check_story_length(html, url):
             return  # counted and logged
 
