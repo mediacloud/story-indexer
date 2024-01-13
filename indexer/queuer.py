@@ -379,7 +379,7 @@ class Queuer(StoryProducer):
             args.force
             or args.max_stories is not None
             or args.random_sample is not None
-            or args.text
+            or args.test
         )
         try:
             tracker = get_tracker(self.process_name, fname, testing)
