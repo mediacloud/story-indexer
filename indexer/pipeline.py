@@ -330,7 +330,7 @@ class Pipeline(QApp):
             name = q["name"]
             msgs = q["messages"]
             bytes = q["message_bytes"]
-            print(f"{name:16.16s} {msgs:9d} msgs {bytes:9d} bytes")
+            print(f"{name:20.20s} {msgs:9d} msgs {bytes:9d} bytes")
 
     @command
     def show(self) -> None:
