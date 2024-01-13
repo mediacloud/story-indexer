@@ -125,6 +125,8 @@ FETCHER_CRONJOB_ENABLE=true	# used for queuers too!
 FETCHER_REPLICAS=20
 FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
+HIST_FETCHER_REPLICAS=4		# needs tuning
+
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
 NEWS_SEARCH_IMAGE_REGISTRY=docker.io/
@@ -192,7 +194,6 @@ batch-fetcher)
     QUEUER_TYPE=''
     ;;
 historical)
-    FETCHER_REPLICAS=4		# needs tuning
     IMPORTER_ARGS=--no-output	# no archives (??)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=100	# own port range
@@ -524,6 +525,7 @@ fi
 add FETCHER_CRONJOB_ENABLE	# NOT bool! used by queuers too!!
 add FETCHER_REPLICAS int
 add FETCHER_OPTIONS		# batch-fetcher only (see QUEUER_ARGS)
+add HIST_FETCHER_REPLICAS int
 add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int

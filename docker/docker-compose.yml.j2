@@ -294,7 +294,7 @@ services:
     <<: *worker-service-settings
     deploy:
       <<: *worker-deploy-settings
-      replicas: {{fetcher_replicas}}
+      replicas: {{hist_fetcher_replicas}}
     environment:
       <<: *worker-environment-vars
       RUN: hist-fetcher
@@ -312,9 +312,10 @@ services:
       RUN: queue-fetcher
       # pass ARGS: -Wn based on fetcher_replicas??
 {% elif pipeline_type == 'archive' %}
-   # No fetcher for loading archives (yet, anyway).  Hopefully each
-   # archive has enough stories to keep pipeline busy enough not to
-   # need parallel fetching.
+   # No fetcher for loading archives (yet, anyway).
+   # arch-queuer reads archives directly and queues stories.
+   # Hopefully, each archive has enough stories to keep
+   # pipeline busy enough not to need parallel fetching.
 {% endif %}
 
   parser-worker:
