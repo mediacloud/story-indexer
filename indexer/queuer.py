@@ -321,11 +321,17 @@ class Queuer(StoryProducer):
         """
         if os.path.isdir(fname):  # local directory
             logger.debug("walking directory tree %s", fname)
+            paths = []
             for root, dirs, files in os.walk(fname, topdown=False):
                 for name in files:
-                    self.maybe_process_file(os.path.join(root, name))
+                    # XXX filter based on file name ending?
+                    paths.append(os.path.join(root, name))
+            # process in reverse sorted/chronological order (back-fill):
+            for path in sorted(paths, reverse=True):
+                self.maybe_process_file(path)
         elif fname.startswith("s3://"):  # XXX handle any blobstore URL?
-            for url in self.s3_prefix_matches(fname):
+            # process in reverse sorted/chronological order (back-fill):
+            for url in sorted(self.s3_prefix_matches(fname), reverse=True):
                 self.maybe_process_file(url)
         else:  # local files, http, https
             self.maybe_process_file(fname)
@@ -343,6 +349,7 @@ class Queuer(StoryProducer):
             res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
             for item in res["Contents"]:
                 key = item["Key"]
+                # XXX filter based on ending?
                 out = f"s3://{bucket}/{key}"
                 logger.debug("match: %s", out)
                 yield out
