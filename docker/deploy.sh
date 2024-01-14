@@ -196,7 +196,7 @@ batch-fetcher)
 historical)
     IMPORTER_ARGS=--no-output	# no archives (??)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
-    PIPE_TYPE_PORT_BIAS=100	# own port range
+    PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
     # maybe require command line option to select file(s)?
     QUEUER_FILES=s3://mediacloud-database-files/2023/stories_2023-12-06.csv
     QUEUER_TYPE='hist-queuer'	# name of run- script
@@ -204,7 +204,7 @@ historical)
 archive)
     IMPORTER_ARGS=--no-output	# no archives!!!
     PIPE_TYPE_PFX='arch-'	# own stack name/queues
-    PIPE_TYPE_PORT_BIAS=200	# own port range
+    PIPE_TYPE_PORT_BIAS=400	# own port range
     # maybe require command line option to select file(s)?
     QUEUER_FILES=s3://mediacloud-indexer-archive/2023/11/12/mc-20231112015211-1-a332941ae45f.warc.gz
     QUEUER_TYPE='arch-queuer'	# name of run- script
