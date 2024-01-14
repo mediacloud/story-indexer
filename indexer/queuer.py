@@ -57,7 +57,7 @@ class Queuer(StoryProducer):
 
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
-    SAMPLE_PERCENT = 0.1  # for --sample-size
+    SAMPLE_PERCENT = 10.0  # for --sample-size
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
