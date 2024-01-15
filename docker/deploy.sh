@@ -59,6 +59,11 @@ usage() {
 }
 
 PIPELINE_TYPE=batch-fetcher	# default
+
+# take command line option? used for input and archive output (if created)
+HIST_YEAR=2023
+#HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
+
 while getopts B:abdhinT:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
@@ -120,8 +125,8 @@ ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 
-FETCHER_CRONJOB_ENABLE=true	# used for queuers too!
-FETCHER_REPLICAS=20
+FETCHER_CRONJOB_ENABLE=true	# batch fetcher
+FETCHER_NUM_BATCHES=20		# batch fetcher
 FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
 HIST_FETCHER_REPLICAS=4		# needs tuning
@@ -134,6 +139,10 @@ NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
 PARSER_REPLICAS=4
+
+QUEUER_CRONJOB_ENABLE=true
+QUEUER_CRONJOB_REPLICAS=1
+QUEUER_INITIAL_REPLICAS=0
 
 RABBITMQ_CONTAINERS=1		# integer to allow cluster in staging??
 RABBITMQ_PORT=5672		# native port
@@ -193,11 +202,12 @@ batch-fetcher)
     QUEUER_TYPE=''
     ;;
 historical)
+    ARCH_SUFFIX=hist$HIST_YEAR
     IMPORTER_ARGS=--no-output	# no archives (??)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
     # maybe require command line option to select file(s)?
-    QUEUER_FILES=s3://mediacloud-database-files/2023/stories_2023-12-06.csv
+    QUEUER_FILES=s3://mediacloud-database-files/$HIST_YEAR$HIST_FILE_PREFIX
     QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
 archive)
@@ -238,7 +248,7 @@ DATE_TIME=$(date -u '+%F-%H-%M-%S')
 TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
-    ARCHIVER_PREFIX=mc
+    ARCHIVER_PREFIX=mc$ARCH_SUFFIX
     PORT_BIAS=0
     STACK_NAME=$BASE_STACK_NAME
 
@@ -279,12 +289,15 @@ staging)
     # don't run daily, fetch 10x more than dev:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
-    FETCHER_REPLICAS=10
+    FETCHER_NUM_BATCHES=10	# betch fetcher
 
     MULTI_NODE_DEPLOYMENT=1
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
+    QUEUER_CRONJOB_ENABLE=false
+    QUEUER_CRONJOB_REPLICAS=0
+    QUEUER_INITIAL_REPLICAS=1
     SENTRY_ENVIRONMENT="staging"
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
     ;;
 dev)
     ARCHIVER_PREFIX=$LOGIN_USER
@@ -299,13 +312,17 @@ dev)
 
     STORY_LIMIT=5000
 
+    # batch fetcher:
     # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
-    FETCHER_REPLICAS=10
+    FETCHER_NUM_BATCHES=10
 
     MULTI_NODE_DEPLOYMENT=
     NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
+    QUEUER_CRONJOB_ENABLE=false
+    QUEUER_CRONJOB_REPLICAS=0
+    QUEUER_INITIAL_REPLICAS=1
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     VOLUME_DEVICE_PREFIX=
     ;;
@@ -436,11 +453,22 @@ dev)
     ;;
 esac
 
+
 if [ ! -f $PRIVATE_CONF_FILE ]; then
     echo "FATAL: could not access $PRIVATE_CONF_FILE" 1>&2
     exit 1
 fi
 . $PRIVATE_CONF_FILE
+
+# after reading PRIVATE_CONF_FILE!!
+case $QUEUER_TYPE in
+arch-queuer)
+    # borrow (r/w) key from archiver config for reading archive files
+    QUEUER_S3_ACCESS_KEY_ID=$ARCHIVER_S3_ACCESS_KEY_ID
+    QUEUER_S3_REGION=$ARCHIVER_S3_REGION
+    QUEUER_S3_SECRET_ACCESS_KEY=$ARCHIVER_S3_SECRET_ACCESS_KEY
+    ;;
+esac
 
 # function to add a parameter to JSON CONFIG file
 add() {
@@ -521,9 +549,9 @@ if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     add ELASTICSEARCH_PORT_BASE_EXPORTED int
     add ELASTICSEARCH_NODES
 fi
-add FETCHER_CRONJOB_ENABLE	# NOT bool! used by queuers too!!
-add FETCHER_REPLICAS int
-add FETCHER_OPTIONS		# batch-fetcher only (see QUEUER_ARGS)
+add FETCHER_CRONJOB_ENABLE	# batch-fetcher: NOT bool!
+add FETCHER_NUM_BATCHES int	# batch-fetcher
+add FETCHER_OPTIONS		# batch-fetcher (see QUEUER_ARGS)
 add HIST_FETCHER_REPLICAS int
 add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
@@ -535,10 +563,13 @@ add NEWS_SEARCH_UI_PORT_EXPORTED int
 add NEWS_SEARCH_UI_TITLE
 add PIPELINE_TYPE
 add QUEUER_ARGS
+add QUEUER_CRONJOB_ENABLE	# NOT bool!
+add QUEUER_CRONJOB_REPLICAS int
+add QUEUER_INITIAL_REPLICAS int
 add QUEUER_S3_ACCESS_KEY_ID	# private
 add QUEUER_S3_REGION		# private
 add QUEUER_S3_SECRET_ACCESS_KEY # private
-add QUEUER_TYPE allow-empty
+add QUEUER_TYPE allow-empty	# empty for batch-fetcher
 add PARSER_REPLICAS int
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int

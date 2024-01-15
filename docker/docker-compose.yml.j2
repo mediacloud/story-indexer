@@ -255,14 +255,16 @@ services:
       ARGS: "--type {{pipeline_type}} configure_and_loop"
 
 {% if queuer_type != '' %}
+  # hist-queuer, arch-queuer, rss-queuer
   {{queuer_type}}:
     <<: *worker-service-settings
     deploy:
       <<: *worker-deploy-settings
       labels:
-         swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
-         swarm.cronjob.schedule: "45 0 * * *"
-      replicas: 1
+         swarm.cronjob.enable: "{{queuer_cronjob_enable}}"
+         swarm.cronjob.schedule: "0 3-59/5 * * * *" {# sec min hr DOM mon DOW #}
+         swarm.cronjob.replicas: {{queuer_cronjob_replicas}}
+      replicas: {{queuer_initial_replicas}}
     environment:
       <<: *worker-environment-vars
       RUN: {{queuer_type}}
@@ -270,9 +272,7 @@ services:
       QUEUER_S3_ACCESS_KEY_ID: {{queuer_s3_access_key_id}}
       QUEUER_S3_REGION: {{queuer_s3_region}}
       QUEUER_S3_SECRET_ACCESS_KEY: {{queuer_s3_secret_access_key}}
-
 {% endif %}
-
 {% if pipeline_type == 'batch-fetcher' %}
   # scrapy batch-based fetcher:
   fetcher-worker:
@@ -282,12 +282,12 @@ services:
       labels:
          swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
          swarm.cronjob.schedule: "0 0 * * *"
-         swarm.cronjob.replicas: {{fetcher_replicas}}
-      replicas: {{fetcher_replicas}}
+         swarm.cronjob.replicas: {{fetcher_num_batches}}
+      replicas: {{fetcher_num_batches}}
     environment:
       <<: *worker-environment-vars
       RUN: fetcher
-      ARGS: "{{fetcher_options}} --num-batches={{fetcher_replicas}} --batch-index={{ '{{.Task.Slot}}' }}"
+      ARGS: "{{fetcher_options}} --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
 {% elif pipeline_type == 'historical' %}
   # fetches historical articles from S3, using Stories queued by hist-queuer:
   hist-fetcher:
