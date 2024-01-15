@@ -16,10 +16,9 @@ BASE_STACK_NAME=indexer
 
 # in addition to developer/staging/production deployment types, there
 # are now pipeline types, set by -T for handling ingest of historical
-# or archival data.  They run as separate stacks, with private
+# or archival data.  They run as separate stacks, with their own
 # RabbitMQ servers so the data is not co-mingled, and back-fill can be
-# managed separately.  Within a instance type there is only one ES
-# server/cluster (all roads lead to Rome).
+# managed separately (ie; entirely shut down) at will.
 
 SCRIPT=$0
 SCRIPT_DIR=$(dirname $SCRIPT)
