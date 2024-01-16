@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 7,
-  "iteration": 1704217645649,
+  "iteration": 1705437448728,
   "links": [],
   "panels": [
     {
@@ -27,6 +27,7 @@
         "stats.counters.mc.prod.story-indexer.fetcher.stories.status_success.rate": "green"
       },
       "bars": false,
+      "cacheTimeout": "",
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
@@ -67,7 +68,7 @@
         {
           "refCount": 0,
           "refId": "B",
-          "target": "stats.counters.mc.$realm.story-indexer.fetcher.stories.*.rate",
+          "target": "stats.counters.mc.$realm.story-indexer.*fetcher.stories.*.rate",
           "textEditor": false
         }
       ],
@@ -75,7 +76,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "fetcher HTTP status (stories per second)",
+      "title": "Fetcher status (stories per second)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -157,13 +158,7 @@
         {
           "refCount": 0,
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.name_fetcher-worker",
-          "textEditor": false
-        },
-        {
-          "refCount": 0,
-          "refId": "B",
-          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.name_queue-rss",
+          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.*",
           "textEditor": false
         }
       ],
@@ -171,7 +166,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Fetcher worker containers running",
+      "title": "containers running",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1489,8 +1484,14 @@
       "steppedLine": false,
       "targets": [
         {
+          "refCount": 0,
           "refId": "A",
           "target": "stats.timers.mc.$realm.story-indexer.parser.extract.*.mean"
+        },
+        {
+          "refCount": 0,
+          "refId": "B",
+          "target": "stats.timers.mc.$realm.story-indexer.parser.encoding.mean"
         }
       ],
       "thresholds": [],
@@ -1514,6 +1515,92 @@
       "yaxes": [
         {
           "format": "ms",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "cacheTimeout": "",
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 65
+      },
+      "id": 38,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "stats.counters.mc.$realm.story-indexer.*queuer.stories.*.rate"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Queuer counters (stories/second)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1573,9 +1660,14 @@
             "selected": false,
             "text": "pgulley",
             "value": "pgulley"
+          },
+          {
+            "selected": false,
+            "text": "hist-pbudne",
+            "value": "hist-pbudne"
           }
         ],
-        "query": "prod,staging,pbudne,pgulley",
+        "query": "prod,staging,pbudne,pgulley,hist-pbudne",
         "skipUrlSync": false,
         "type": "custom"
       }
@@ -1602,5 +1694,5 @@
   "timezone": "",
   "title": "story-indexer (all realms)",
   "uid": "qeNJ29WSz",
-  "version": 53
+  "version": 63
 }
