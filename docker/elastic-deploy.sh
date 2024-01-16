@@ -103,22 +103,6 @@ install_es()
     sudo apt-get update && sudo apt-get install elasticsearch
 }
 
-set_network_host() {
-  if [ -z "$NETWORK_HOST" ]; then
-    # Use ifconfig and grep to extract the IP address in the 10.x.x.x range, clusture in the 10.x subnet
-    NETWORK_HOST=$(ifconfig | grep -Eo 'inet (addr:)?(10\.[0-9]*\.[0-9]*\.[0-9]*)' | grep -Eo '(10\.[0-9]*\.[0-9]*\.[0-9]*)')
-
-    if [ -z "$NETWORK_HOST" ]; then
-      echo "Network interface with an IP address in the range 10.x.x.x not found."
-    else
-      echo "Network host: $NETWORK_HOST"
-    fi
-  else
-    # Use the value of NETWORK_HOST provided as an argument
-    echo "Network host: $NETWORK_HOST"
-  fi
-}
-
 start_elasticsearch_service() {
     log "Starting Elasticsearch service on $HOSTNAME"
     sudo systemctl start elasticsearch
@@ -142,41 +126,8 @@ if [ $? -eq 0 ]; then
         log "Error: $DATA_BASE does not exist or is not a directory."
     fi
 
-    if [[ -n "$DISCOVERY_ENDPOINTS" ]]; then
-      HOSTS_CONFIG=("[\"${DISCOVERY_ENDPOINTS//,/\",\"}\"]")
-      echo "discovery.seed_hosts: ${HOSTS_CONFIG}"
-    else
-      echo "DISCOVERY_ENDPOINTS is empty. Please provide discovery endpoints."
-    fi
-
-    DATAPATH=$DATA_BASE/elasticsearch/data
-    LOGPATH=$DATA_BASE/elasticsearch/logs
-
-    # Configure Elasticsearch settings
-    #---------------------------
-    #Backup the current Elasticsearch configuration file
-    mv /etc/elasticsearch/elasticsearch.yml /etc/elasticsearch/elasticsearch.bak
-
-    # Set cluster and machine names - just use hostname for our node.name
-    echo "cluster.name: $CLUSTER_NAME" >> /etc/elasticsearch/elasticsearch.yml
-    echo "node.name: $HOSTNAME" >> /etc/elasticsearch/elasticsearch.yml
-    echo "path.data: $DATAPATH" >> /etc/elasticsearch/elasticsearch.yml
-    echo "path.logs: $LOGPATH" >> /etc/elasticsearch/elasticsearch.yml
-    echo "network.host: $NETWORK_HOST" >> /etc/elasticsearch/elasticsearch.yml
-    echo "discovery.seed_hosts: $HOSTS_CONFIG" >> /etc/elasticsearch/elasticsearch.yml
-
-    # Disable xpack.security features
-    # We're mostly accessing our ES instance withing a local network
-    echo "xpack.security.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
-    echo "xpack.security.enrollment.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
-    echo "xpack.security.http.ssl.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
-    echo "xpack.security.transport.ssl.enabled: false" >> /etc/elasticsearch/elasticsearch.yml
-    # PS:Default transport and http ports are 9300 and 9200
-    #echo "http.port: 9200" >> /etc/elasticsearch/elasticsearch.yml
-    #transport.port: 9300 >> /etc/elasticsearch/elasticsearch.yml
-
-    #Lock memory on startup
-    echo "bootstrap.memory_lock: true" >> /etc/elasticsearch/elasticsearch.yml
+    # Copy the existing config file from /conf/elasticsearch to /etc/elasticsearch
+    cp -f /conf/elasticsearch/elasticsearch.yml /etc/elasticsearch/elasticsearch.yml
 
     ELASTIC_SERVICE_FILE="/usr/lib/systemd/system/elasticsearch.service"
     if [ ! -f "$ELASTIC_SERVICE_FILE" ]; then
@@ -193,16 +144,10 @@ if [ $? -eq 0 ]; then
         echo "Failed to set LimitMEMLOCK in $ELASTIC_SERVICE_FILE"
         return 1
     fi
+
     systemctl daemon-reload
 
-    # Update HEAP Size in this configuration or in upstart service
-    CUSTOM_JVM_OPTIONS_FILE="/etc/elasticsearch/jvm.options.d/mc_jvm.options"
-
-    mkdir -p "$(dirname "$CUSTOM_JVM_OPTIONS_FILE")"
-    # Set the minimum and maximum heap size settings (Xms and Xmx) in the custom jvm.options file
-    echo "-Xms30g" > "$CUSTOM_JVM_OPTIONS_FILE"
-    echo "-Xmx30g" >> "$CUSTOM_JVM_OPTIONS_FILE"
-    echo "Custom JVM options have been set in $CUSTOM_JVM_OPTIONS_FILE"
+    cp -f /conf/elasticsearch/mc_jvm_options /etc/elasticsearch/jvm.options.d/mc_jvm_options
 
 else
   echo "Elasticsearch installation failed. Aborting further setup."

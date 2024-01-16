@@ -76,28 +76,6 @@ discovery.seed_hosts: ["woodward.angwin:9305","bradley.angwin:9305","ramos.angwi
 #
 # For more information, consult the discovery and cluster formation module documentation.
 #
-# ---------------------------------- Various -----------------------------------
-#
-# Allow wildcard deletion of indices:
-#
-#action.destructive_requires_name: false
-
-#----------------------- BEGIN SECURITY AUTO CONFIGURATION -----------------------
-##
-discovery.seed_hosts: ["woodward.angwin:9305","bradley.angwin:9305","ramos.angwin:9305"]
-#
-# Bootstrap the cluster using an initial set of master-eligible nodes:
-#
-#cluster.initial_master_nodes: ["woodward.angwin","bradley.angwin","ramos.angwin"]
-#
-# For more information, consult the discovery and cluster formation module documentation.
-#
-# ---------------------------------- Various -----------------------------------
-#
-# Allow wildcard deletion of indices:
-#
-#action.destructive_requires_name: false
-
 #----------------------- BEGIN SECURITY AUTO CONFIGURATION -----------------------
 #
 #
