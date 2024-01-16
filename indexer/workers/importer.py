@@ -178,11 +178,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 self.incr("stories", labels=[("status", "dups")])
             except RequestError as e:
                 self.incr("stories", labels=[("status", "reqerr")])
-                raise QuarantineException(getattr(e, "message", repr(e)))
+                raise QuarantineException(repr(e))
             except Exception as e:
                 # Capture other exceptions here
                 self.incr("stories", labels=[("status", "failed")])
-                raise QuarantineException(getattr(e, "message", repr(e)))
+                raise
 
             if response and response.get("result") == "created":
                 logger.info(
