@@ -1,0 +1,82 @@
+{
+  "name": "mediacloud_search_template",
+  "index_patterns": "mediacloud_search*",
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "mediacloud-lifecycle-policy",
+      "index.lifecycle.rollover_alias": "mc_search",
+      "number_of_shards": 1,
+      "number_of_replicas": 1
+    },
+    "mappings": {
+      "properties": {
+        "article_title": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword"
+            }
+          }
+        },
+        "canonical_domain": {
+          "type": "keyword"
+        },
+        "full_language": {
+          "type": "keyword"
+        },
+        "indexed_date": {
+          "type": "date"
+        },
+        "language": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword"
+            }
+          }
+        },
+        "normalized_article_title": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword"
+            }
+          }
+        },
+        "normalized_url": {
+          "type": "keyword"
+        },
+        "original_url": {
+          "type": "keyword"
+        },
+        "publication_date": {
+          "type": "date",
+          "ignore_malformed": true
+        },
+        "text_content": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword"
+            }
+          }
+        },
+        "text_extraction": {
+          "type": "keyword"
+        },
+        "text_extraction_method": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "url": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}

@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 
 import pytest
 from elastic_transport import NodeConfig
-from elasticsearch import ConflictError, Elasticsearch
 
+from elasticsearch import ConflictError, Elasticsearch
 from indexer.worker import QuarantineException
 
 # from indexer.elastic import create_elasticsearch_client

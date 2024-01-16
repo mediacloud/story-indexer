@@ -12,8 +12,8 @@ from typing import Any, List, Optional
 from urllib.parse import urlparse
 
 from elastic_transport import NodeConfig, ObjectApiResponse
-from elasticsearch import Elasticsearch
 
+from elasticsearch import Elasticsearch
 from indexer.app import ArgsProtocol
 
 logger = getLogger(__name__)

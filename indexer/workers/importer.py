@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from elastic_transport import NodeConfig, ObjectApiResponse
-from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
+from elasticsearch import Elasticsearch
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StorySender, StoryWorker, run
@@ -74,11 +74,11 @@ class ElasticsearchConnector:
             logger.debug("Index '%s' already exists. Skipping creation." % index_name)
 
     def index(
-        self, id: str, index_name: str, document: Mapping[str, Any]
+        self, id: str, index_name_alias: str, document: Mapping[str, Any]
     ) -> ObjectApiResponse[Any]:
-        self.create_index(index_name)
+        # self.create_index(index_name)
         response: ObjectApiResponse[Any] = self.client.create(
-            index=index_name, id=id, document=document
+            index=index_name_alias, id=id, document=document
         )
         return response
 
@@ -167,11 +167,12 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if data:
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            publication_date = str(data.get("publication_date"))
+            # publication_date = str(data.get("publication_date"))
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
-            target_index = self.index_routing(publication_date)
+            # target_index = self.index_routing(publication_date)
+            target_index = "mc_search"
             try:
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:

@@ -1,0 +1,22 @@
+{
+    "name": "mediacloud-lifecycle-policy",
+    "policy": {
+      "phases": {
+        "hot": {
+          "actions": {
+            "rollover": {
+              "max_age": "30s"
+            }
+          }
+        },
+        "warm": {
+          "min_age": "1m",
+          "actions": {}
+        },
+        "cold": {
+          "min_age": "2m",
+          "actions": {}
+        }
+      }
+    }
+  }
