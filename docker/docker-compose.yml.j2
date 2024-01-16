@@ -51,7 +51,7 @@ x-base-service-settings: &base-service-settings
   environment: &base-environment-vars
     # Log everything in GMT!!!
     TZ: "GMT"
-    ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
+    ELASTICSEARCH_INDEX_NAME_ALIAS: mc_search
 
 {% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
@@ -73,7 +73,6 @@ x-es-service-settings: &es-service-settings
     cluster.name: {{elasticsearch_cluster}}
     discovery.seed_hosts: {{elasticsearch_nodes}}
     network.publish_host: _eth1_
-    node.roles: master,data
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
     discovery.type: single-node
@@ -221,6 +220,13 @@ services:
     environment:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
+      {% if i in [1, 2] %}
+        node.roles: master,data_hot
+      {% elif i in [3, 4] %}
+        node.roles: master,data_warm
+      {% elif i == 5 %}
+        node.roles: master,data cold
+      {% endif %}
     ports:
       {% set port9200mapping = elasticsearch_port_base + i - 1 -%}
       - {{port9200mapping}}:9200
@@ -359,7 +365,7 @@ services:
     ports:
       - {{news_search_ui_port}}:8501
 
-  # run to apply ES ILM
+  # run to apply ILM ES
   elastic-conf:
     <<: *worker-service-settings
     environment:

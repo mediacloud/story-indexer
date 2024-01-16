@@ -11,8 +11,8 @@ from logging import getLogger
 from typing import Any, Dict, List, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
-
 from elasticsearch import Elasticsearch
+
 from indexer.app import App
 from indexer.elastic import ElasticMixin
 
@@ -21,10 +21,6 @@ logger = getLogger("elastic-stats")
 
 class ElasticConf(ElasticMixin, App):
     def main_loop(self) -> None:
-        # maybe:
-        # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
-        # to avoid log message for each GET?
-
         es = self.elasticsearch_client()
         assert es.ping(), "Failed to connect to Elasticsearch"
 

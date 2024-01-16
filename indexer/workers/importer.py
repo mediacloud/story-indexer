@@ -9,74 +9,24 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
-from elastic_transport import NodeConfig, ObjectApiResponse
+from elastic_transport import ObjectApiResponse
+from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
-from elasticsearch import Elasticsearch
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
 from indexer.worker import QuarantineException, StorySender, StoryWorker, run
 
 logger = logging.getLogger(__name__)
 
-shards = int(os.environ.get("ELASTICSEARCH_SHARDS", 1))
-replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 1))
-
-es_settings = {"number_of_shards": shards, "number_of_replicas": replicas}
-
-es_mappings = {
-    "properties": {
-        "original_url": {"type": "keyword"},
-        "url": {"type": "keyword"},
-        "normalized_url": {"type": "keyword"},
-        "canonical_domain": {"type": "keyword"},
-        "publication_date": {"type": "date", "ignore_malformed": True},
-        "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-        "full_language": {"type": "keyword"},
-        "text_extraction": {"type": "keyword"},
-        "article_title": {
-            "type": "text",
-            "fields": {"keyword": {"type": "keyword"}},
-        },
-        "normalized_article_title": {
-            "type": "text",
-            "fields": {"keyword": {"type": "keyword"}},
-        },
-        "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-        "indexed_date": {"type": "date"},
-    }
-}
-
 
 class ElasticsearchConnector:
-    def __init__(
-        self,
-        client: Elasticsearch,
-        mappings: Mapping[str, Any],
-        settings: Mapping[str, Any],
-    ) -> None:
+    def __init__(self, client: Elasticsearch) -> None:
         self.client = client
-        self.mappings = mappings
-        self.settings = settings
-
-    def create_index(self, index_name: str) -> None:
-        if not self.client.indices.exists(index=index_name):
-            if self.mappings and self.settings:
-                self.client.indices.create(
-                    index=index_name,
-                    mappings=self.mappings,
-                    settings=self.settings,
-                )
-            else:
-                self.client.indices.create(index=index_name)
-            logger.info("Index '%s' created successfully." % index_name)
-        else:
-            logger.debug("Index '%s' already exists. Skipping creation." % index_name)
 
     def index(
         self, id: str, index_name_alias: str, document: Mapping[str, Any]
     ) -> ObjectApiResponse[Any]:
-        # self.create_index(index_name)
         response: ObjectApiResponse[Any] = self.client.create(
             index=index_name_alias, id=id, document=document
         )
@@ -87,11 +37,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--index-name-prefix",
-            dest="index_name_prefix",
+            "--index-name-alias",
+            dest="index_name_alias",
             type=str,
-            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
-            help="Elasticsearch index name prefix",
+            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS"),
+            help="Elasticsearch index names alias",
         )
 
     def process_args(self) -> None:
@@ -99,41 +49,13 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        index_name_prefix = self.args.index_name_prefix
-        if index_name_prefix is None:
-            logger.fatal("need --index-name-prefix defined")
+        index_name_alias = self.args.index_name_alias
+        if index_name_alias is None:
+            logger.fatal("need --index-name-alias defined")
             sys.exit(1)
-        self.index_name_prefix = index_name_prefix
+        self.index_name_alias = index_name_alias
 
-        self.connector = ElasticsearchConnector(
-            self.elasticsearch_client(),
-            mappings=es_mappings,
-            settings=es_settings,
-        )
-
-    def index_routing(self, publication_date_str: Optional[str]) -> str:
-        """
-        determine the routing index bashed on publication year
-        """
-        year = -1
-        if publication_date_str:
-            try:
-                pub_date = datetime.strptime(publication_date_str, "%Y-%m-%d")
-                year = pub_date.year
-                # check for exceptions of future dates just in case gets past mcmetadata
-                if pub_date > datetime.now() + timedelta(days=90):
-                    year = -1
-            except ValueError as e:
-                logger.warning("Error parsing date: '%s" % str(e))
-        index_name_prefix = self.index_name_prefix
-        if year >= 2021:
-            routing_index = f"{index_name_prefix}_{year}"
-        elif 2008 <= year <= 2020:
-            routing_index = f"{index_name_prefix}_older"
-        else:
-            routing_index = f"{index_name_prefix}_other"
-
-        return routing_index
+        self.connector = ElasticsearchConnector(self.elasticsearch_client())
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -172,7 +94,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
             # target_index = self.index_routing(publication_date)
-            target_index = "mc_search"
+            target_index = self.index_name_alias
             try:
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:
