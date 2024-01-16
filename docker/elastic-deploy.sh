@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Script Parameters
+#Default Script Parameters
 CLUSTER_NAME="mc_elasticsearch"
 ES_VERSION="8.x"
 DISCOVERY_ENDPOINTS="localhost"
@@ -13,8 +13,10 @@ help()
     echo "This script installs Elasticsearch cluster on Ubuntu"
     echo "Parameters:"
     echo "-n elasticsearch cluster name"
-    echo "-d static discovery endpoints"
+    echo "-d static discovery endpoints (comma-separated host:port or host)"
     echo "-v elasticsearch version"
+    echo "-w network host"
+    echo "-b data base"
     echo "-h view this help content"
 }
 
@@ -42,6 +44,12 @@ while getopts :n:d:v:h optname; do
       ;;
     v) #elasticsearch version number
       ES_VERSION=${OPTARG}
+      ;;
+    w) #set network host
+      NETWORK_HOST=${OPTARG}
+      ;;
+    b) #set data base
+      DATA_BASE=${OPTARG}
       ;;
     h) #show help
       help
@@ -96,16 +104,20 @@ install_es()
 }
 
 set_network_host() {
-  # Use ifconfig and grep to extract the IP address in the 10.x.x.x range
-  NETWORK_HOST=$(ifconfig | grep -Eo 'inet (addr:)?(10\.[0-9]*\.[0-9]*\.[0-9]*)' | grep -Eo '(10\.[0-9]*\.[0-9]*\.[0-9]*)')
-
   if [ -z "$NETWORK_HOST" ]; then
-    echo "Network interface with an IP address in the range 10.x.x.x not found."
+    # Use ifconfig and grep to extract the IP address in the 10.x.x.x range, clusture in the 10.x subnet
+    NETWORK_HOST=$(ifconfig | grep -Eo 'inet (addr:)?(10\.[0-9]*\.[0-9]*\.[0-9]*)' | grep -Eo '(10\.[0-9]*\.[0-9]*\.[0-9]*)')
+
+    if [ -z "$NETWORK_HOST" ]; then
+      echo "Network interface with an IP address in the range 10.x.x.x not found."
+    else
+      echo "Network host: $NETWORK_HOST"
+    fi
   else
+    # Use the value of NETWORK_HOST provided as an argument
     echo "Network host: $NETWORK_HOST"
   fi
 }
-
 
 start_elasticsearch_service() {
     log "Starting Elasticsearch service on $HOSTNAME"
