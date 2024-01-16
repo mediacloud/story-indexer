@@ -28,9 +28,9 @@ class ElasticConf(ElasticMixin, App):
         es = self.elasticsearch_client()
         assert es.ping(), "Failed to connect to Elasticsearch"
 
-        index_template_path = "./elasticsearch/conf/create_index_template.json"
-        ilm_policy_path = "./elasticsearch/conf/create_ilm_policy.json"
-        initial_index_template = "./elasticsearch/conf/create_initial_index.json"
+        index_template_path = "./conf/elasticsearch/create_index_template.json"
+        ilm_policy_path = "./conf/elasticsearch/create_ilm_policy.json"
+        initial_index_template = "./conf/elasticsearch/create_initial_index.json"
         # snapshot_policy_path = "/elasticsearch/conf/create_snapshot_policy.json"
 
         index_template_created = self.create_index_template(es, index_template_path)

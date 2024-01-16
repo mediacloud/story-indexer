@@ -359,6 +359,13 @@ services:
     ports:
       - {{news_search_ui_port}}:8501
 
+  # run to apply ES ILM
+  elastic-conf:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-conf
+
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
 {%- if volume_device_prefix %}
