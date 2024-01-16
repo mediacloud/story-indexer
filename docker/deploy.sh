@@ -115,7 +115,7 @@ FETCHER_OPTIONS="--yesterday"
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
 NEWS_SEARCH_IMAGE_REGISTRY=docker.io/
-NEWS_SEARCH_IMAGE_TAG=latest	# XXX replace with version????
+NEWS_SEARCH_IMAGE_TAG=v1.0.0b3
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
@@ -188,6 +188,7 @@ DATE_TIME=$(date -u '+%F-%H-%M-%S')
 TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
+    ARCHIVER_PREFIX=mc
     STACK_NAME=$BASE_STACK_NAME
 
     # rss-fetcher extracts package version and uses that for tag,
@@ -213,6 +214,7 @@ prod)
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
+    ARCHIVER_PREFIX=staging
     STACK_NAME=staging-$BASE_STACK_NAME
 
     PORT_BIAS=10		# ports: prod + 10
@@ -232,6 +234,7 @@ staging)
     SENTRY_ENVIRONMENT="staging"
     ;;
 dev)
+    ARCHIVER_PREFIX=$LOGIN_USER
     # pick up from environment, so multiple dev stacks can run on same h/w cluster!
     # unless developers are running multiple ES instances, bias can be incremented
     # by one for each new developer
@@ -404,6 +407,10 @@ echo '{' > $CONFIG
 
 # keep in alphabetical order to avoid duplicates
 
+# When adding a new variable, you almost certainly need to add an
+# environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
+
+add ARCHIVER_PREFIX
 add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
 add ARCHIVER_S3_SECRET_ACCESS_KEY  # private

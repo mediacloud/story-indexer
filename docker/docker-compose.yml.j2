@@ -282,6 +282,7 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: archiver
+      ARCHIVER_PREFIX: {{archiver_prefix}}
       ARCHIVER_S3_BUCKET: {{archiver_s3_bucket}}
       ARCHIVER_S3_REGION: {{archiver_s3_region}}
       ARCHIVER_S3_ACCESS_KEY_ID: {{archiver_s3_access_key_id}}

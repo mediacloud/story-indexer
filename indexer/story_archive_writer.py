@@ -11,14 +11,17 @@ import datetime as dt
 import json
 import os
 import time
-from io import BytesIO, RawIOBase
+from io import BufferedReader, BytesIO
 from logging import getLogger
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
+from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
 from warcio.warcwriter import WARCWriter
 
-from indexer.story import BaseStory
+from indexer.story import BaseStory, StoryFactory
+
+Story = StoryFactory()
 
 # WARC spec readings (November 2023):
 # * http://bibnum.bnf.fr/WARC/
@@ -169,17 +172,18 @@ class StoryArchiveWriter:
     def __init__(
         self, *, prefix: str, hostname: str, fqdn: str, serial: int, work_dir: str
     ):
-        self.t = time.time()  # time used to generate archive name
+        self.timestamp = time.time()  # time used to generate archive name
         # WARC 1.1 Annex C suggests naming:
         # Prefix-Timestamp-Serial-Crawlhost.warc.gz
         # where Timestamp is "a 14-digit GMT time-stamp"
-        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.t))
+        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.timestamp))
         self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
-        self.path = os.path.join(work_dir, self.filename)
-        self.file = open(self.path, "wb")
+        self.full_path = os.path.join(work_dir, self.filename)
+        self.temp_path = f"{self.full_path}.tmp"
+        self._file = open(self.temp_path, "wb")
         self.size = -1
 
-        self.writer = WARCWriter(self.file, gzip=True, warc_version=WARC_VERSION)
+        self.writer = WARCWriter(self._file, gzip=True, warc_version=WARC_VERSION)
 
         # write initial "warcinfo" record:
         info = {
@@ -195,9 +199,16 @@ class StoryArchiveWriter:
             self.writer.create_warcinfo_record(self.filename, info)
         )
 
-    def write_story(self, story: BaseStory) -> bool:
+    def write_story(
+        self,
+        story: BaseStory,
+        extra_metadata: Optional[Dict[str, Any]] = {},
+        raise_errors: bool = True,
+    ) -> bool:
         """
         Append a Story to the archive
+
+        extra_metadata is for qutil dump_archives command to save rabbitmq headers
         """
         # started from https://pypi.org/project/warcio/#description
         # "Manual/Advanced WARC Writing"
@@ -212,16 +223,17 @@ class StoryArchiveWriter:
         rhtml = story.raw_html()
 
         original_url = cmd.original_url or re.link
-        url = hmd.final_url or cmd.url or original_url
-        html = rhtml.html
+        url = hmd.final_url or cmd.url or original_url or ""
+        html = rhtml.html or b""
 
-        logger.debug("write_story %s %s %d bytes", original_url, url, len(html or ""))
+        logger.debug("write_story %s %s %d bytes", original_url, url, len(html))
 
-        if not url:
-            raise ArchiveStoryError("no-url")  # NOTE! used as counter!
+        if raise_errors:
+            if not url:
+                raise ArchiveStoryError("no-url")  # NOTE! used as counter!
 
-        if html is None or not html:  # explicit None check for mypy
-            raise ArchiveStoryError("no-html")  # NOTE! used as counter!
+            if html is None or not html:  # explicit None check for mypy
+                raise ArchiveStoryError("no-html")  # NOTE! used as counter!
 
         ################ create a WARC "response" with the HTML (no request)
 
@@ -249,9 +261,7 @@ class StoryArchiveWriter:
             ("Content-Length", str(len(html))),
         ]
 
-        hmd_fetch = (
-            hmd.fetch_timestamp or time.time()
-        )  # XXX better default first choices??
+        hmd_fetch = hmd.fetch_timestamp or time.time()
 
         # no fractional seconds in WARC/1.0:
         fetch_date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(hmd_fetch))
@@ -284,6 +294,8 @@ class StoryArchiveWriter:
             "http_metadata": _massage_metadata(hmd.as_dict()),
             "content_metadata": _massage_metadata(cmd.as_dict()),
         }
+        if extra_metadata:
+            metadata_dict.update(extra_metadata)
 
         metadata_bytes = json.dumps(metadata_dict, indent=2).encode()
         metadata_length = len(metadata_bytes)
@@ -308,12 +320,53 @@ class StoryArchiveWriter:
 
         return True  # written
 
-    def finish(self) -> Tuple[str, str, int, float]:
-        """
-        returns filename and full path of finished file
-        """
-        if self.file:
-            self.size = self.file.tell()
-            self.file.close()
+    def finish(self) -> None:
+        if self._file:
+            self.size = self._file.tell()
+            self._file.close()
 
-        return self.filename, self.path, self.size, self.t
+        if os.path.exists(self.temp_path):
+            os.rename(self.temp_path, self.full_path)
+            logger.info("renamed %s", self.full_path)
+
+        # useful data now available:
+        # self.filename: archive file name
+        # self.full_path: full local path of output file
+        # self.size: size of (compressed) output file
+        # self.timestamp: timestamp used to create filename
+
+
+class StoryArchiveReader:
+    def __init__(self, fileobj: BufferedReader):
+        self.iterator = ArchiveIterator(fileobj)
+
+    def read_stories(self) -> Iterator[BaseStory]:
+        # read WARC file:
+        expect = "warcinfo"
+        html = b""
+        for record in self.iterator:
+            if record.rec_type != expect:
+                continue
+            elif expect == "warcinfo":
+                expect = "response"
+            elif expect == "response":
+                html = record.raw_stream.read()
+                expect = "metadata"
+            elif expect == "metadata":
+                j = json.load(record.raw_stream)
+                story = Story()
+                with story.rss_entry() as rss:
+                    for key, value in j["rss_entry"].items():
+                        setattr(rss, key, value)
+                with story.http_metadata() as hmd:
+                    for key, value in j["http_metadata"].items():
+                        setattr(hmd, key, value)
+                with story.content_metadata() as cmd:
+                    for key, value in j["content_metadata"].items():
+                        setattr(cmd, key, value)
+                with story.raw_html() as rh:
+                    rh.html = html
+                    rh.encoding = j["http_metadata"]["encoding"]
+
+                yield story
+                expect = "response"

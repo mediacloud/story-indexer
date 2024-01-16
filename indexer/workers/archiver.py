@@ -11,8 +11,7 @@ from enum import Enum
 from io import BytesIO, RawIOBase
 from typing import List, Optional
 
-import boto3
-
+import indexer.blobstore
 from indexer.story import BaseStory
 from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
 from indexer.worker import BatchStoryWorker, QuarantineException, StorySender, run
@@ -26,23 +25,26 @@ HOSTNAME = socket.gethostname()  # for filenames
 class Archiver(BatchStoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
+
         self.archive: Optional[StoryArchiveWriter] = None
+        self.archive_prefix = os.environ.get("ARCHIVER_PREFIX", "mc")
+        self.blobstore: Optional[indexer.blobstore.BlobStore] = None
+
         self.stories = 0  # stories written to current archive
         self.archives = 0  # number of archives written
 
-        # default to Docker worker volume for debug/test *AND*
-        # production (until archive method/location settled)
+        # default to Docker worker volume so files persist if not uploaded
         self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", "/app/data/archiver")
+
+    def process_args(self) -> None:
+        super().process_args()
+
+        # here so logging configured
         if not os.path.isdir(self.work_dir):
             os.makedirs(self.work_dir)
             logger.info("created work directory %s", self.work_dir)
 
-        self.s3_region = os.environ.get("ARCHIVER_S3_REGION", None)
-        self.s3_bucket = os.environ.get("ARCHIVER_S3_BUCKET", None)
-        self.s3_access_key_id = os.environ.get("ARCHIVER_S3_ACCESS_KEY_ID", None)
-        self.s3_secret_access_key = os.environ.get(
-            "ARCHIVER_S3_SECRET_ACCESS_KEY", None
-        )
+        self.blobstore = indexer.blobstore.blobstore("ARCHIVER")
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -52,20 +54,9 @@ class Archiver(BatchStoryWorker):
         """
 
         if not self.archive:
-            realm = os.getenv("STATSD_REALM", "")
-            if realm == "prod":
-                # WARC prefix defined as
-                # "an abbreviation usually reflective of the project
-                # or crawl that created this file."
-                prefix = "mc"
-            elif realm:
-                prefix = realm  # staging or username
-            else:
-                prefix = "unk"
-
             self.archives += 1
             self.archive = StoryArchiveWriter(
-                prefix=prefix,
+                prefix=self.archive_prefix,
                 hostname=HOSTNAME,
                 fqdn=FQDN,
                 serial=self.archives,
@@ -77,9 +68,22 @@ class Archiver(BatchStoryWorker):
             self.archive.write_story(story)
             self.stories += 1
         except ArchiveStoryError as e:
-            logger.info("caught %r", e)
+            logger.info("write_story: %r", e)
             self.incr("stories.{e}")
             raise QuarantineException(repr(e))  # for now
+
+    def maybe_unlink_local(self, path: str) -> None:
+        # quick-and-dirty change to prevent removal of archives
+        # any non-empty value causes removal:
+        if not os.getenv("ARCHIVER_REMOVE_LOCAL", ""):
+            # XXX maybe rename to prefixed directory structure?
+            return
+
+        try:
+            os.unlink(path)
+            logger.info("removed %s", path)
+        except OSError as e:
+            logger.warning("unlink %s failed: %r", path, e)
 
     def end_of_batch(self) -> None:
         """
@@ -87,60 +91,49 @@ class Archiver(BatchStoryWorker):
         Any exception will cause all stories to be retried.
         """
         logger.info("end of batch: %d stories", self.stories)
+        # could report count of stories as a "timer" (not just for milliseconds!)
         if self.archive:
-            name, path, size, ts = self.archive.finish()
-            logger.info("wrote %d stories to %s (%s bytes)", self.stories, path, size)
+            self.archive.finish()
+            name = self.archive.filename
+            local_path = self.archive.full_path
+            size = self.archive.size
+            timestamp = self.archive.timestamp
+
+            logger.info(
+                "wrote %d stories to %s (%s bytes)", self.stories, local_path, size
+            )
             del self.archive
             self.archive = None
 
-            # report stories as a "timer" (get statistics)
             if self.stories == 0:
                 try:
-                    os.unlink(path)
-                    logger.info("removed empty %s", path)
+                    os.unlink(local_path)
+                    logger.info("removed empty %s", local_path)
                 except OSError as e:
-                    logger.warning("unlink empty %s failed: %r", path, e)
+                    logger.warning("unlink empty %s failed: %r", local_path, e)
                 status = "empty"
-            else:
+            elif self.blobstore:
                 # S3 rate limits requests to
                 #  3500 PUTs/s and 5500 GETs/s per prefix.
-                #  So varying the prefix allows faster retrieval.
-                prefix = time.strftime("%Y/%m/%d/", time.gmtime(ts))
-                s3_key = prefix + name
+                #  Varying the prefix allows faster retrieval.
+                prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
+                remote_path = prefix + name
 
-                if (
-                    self.s3_region
-                    and self.s3_access_key_id
-                    and self.s3_secret_access_key
-                    and self.s3_bucket
-                ):
-                    # NOTE! Not under try: if fails will be retried!!
-                    s3 = boto3.client(
-                        "s3",
-                        region_name=self.s3_region,
-                        aws_access_key_id=self.s3_access_key_id,
-                        aws_secret_access_key=self.s3_secret_access_key,
+                try:
+                    self.blobstore.store_from_local_file(local_path, remote_path)
+                    logger.info(
+                        "uploaded %s to %s %s",
+                        local_path,
+                        self.blobstore.PROVIDER,
+                        remote_path,
                     )
-                    s3.upload_file(path, self.s3_bucket, s3_key)
-                    logger.info("uploaded %s to %s:%s", path, self.s3_bucket, s3_key)
-                    try:
-                        os.unlink(path)
-                    except OSError as e:
-                        logger.info("unlink %s failed: %r", path, e)
+                    self.maybe_unlink_local(local_path)
                     status = "uploaded"
-                else:
-                    logger.error("NO S3 CONFIGURATION!!!")
-                    if self.s3_bucket == "NO_ARCHIVE":
-                        # development: keeps temp files around
-                        status = "noarchive"
-                    else:
-                        try:
-                            os.unlink(path)
-                        except OSError as e:
-                            logger.info("unlink %s failed: %r", path, e)
-
-                        # force retry to avoid loss of stories
-                        raise Exception("no s3 config")
+                except tuple(self.blobstore.EXCEPTIONS) as e:
+                    logger.error("archive %s upload failed: %r", name, e)  # exc_info?
+                    status = "noupload"
+            else:
+                status = "nostore"
         else:
             logger.info("no archive?")  # want "notice" level!
             status = "noarch"
