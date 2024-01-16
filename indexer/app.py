@@ -5,18 +5,24 @@ Base class for command line applications
 import argparse
 import logging
 import os
+import socket
 import sys
 import time
 import urllib.parse
+from logging.handlers import SysLogHandler
 from types import TracebackType
 from typing import Any, List, Optional, Protocol, Tuple
 
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
 
+from indexer import sentry
+
 Labels = List[Tuple[str, Any]]  # optional labels/values for a statistic report
 
+# format for stderr:
 FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
 LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
 LOGGER_LEVEL_SEP = ":"
@@ -131,6 +137,10 @@ class App(ArgsProtocol):
         else:
             level = level.upper()
 
+        # NOTE! Levels applied to root logger, so effect
+        # both stderr handler created by basicConfig.
+        # _COULD_ apply to just stderr *handler* and
+        # send everything to syslog handler.
         logging.basicConfig(format=FORMAT, level=level)
 
         if self.args.logger_level:
@@ -139,7 +149,41 @@ class App(ArgsProtocol):
                 # XXX check logger_name in logging.root.manager.loggerDict??
                 # XXX check level.upper() in LEVELS?
                 logging.getLogger(logger_name).setLevel(level.upper())
+
+        syslog_host = os.environ.get("SYSLOG_HOST", None)
+        syslog_port = os.environ.get("SYSLOG_PORT", None)
+        if syslog_host and syslog_port:
+            # NOTE!! Using unreliable UDP because TCP connection backlog
+            # can cause sends to socket to block!!
+
+            # Could use a different LOCALn facility for different programs
+            # (see note in syslog-sink.py about routing via facility).
+            handler = SysLogHandler(
+                address=(syslog_host, int(syslog_port)),
+                facility=SysLogHandler.LOG_LOCAL0,
+            )
+
+            # additional items available to format string:
+            defaults = {
+                "hostname": socket.gethostname(),  # without domain
+                "app": self.process_name,
+            }
+            # look like syslog messages (except date format),
+            # adds levelname; does NOT include logger name, or pid:
+            fmt = "%(asctime)s %(hostname)s %(app)s %(levelname)s: %(message)s"
+
+            # Might like default datefmt includes milliseconds
+            # (which aren't otherwise available)
+            formatter = logging.Formatter(fmt=fmt, defaults=defaults)
+            handler.setFormatter(formatter)
+
+            # add handler to root logger
+            root_logger = logging.getLogger()
+            root_logger.addHandler(handler)
+
         ################ logging now enabled
+
+        # end process_args
 
     ################ stats reporting
 
@@ -275,6 +319,7 @@ class App(ArgsProtocol):
         self.args = ap.parse_args()
         self.process_args()
         self._stats_init()
+        sentry.init()
 
         with self.timer("main_loop"):  # also serves as restart count
             try:

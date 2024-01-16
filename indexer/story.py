@@ -137,7 +137,7 @@ class RawHTML(StoryData):
             if self.encoding is None:
                 self.guess_encoding()
             assert isinstance(self.encoding, str)
-            return self.html.decode(self.encoding)
+            return self.html.decode(self.encoding, errors="replace")
 
 
 RAW_HTML = class_to_member_name(RawHTML)

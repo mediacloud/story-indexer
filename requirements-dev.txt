@@ -17,15 +17,15 @@ beautifulsoup4==4.12.2
     #   goose3
     #   mediacloud-metadata
     #   newspaper3k
-boilerpy3==1.0.6
+boilerpy3==1.0.7
     # via mediacloud-metadata
-boto3==1.28.69
+boto3==1.28.85
     # via story-indexer (pyproject.toml)
-botocore==1.31.69
+botocore==1.31.85
     # via
     #   boto3
     #   s3transfer
-certifi==2023.7.22
+certifi==2023.11.17
     # via
     #   elastic-transport
     #   requests
@@ -36,18 +36,18 @@ cfgv==3.4.0
     # via pre-commit
 chardet==5.2.0
     # via readability-lxml
-charset-normalizer==3.3.1
+charset-normalizer==3.3.2
     # via
     #   htmldate
     #   requests
     #   trafilatura
 click==8.1.7
     # via nltk
-constantly==15.1.0
+constantly==23.10.4
     # via twisted
-courlan==0.9.4
+courlan==0.9.5
     # via trafilatura
-cryptography==41.0.5
+cryptography==41.0.7
     # via
     #   pyopenssl
     #   scrapy
@@ -59,7 +59,7 @@ cssselect==1.2.0
     #   parsel
     #   readability-lxml
     #   scrapy
-dateparser==1.1.8
+dateparser==1.2.0
     # via
     #   htmldate
     #   mediacloud-metadata
@@ -67,11 +67,11 @@ distlib==0.3.7
     # via virtualenv
 docker==6.1.3
     # via story-indexer (pyproject.toml)
-elastic-transport==8.4.1
+elastic-transport==8.10.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
-exceptiongroup==1.1.3
+exceptiongroup==1.2.0
     # via pytest
 faust-cchardet==2.1.19
     # via mediacloud-metadata
@@ -79,7 +79,7 @@ feedfinder2==0.0.4
     # via newspaper3k
 feedparser==6.0.10
     # via newspaper3k
-filelock==3.12.4
+filelock==3.13.1
     # via
     #   tldextract
     #   virtualenv
@@ -87,15 +87,15 @@ furl==2.1.3
     # via mediacloud-metadata
 goose3==3.1.17
     # via mediacloud-metadata
-htmldate==1.4.3
+htmldate==1.6.0
     # via
     #   mediacloud-metadata
     #   trafilatura
 hyperlink==21.0.0
     # via twisted
-identify==2.5.30
+identify==2.5.32
     # via pre-commit
-idna==3.4
+idna==3.6
     # via
     #   hyperlink
     #   requests
@@ -142,7 +142,7 @@ lxml==4.9.3
     #   trafilatura
 markupsafe==2.1.3
     # via jinja2
-mediacloud-metadata==0.9.4
+mediacloud-metadata==0.10.0
     # via story-indexer (pyproject.toml)
 mypy==1.5.1
     # via story-indexer (pyproject.toml)
@@ -154,7 +154,7 @@ nltk==3.8.1
     # via newspaper3k
 nodeenv==1.8.0
     # via pre-commit
-numpy==1.26.1
+numpy==1.26.2
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -174,7 +174,7 @@ pillow==10.1.0
     # via
     #   goose3
     #   newspaper3k
-platformdirs==3.11.0
+platformdirs==4.1.0
     # via virtualenv
 pluggy==1.3.0
     # via pytest
@@ -186,7 +186,7 @@ py3langid==0.2.2
     # via mediacloud-metadata
 pyahocorasick==2.0.0
     # via goose3
-pyasn1==0.5.0
+pyasn1==0.5.1
     # via
     #   pyasn1-modules
     #   service-identity
@@ -196,9 +196,9 @@ pycparser==2.21
     # via cffi
 pydispatcher==2.0.7
     # via scrapy
-pyopenssl==23.2.0
+pyopenssl==23.3.0
     # via scrapy
-pytest==7.4.2
+pytest==7.4.3
     # via story-indexer (pyproject.toml)
 python-dateutil==2.8.2
     # via
@@ -255,6 +255,7 @@ six==1.16.0
     #   requests-file
     #   surt
     #   url-normalize
+    #   warcio
 soupsieve==2.5
     # via beautifulsoup4
 statsd-client==1.0.7
@@ -267,7 +268,7 @@ tinysegmenter==0.3
     # via newspaper3k
 tld==0.13
     # via courlan
-tldextract==3.4.4
+tldextract==5.1.1
     # via
     #   mediacloud-metadata
     #   newspaper3k
@@ -279,16 +280,14 @@ tomli==2.0.1
     #   pytest
 tqdm==4.66.1
     # via nltk
-trafilatura==1.6.1
+trafilatura==1.6.3
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
 types-pika==1.2.0b1
     # via story-indexer (pyproject.toml)
-types-requests==2.31.0.6
+types-requests==2.31.0.10
     # via story-indexer (pyproject.toml)
-types-urllib3==1.26.25.14
-    # via types-requests
 typing-extensions==4.8.0
     # via
     #   mypy
@@ -297,7 +296,7 @@ tzlocal==5.2
     # via dateparser
 url-normalize==1.4.3
     # via mediacloud-metadata
-urllib3==1.26.18
+urllib3==2.0.7
     # via
     #   botocore
     #   courlan
@@ -306,14 +305,17 @@ urllib3==1.26.18
     #   htmldate
     #   requests
     #   trafilatura
-virtualenv==20.24.6
+    #   types-requests
+virtualenv==20.25.0
     # via pre-commit
 w3lib==2.1.2
     # via
     #   itemloaders
     #   parsel
     #   scrapy
-websocket-client==1.6.4
+warcio==1.7.4
+    # via story-indexer (pyproject.toml)
+websocket-client==1.7.0
     # via docker
 zope-interface==6.1
     # via
@@ -321,7 +323,7 @@ zope-interface==6.1
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==68.2.2
+setuptools==69.0.2
     # via
     #   nodeenv
     #   scrapy

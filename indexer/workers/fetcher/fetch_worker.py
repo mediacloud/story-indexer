@@ -7,11 +7,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
+import scrapy.utils.log
 from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
-from indexer.story import BaseStory, StoryFactory, uuid_by_link
-from indexer.worker import QApp
+from indexer.story import BaseStory, StoryFactory
+from indexer.worker import StoryProducer, run
 from indexer.workers.fetcher.batch_spider import BatchSpider
 from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_daily_rss
 
@@ -28,7 +29,7 @@ MAX_FETCHER_MSG_SIZE: int = (
 )
 
 
-class FetchWorker(QApp):
+class FetchWorker(StoryProducer):
     AUTO_CONNECT: bool = False
 
     fetch_date: str
@@ -125,28 +126,29 @@ class FetchWorker(QApp):
         # NB both successes and failures end up here
         http_meta = story.http_metadata()
 
-        assert http_meta.response_code is not None
-
-        if http_meta.response_code == 200:
-            status_label = "success"
+        if http_meta.final_url is None:
+            status_label = "no-url"  # was an assert
+        elif http_meta.response_code is None:
+            status_label = "no-resp"
+        elif http_meta.response_code == 200:
+            if len(story.dump()) > MAX_FETCHER_MSG_SIZE:
+                logger.warn(
+                    f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story.dump())}"
+                )
+                status_label = "oversized"
+            elif any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
+                status_label = "non-news"
+            else:
+                if not hasattr(self, "sender"):
+                    self.qconnect()
+                    self.sender = self.story_sender()
+                self.sender.send_story(story)
+                status_label = "success"
 
         elif http_meta.response_code in (403, 404, 429):
             status_label = f"http-{http_meta.response_code}"
         else:
             status_label = f"http-{http_meta.response_code//100}xx"
-
-        if len(story.dump()) > MAX_FETCHER_MSG_SIZE:
-            logger.warn(
-                f"Story over {MAX_FETCHER_MSG_SIZE} limit: {story.rss_entry().link}, size: {len(story.dump())}"
-            )
-            status_label = "oversized"
-
-        assert http_meta.final_url is not None
-        if any(dom in http_meta.final_url for dom in NON_NEWS_DOMAINS):
-            status_label = "non-news"
-
-        if status_label == "success":
-            self.fetched_stories.append(story)
 
         self.incr("stories", labels=[("status", status_label)])
 
@@ -187,8 +189,17 @@ class FetchWorker(QApp):
 
         logger.info(f"Initialized {len(self.stories_to_fetch)} stories")
 
+        # UGH!! scrapy.utils.log.configure_logging, called from
+        # CrawlerProcess constructor calls
+        # logging.dictConfig(DEFAULT_LOGGING) which closes all
+        # existing handlers (ie; the SysLogHandler), so wack the
+        # config to be "incremental"!!!
+        scrapy.utils.log.DEFAULT_LOGGING["incremental"] = True
+
         # Fetch html as stories
-        process = CrawlerProcess()
+
+        # install_root_handler=False keeps scrapy from installing ANOTHER stderr handler!
+        process = CrawlerProcess(install_root_handler=False)
         logger.info(f"Launching Batch Spider Process for Batch {self.batch_index}")
         process.crawl(BatchSpider, batch=self.stories_to_fetch, cb=self.scrapy_cb)
         process.start()
@@ -197,25 +208,10 @@ class FetchWorker(QApp):
             f"Fetched {len(self.fetched_stories)} stories in batch {self.batch_index}"
         )
 
-        # enqueue stories
-        self.qconnect()
-
-        assert self.connection
-        chan = self.connection.channel()
-
-        for story in self.fetched_stories:
-            http_meta = story.http_metadata()
-
-            assert http_meta.response_code is not None
-
-            if http_meta.response_code == 200:
-                story_dump = story.dump()
-                self.send_message(chan, story_dump)
-
 
 if __name__ == "__main__":
-    app = FetchWorker(
+    run(
+        FetchWorker,
         "fetcher",
         "Reads the rss_fetcher's content, batches it, initializes story objects, fetches a batch, then enqueues it into rabbitmq",
     )
-    app.main()

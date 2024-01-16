@@ -51,6 +51,7 @@ x-base-service-settings: &base-service-settings
   environment: &base-environment-vars
     # Log everything in GMT!!!
     TZ: "GMT"
+    ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
 
 {% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
@@ -109,12 +110,14 @@ x-worker-service-settings: &worker-service-settings
     ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
+    SENTRY_DSN: {{sentry_dsn}}
+    SENTRY_ENVIRONMENT: {{sentry_environment}}
     STATSD_REALM: {{statsd_realm}}
     STATSD_URL: {{statsd_url}}
     STORY_FACTORY: "BaseStory"
-
+    SYSLOG_HOST: {{syslog_sink_container}}
+    SYSLOG_PORT: 5140
   image: {{worker_image_full}}
-
   volumes:
     - worker_data:/app/data/
 
@@ -146,6 +149,19 @@ services:
       replicas: 0
 
     image: {{worker_image_full}}
+
+  {{syslog_sink_container}}:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+      <<: *worker-environment-vars
+      LOG_DIR: /app/data/logs
+      RUN: syslog-sink
+      # gets SYSLOG_PORT via worker-environment-vars
 
   swarm-cronjob:
     <<: *base-service-settings
@@ -240,11 +256,14 @@ services:
 
   parser-worker:
     <<: *worker-service-settings
-    # run multiple replicas?
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: 4
     environment:
       <<: *worker-environment-vars
+      # Run numpy dot operator single threaded:
+      OPENBLAS_NUM_THREADS: 1
       RUN: parser
-      # restrict (numpy/openblas??) threads? w/ OPENBLAS_NUM_THREADS: n??
 
   # PB: if running rabbitmq cluster (process on each ES node) w/ Docker
   # have numbered service instances: importer-workerN,
@@ -255,9 +274,19 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: importer
-      ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+
+  archiver-worker:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: archiver
+      ARCHIVER_PREFIX: {{archiver_prefix}}
+      ARCHIVER_S3_BUCKET: {{archiver_s3_bucket}}
+      ARCHIVER_S3_REGION: {{archiver_s3_region}}
+      ARCHIVER_S3_ACCESS_KEY_ID: {{archiver_s3_access_key_id}}
+      ARCHIVER_S3_SECRET_ACCESS_KEY: {{archiver_s3_secret_access_key}}
 
   ################ stats reporters
 
@@ -290,6 +319,19 @@ services:
       <<: *worker-environment-vars
       RUN: rabbitmq-stats
 
+{% if elasticsearch_snapshot_cronjob_enable == 'true' %}
+  # Elasticsearch Snaphost worker
+  elastic-snapshots:
+    <<: *worker-service-settings
+    labels:
+        swarm.cronjob.enable: "{{elasticsearch_snapshot_cronjob_enable}}"
+        swarm.cronjob.schedule: "0 0 * * *"
+    environment:
+      <<: *worker-environment-vars
+      RUN: elastic-snapshots
+      ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
+{% endif %}
+
   ################ news search api (built elsewhere)
 
   # NOTE! Not building Docker image here (yet)
@@ -317,38 +359,28 @@ services:
     ports:
       - {{news_search_ui_port}}:8501
 
+{% macro define_volume(prefix, suffix='') %}
+  {{prefix}}{{suffix}}:
+{%- if volume_device_prefix %}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{volume_device_prefix}}{{prefix}}{{suffix}}
+{% endif -%}
+{% endmacro -%}
+
 volumes:
-{% if elasticsearch_containers > 0 %}
+{% if elasticsearch_containers > 0 -%}
 {% for i in range(1,elasticsearch_containers+1) %}
-  elasticsearch_data_{{"%02d" % i}}:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}elasticsearch_data_{{"%02d" % i}}
+{{ define_volume('elasticsearch_data',"_%02d" % i) }}
 {%- endfor %}
-  elasticsearch_data_backup:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}elasticsearch_data_backup
-{% endif %}
+{{ define_volume('elasticsearch_data_backup') }}
+{%- endif %}
 {% if rabbitmq_containers > 0 %}
-  rabbitmq_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}rabbitmq
+{{ define_volume('rabbitmq_data') }}
 {% endif %}
-  worker_data:
-    # Neccesary for diskstory, ideally not used:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{volume_device_prefix}}worker_data
+{{ define_volume('worker_data') }}
 
 networks:
   default:
