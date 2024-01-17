@@ -41,9 +41,20 @@ deploy before opening a PR.
 
 Your stack will be named <USERNAME>-indexer.
 
+#### logs
+
 To check the health and logs of specific service within the Swarm
 
     docker service logs <STACK>_process_name
+
+Log files from all containers are collected by the syslog-sink
+container in (container) /app/data/logs/messages.log (log files
+rotated hourly and retained for 14 days).
+
+The logs directory can be found outside docker as
+/var/lib/docker/volumes/<STACK>_worker_data/_data/logs
+
+#### viewing/managing services
 
 To list running services and container replica counts:
 
@@ -53,11 +64,16 @@ or
 
     docker service ls --filter name=<STACK>_
 
-To check that containers are not failing and being restarted,
-after a few minutes check `docker ps` output.
+To check that containers are not failing and being restarted, after a
+few minutes check `docker ps` output; `docker ps -a` will show
+`Exited` for containers that have terminated.
 
 A development deploy will fetch 5000 articles once
 (no restart at midnight GMT)
+
+To scale or stop a single service:
+
+    docker service scale SERVICE=NUMBER
 
 To remove your stack:
 
@@ -165,3 +181,15 @@ are supplied in all environments:
     ./docker/deploy.sh -B prod
 
 _PLB: (maybe make this part of the pre-commit checks? how??)_
+
+## Historical (S3 CSV & HTML) story processing
+
+An independent stack for processing historical data can be launched
+with `deploy.sh -T historical`, and the stack will be prefixed with
+`hist-`.
+
+## Archive (WARC file) story processing
+
+An independent stack for processing historical data can be launched
+with `deploy.sh -T archive`, and the stack will be prefixed with
+`arch-`.
