@@ -14,8 +14,8 @@ import os
 import queue
 import sys
 import time
-from typing import Any, Dict, List, Optional
-from urllib.parse import SplitResult, urlsplit
+from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 
 from mcmetadata.urls import NON_NEWS_DOMAINS
 from pika.adapters.blocking_connection import BlockingChannel

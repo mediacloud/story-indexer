@@ -9,13 +9,10 @@ objects/second, AND to make it so that crashes/interruptions in the
 fetch keep track of what has already been handled.
 """
 
-import argparse
-import csv
 import gzip
 import io
 import logging
 import os
-import sys
 from typing import Any, Dict, Optional
 
 import boto3

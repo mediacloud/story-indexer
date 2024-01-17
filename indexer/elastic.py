@@ -8,10 +8,7 @@ import argparse
 import os
 import sys
 from logging import getLogger
-from typing import Any, List, Optional
-from urllib.parse import urlparse
 
-from elastic_transport import NodeConfig, ObjectApiResponse
 from elasticsearch import Elasticsearch
 
 from indexer.app import AppProtocol

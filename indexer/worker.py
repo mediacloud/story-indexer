@@ -15,12 +15,11 @@ Story-specific things are in storyworker.py
 import argparse
 import logging
 import os
-import pickle
 import queue
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
+from typing import Callable, Dict, NamedTuple, Optional, Tuple, Type
 
 import pika.credentials
 import pika.exceptions
@@ -34,7 +33,7 @@ from pika.connection import URLParameters
 from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
-from indexer.app import App, AppException, run
+from indexer.app import App, AppException
 
 logger = logging.getLogger(__name__)
 

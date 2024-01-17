@@ -4,12 +4,7 @@ Can read from S3, http, and local files.
 Keeps track of files already queued.
 """
 
-import argparse
-import csv
-import io
 import logging
-import os
-import sys
 from typing import BinaryIO
 
 from indexer.app import run

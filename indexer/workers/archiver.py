@@ -2,14 +2,11 @@
 Media Cloud Archiver Worker
 """
 
-import argparse
 import logging
 import os
 import socket
 import time
-from enum import Enum
-from io import BytesIO, RawIOBase
-from typing import List, Optional
+from typing import Optional
 
 import indexer.blobstore
 from indexer.app import run

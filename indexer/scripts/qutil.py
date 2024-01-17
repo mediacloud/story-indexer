@@ -13,12 +13,12 @@ import socket
 import sys
 from logging import getLogger
 from types import FrameType
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Callable, List, Optional, cast
 
 # PyPI
 from pika import BasicProperties
-from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from pika.spec import Basic, Queue
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic
 
 from indexer.story import BaseStory
 from indexer.story_archive_writer import StoryArchiveReader, StoryArchiveWriter

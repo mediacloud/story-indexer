@@ -29,13 +29,10 @@ import random
 import sys
 import tempfile
 import time
-from enum import Enum
 from typing import TYPE_CHECKING, Any, BinaryIO, Generator, List, Optional, cast
 
 import boto3
-import botocore
 import requests
-import urllib3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client

@@ -5,11 +5,9 @@ report Elastic Search stats to statsd
 # Phil, from rabbitmq-stats.py
 # with help from importer
 
-import argparse
-import time
 from collections import Counter
 from logging import getLogger
-from typing import Any, Dict, List, cast
+from typing import Dict, List, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
 

@@ -13,12 +13,10 @@ to be a utility, rather than a library...
 
 import argparse
 import logging
-import os
 import sys
-from typing import Any, Callable, Dict, List, Set, Union, cast
+from typing import Callable, Dict, List, Union, cast
 
 # PyPI
-import pika
 from pika.exchange_type import ExchangeType
 
 # local:

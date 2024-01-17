@@ -10,9 +10,7 @@ NOT an "App" (they all log to this program!)
 
 import logging
 import os
-import re
 import socket
-import sys
 from logging.handlers import SysLogHandler
 from typing import Tuple
 

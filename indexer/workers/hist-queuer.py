@@ -5,17 +5,14 @@ hist-fetcher (S3 fetch latency is too high for a single process to
 achieve S3 request rate limit (5500 requests/second per prefix)
 """
 
-import argparse
 import csv
 import io
 import logging
-import os
-import sys
 from typing import BinaryIO
 
 from indexer.app import run
 from indexer.queuer import Queuer
-from indexer.story import BaseStory, StoryFactory
+from indexer.story import StoryFactory
 
 logger = logging.getLogger(__name__)
 
