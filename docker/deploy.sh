@@ -202,8 +202,9 @@ batch-fetcher)
     QUEUER_TYPE=''
     ;;
 historical)
+    # unless archives disabled, prefix will end with:
     ARCH_SUFFIX=hist$HIST_YEAR
-    IMPORTER_ARGS=--no-output	# no archives (??)
+    #IMPORTER_ARGS=--no-output	# uncomment to disable archives
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
     # maybe require command line option to select file(s)?
@@ -215,7 +216,8 @@ archive)
     PIPE_TYPE_PFX='arch-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=400	# own port range
     # maybe require command line option to select file(s)?
-    QUEUER_FILES=s3://mediacloud-indexer-archive/2023/11/12/mc-20231112015211-1-a332941ae45f.warc.gz
+    #QUEUER_FILES=s3://mediacloud-indexer-archive/2023/11/12/mc-20231112015211-1-a332941ae45f.warc.gz
+    QUEUER_FILES=/app/data/archiver
     QUEUER_TYPE='arch-queuer'	# name of run- script
     ;;
 queue-fetcher)
@@ -275,7 +277,7 @@ prod)
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
-    ARCHIVER_PREFIX=staging
+    ARCHIVER_PREFIX=staging$ARCH_SUFFIX
     STACK_NAME=staging-$BASE_STACK_NAME
 
     PORT_BIAS=10		# ports: prod + 10
@@ -300,7 +302,7 @@ staging)
     VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
     ;;
 dev)
-    ARCHIVER_PREFIX=$LOGIN_USER
+    ARCHIVER_PREFIX=$LOGIN_USER$ARCH_SUFFIX
     # pick up from environment, so multiple dev stacks can run on same h/w cluster!
     # unless developers are running multiple ES instances, bias can be incremented
     # by one for each new developer
@@ -327,6 +329,7 @@ dev)
     VOLUME_DEVICE_PREFIX=
     ;;
 esac
+
 
 # NOTE! in-network containers see native (unmapped) ports,
 # so set environment variable values BEFORE applying PORT_BIAS!!
@@ -567,7 +570,7 @@ add QUEUER_CRONJOB_ENABLE	# NOT bool!
 add QUEUER_CRONJOB_REPLICAS int
 add QUEUER_INITIAL_REPLICAS int
 add QUEUER_S3_ACCESS_KEY_ID	# private
-add QUEUER_S3_REGION		# private
+add QUEUER_S3_REGION allow-empty # private
 add QUEUER_S3_SECRET_ACCESS_KEY # private
 add QUEUER_TYPE allow-empty	# empty for batch-fetcher
 add PARSER_REPLICAS int
