@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 7,
-  "iteration": 1705437448728,
+  "iteration": 1705611080186,
   "links": [],
   "panels": [
     {
@@ -122,7 +122,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "fill": 1,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 9,
@@ -434,8 +434,16 @@
       "steppedLine": false,
       "targets": [
         {
+          "refCount": 0,
           "refId": "A",
-          "target": "stats.counters.mc.$realm.story-indexer.importer.stories.*.rate"
+          "target": "stats.counters.mc.$realm.story-indexer.importer.stories.*.rate",
+          "textEditor": false
+        },
+        {
+          "refCount": 0,
+          "refId": "B",
+          "target": "stats.counters.mc.$realm.story-indexer.importer.imported-stories.*.rate",
+          "textEditor": false
         }
       ],
       "thresholds": [],
@@ -1694,5 +1702,5 @@
   "timezone": "",
   "title": "story-indexer (all realms)",
   "uid": "qeNJ29WSz",
-  "version": 63
+  "version": 66
 }
