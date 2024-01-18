@@ -147,9 +147,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     continue
 
             keys_to_skip = ["is_homepage", "is_shortened"]
+
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
+            # if publication date is none, fallback to rss_fetcher pub_date
+            if data["publication_date"] is None:
+                data["publication_date"] = story.rss_entry().as_dict()["pub_date"]
+
             self.import_story(data)
 
             # pass story along to archiver
@@ -167,7 +172,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if data:
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            publication_date = str(data.get("publication_date"))
+            # We want actual None, not 'None', if pub_date is missing
+            if (pub_date := data.get("publication_date")) is None:
+                publication_date = None
+            else:
+                publication_date = str(pub_date)
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
