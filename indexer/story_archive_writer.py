@@ -11,9 +11,9 @@ import datetime as dt
 import json
 import os
 import time
-from io import BufferedReader, BytesIO
+from io import BytesIO
 from logging import getLogger
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, BinaryIO, Dict, Iterator, Optional, Tuple, Union
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
@@ -337,7 +337,7 @@ class StoryArchiveWriter:
 
 
 class StoryArchiveReader:
-    def __init__(self, fileobj: BufferedReader):
+    def __init__(self, fileobj: BinaryIO):
         self.iterator = ArchiveIterator(fileobj)
 
     def read_stories(self) -> Iterator[BaseStory]:

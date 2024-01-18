@@ -37,9 +37,10 @@ class AppException(RuntimeError):
     """
 
 
-class ArgsProtocol(Protocol):
+class AppProtocol(Protocol):
     """
-    class for "self" in App mixins that declare & access command line args
+    class for "self" in App mixins that declare & access command line args,
+    or want access to stats
     """
 
     args: Optional[argparse.Namespace]
@@ -47,14 +48,31 @@ class ArgsProtocol(Protocol):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         ...
 
+    def process_args(self) -> None:
+        ...
 
-class App(ArgsProtocol):
+    def incr(self, name: str, value: int = 1, labels: Labels = []) -> None:
+        ...
+
+    def gauge(self, name: str, value: float, labels: Labels = []) -> None:
+        ...
+
+    def timing(self, name: str, ms: float, labels: Labels = []) -> None:
+        ...
+
+    def timer(self, name: str) -> "_TimingContext":
+        ...
+
+
+class App(AppProtocol):
     """
     Base class for command line applications (ie; Worker)
     """
 
     def __init__(self, process_name: str, descr: str):
-        self.process_name = process_name
+        # override of process_name allow alternate versions of pipeline
+        # (ie; processing historical data) from different queues
+        self.process_name = os.environ.get("PROCESS_NAME", process_name)
         self.descr = descr
         self.args: Optional[argparse.Namespace] = None  # set by main
         self._statsd: Optional[statsd.StatsdClient] = None
@@ -363,7 +381,7 @@ class _TimingContext:
         self.t0 = -1.0
 
 
-class IntervalMixin(ArgsProtocol):
+class IntervalMixin(AppProtocol):
     """
     Mixin for Apps that report stats at a fixed interval
     """
@@ -389,11 +407,23 @@ class IntervalMixin(ArgsProtocol):
         time.sleep(sleep_sec)
 
 
+def run(klass: type[App], *args: Any, **kw: Any) -> None:
+    """
+    run app process
+    """
+    app = klass(*args, **kw)
+    app.main()
+
+
 if __name__ == "__main__":
 
     class Test(App):
         def main_loop(self) -> None:
-            print("here")
+            # allow testing of --help, --debug, --log-level
+            logger.critical("critical")
+            logger.error("error")
+            logger.warning("warning")
+            logger.info("info")
+            logger.debug("debug")
 
-    t = Test("test", "test of app class")
-    t.main()
+    run(Test, "test", "test of app class")

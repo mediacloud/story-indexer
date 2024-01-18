@@ -4,7 +4,7 @@
 #
 #    pip-compile --allow-unsafe --extra=dev --output-file=requirements-dev.txt --strip-extras pyproject.toml
 #
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   automat
     #   service-identity
@@ -21,14 +21,21 @@ boilerpy3==1.0.7
     # via mediacloud-metadata
 boto3==1.28.85
     # via story-indexer (pyproject.toml)
+boto3-stubs==1.34.13
+    # via
+    #   boto3-stubs
+    #   story-indexer (pyproject.toml)
 botocore==1.31.85
     # via
     #   boto3
     #   s3transfer
+botocore-stubs==1.34.13
+    # via boto3-stubs
 certifi==2023.11.17
     # via
     #   elastic-transport
     #   requests
+    #   sentry-sdk
     #   trafilatura
 cffi==1.16.0
     # via cryptography
@@ -63,11 +70,11 @@ dateparser==1.2.0
     # via
     #   htmldate
     #   mediacloud-metadata
-distlib==0.3.7
+distlib==0.3.8
     # via virtualenv
 docker==6.1.3
     # via story-indexer (pyproject.toml)
-elastic-transport==8.10.0
+elastic-transport==8.11.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
@@ -77,7 +84,7 @@ faust-cchardet==2.1.19
     # via mediacloud-metadata
 feedfinder2==0.0.4
     # via newspaper3k
-feedparser==6.0.10
+feedparser==6.0.11
     # via newspaper3k
 filelock==3.13.1
     # via
@@ -85,15 +92,15 @@ filelock==3.13.1
     #   virtualenv
 furl==2.1.3
     # via mediacloud-metadata
-goose3==3.1.17
+goose3==3.1.18
     # via mediacloud-metadata
-htmldate==1.6.0
+htmldate==1.6.1
     # via
     #   mediacloud-metadata
     #   trafilatura
 hyperlink==21.0.0
     # via twisted
-identify==2.5.32
+identify==2.5.33
     # via pre-commit
 idna==3.6
     # via
@@ -130,7 +137,7 @@ langcodes==3.3.0
     # via courlan
 langdetect==1.0.9
     # via goose3
-lxml==4.9.3
+lxml==4.9.4
     # via
     #   goose3
     #   htmldate
@@ -146,6 +153,8 @@ mediacloud-metadata==0.10.0
     # via story-indexer (pyproject.toml)
 mypy==1.5.1
     # via story-indexer (pyproject.toml)
+mypy-boto3-s3==1.34.0
+    # via boto3-stubs
 mypy-extensions==1.0.0
     # via mypy
 newspaper3k==0.2.8
@@ -154,7 +163,7 @@ nltk==3.8.1
     # via newspaper3k
 nodeenv==1.8.0
     # via pre-commit
-numpy==1.26.2
+numpy==1.26.3
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -170,7 +179,7 @@ parsel==1.8.1
     #   scrapy
 pika==1.3.2
     # via story-indexer (pyproject.toml)
-pillow==10.1.0
+pillow==10.2.0
     # via
     #   goose3
     #   newspaper3k
@@ -198,7 +207,7 @@ pydispatcher==2.0.7
     # via scrapy
 pyopenssl==23.3.0
     # via scrapy
-pytest==7.4.3
+pytest==7.4.4
     # via story-indexer (pyproject.toml)
 python-dateutil==2.8.2
     # via
@@ -219,7 +228,7 @@ rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.1
     # via mediacloud-metadata
-regex==2023.10.3
+regex==2023.12.25
     # via
     #   dateparser
     #   nltk
@@ -238,6 +247,8 @@ requests-file==1.5.1
 s3transfer==0.7.0
     # via boto3
 scrapy==2.10.1
+    # via story-indexer (pyproject.toml)
+sentry-sdk==1.34.0
     # via story-indexer (pyproject.toml)
 service-identity==23.1.0
     # via scrapy
@@ -284,13 +295,19 @@ trafilatura==1.6.3
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
+types-awscrt==0.20.0
+    # via botocore-stubs
 types-pika==1.2.0b1
     # via story-indexer (pyproject.toml)
-types-requests==2.31.0.10
+types-requests==2.31.0.20231231
     # via story-indexer (pyproject.toml)
-typing-extensions==4.8.0
+types-s3transfer==0.10.0
+    # via boto3-stubs
+typing-extensions==4.9.0
     # via
+    #   boto3-stubs
     #   mypy
+    #   mypy-boto3-s3
     #   twisted
 tzlocal==5.2
     # via dateparser
@@ -304,6 +321,7 @@ urllib3==2.0.7
     #   elastic-transport
     #   htmldate
     #   requests
+    #   sentry-sdk
     #   trafilatura
     #   types-requests
 virtualenv==20.25.0
@@ -323,7 +341,7 @@ zope-interface==6.1
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==69.0.2
+setuptools==69.0.3
     # via
     #   nodeenv
     #   scrapy

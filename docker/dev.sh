@@ -5,13 +5,20 @@
 # 1. add it to staging & prod configs too!!!
 # 2. add an "add VARIABLE # private" line to deploy.sh
 # 3. expand {{variable}} in docker-compose.yml.j2
+#	(typically as VARIABLE: {{variable}})
 #
 # PLEASE KEEP IN SORTED ORDER!!!
 #
+# used by archiver.py
 ARCHIVER_S3_ACCESS_KEY_ID=AKxxxxxx
 ARCHIVER_S3_BUCKET=NO_ARCHIVE	# magical: leave temp files in place
-ARCHIVER_S3_REGION=	# MUST be empty to disable S3 / check for "NO_ARCHIVE" bucket
+ARCHIVER_S3_REGION=  # MUST be empty to disable S3 / check for "NO_ARCHIVE" bucket
 ARCHIVER_S3_SECRET_ACCESS_KEY=..........
+#
+# used by {arch,hist,rss}-queuer.py (read only)
+QUEUER_S3_ACCESS_KEY_ID=AKxxxxxx
+QUEUER_S3_REGION=us-east-1
+QUEUER_S3_SECRET_ACCESS_KEY=..........
 #
 # SENTRY only enabled when SENTRY_DSN is non-empty
 SENTRY_DSN=

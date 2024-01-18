@@ -14,6 +14,12 @@
 # indicates application for peaceful coexistence!!
 BASE_STACK_NAME=indexer
 
+# in addition to developer/staging/production deployment types, there
+# are now pipeline types, set by -T for handling ingest of historical
+# or archival data.  They run as separate stacks, with their own
+# RabbitMQ servers so the data is not co-mingled, and back-fill can be
+# managed separately (ie; entirely shut down) at will.
+
 SCRIPT=$0
 SCRIPT_DIR=$(dirname $SCRIPT)
 
@@ -34,6 +40,10 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+# capture command line
+DEPLOYMENT_OPTIONS="$*"
+
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -42,23 +52,32 @@ usage() {
     echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
     echo "  -d      enable debug output (for template parameters)"
     echo "  -h      output this help and exit"
+    echo "  -T TYPE select pipeline type: $PIPELINE_TYPES"
     echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u      allow running as non-root user"
     exit 1
 }
-while getopts B:abdhnu OPT; do
+
+PIPELINE_TYPE=batch-fetcher	# default
+
+# take command line option? used for input and archive output (if created)
+HIST_YEAR=2023
+#HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
+
+while getopts B:abdhinT:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
    B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
+   T) PIPELINE_TYPE=$OPTARG;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
 
-# XXX complain if anything remaining?
+# XXX complain if anything extra on command line?
 
 # may not be needed if user is in right (docker?) group(s)?
 if [ "x$AS_USER" = x -a $(whoami) != root ]; then
@@ -84,8 +103,6 @@ run_as_login_user() {
     fi
 }
 
-#GIT_HASH=$(git rev-parse --short HEAD)
-
 dirty() {
     if [ "x$INDEXER_ALLOW_DIRTY" = x ]; then
 	echo "$*" 1>&2
@@ -108,9 +125,11 @@ ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 
-FETCHER_CRONJOB_ENABLE=true
-FETCHER_NUM_BATCHES=20
-FETCHER_OPTIONS="--yesterday"
+FETCHER_CRONJOB_ENABLE=true	# batch fetcher
+FETCHER_NUM_BATCHES=20		# batch fetcher
+FETCHER_OPTIONS="--yesterday"	# batch fetcher
+
+HIST_FETCHER_REPLICAS=4		# needs tuning
 
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
@@ -118,6 +137,12 @@ NEWS_SEARCH_IMAGE_REGISTRY=docker.io/
 NEWS_SEARCH_IMAGE_TAG=v1.0.0b3
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
+
+PARSER_REPLICAS=4
+
+QUEUER_CRONJOB_ENABLE=true
+QUEUER_CRONJOB_REPLICAS=1
+QUEUER_INITIAL_REPLICAS=0
 
 RABBITMQ_CONTAINERS=1		# integer to allow cluster in staging??
 RABBITMQ_PORT=5672		# native port
@@ -137,16 +162,6 @@ SYSLOG_SINK_CONTAINER=syslog-sink
 WORKER_IMAGE_REGISTRY=localhost:5000/
 # PLB: maybe indexer-common, now that it's used for config & stats reporting?
 WORKER_IMAGE_NAME=indexer-worker
-
-# news-search-api sources in separate repo, by popular opinion,
-# but deploying from our docker-compose file for network access.
-# but not yet/currently building it from there.
-echo looking for news-search-api docker image:
-if ! docker images 2>/dev/null | grep $NEWS_SEARCH_IMAGE_REGISTRY/$NEWS_SEARCH_IMAGE_NAME; then
-    # XXX "docker images" needs docker group or to be run as root
-    echo $NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME docker image not found. 1>&2
-    echo 'run "docker compose build" in news-search-api repo' 1>&2
-fi
 
 # set DEPLOY_TIME, check remotes up to date
 case "$BRANCH" in
@@ -174,6 +189,51 @@ prod|staging)
     ;;
 esac
 
+IMPORTER_ARGS=''
+
+# if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
+# and to PIPELINE_TYPES (above the usage function)!
+
+# PIPE_TYPE_PFX effects stack (and service) name, volume directories, stats realm
+case "$PIPELINE_TYPE" in
+batch-fetcher)
+    PIPE_TYPE_PFX=''
+    PIPE_TYPE_PORT_BIAS=0	# native ports
+    QUEUER_TYPE=''
+    ;;
+historical)
+    ARCH_SUFFIX=hist$HIST_YEAR
+    IMPORTER_ARGS=--no-output	# no archives (??)
+    PIPE_TYPE_PFX='hist-'	# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
+    # maybe require command line option to select file(s)?
+    QUEUER_FILES=s3://mediacloud-database-files/$HIST_YEAR$HIST_FILE_PREFIX
+    QUEUER_TYPE='hist-queuer'	# name of run- script
+    ;;
+archive)
+    IMPORTER_ARGS=--no-output	# no archives!!!
+    PIPE_TYPE_PFX='arch-'	# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=400	# own port range
+    # maybe require command line option to select file(s)?
+    QUEUER_FILES=s3://mediacloud-indexer-archive/2023/11/12/mc-20231112015211-1-a332941ae45f.warc.gz
+    QUEUER_TYPE='arch-queuer'	# name of run- script
+    ;;
+queue-fetcher)
+    PIPE_TYPE_PFX=''
+    PIPE_TYPE_PORT_BIAS=0	# native ports
+    QUEUER_FILES='--days 7'	# check last seven days
+    QUEUER_TYPE='rss-queuer'	# name of run- script
+    ;;
+*)
+    echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2
+    usage
+    ;;
+esac
+
+# prefix stack name, stats realm with pipeline type:
+BASE_STACK_NAME=$PIPE_TYPE_PFX$BASE_STACK_NAME
+STATSD_REALM=$PIPE_TYPE_PFX$STATSD_REALM
+
 # check if in sync with remote
 # (send stderr to /dev/null in case remote branch does not exist)
 run_as_login_user git fetch $REMOTE $BRANCH 2>/dev/null
@@ -188,12 +248,13 @@ DATE_TIME=$(date -u '+%F-%H-%M-%S')
 TAG=$DATE_TIME-$HOSTNAME-$BRANCH
 case $DEPLOY_TYPE in
 prod)
-    ARCHIVER_PREFIX=mc
+    ARCHIVER_PREFIX=mc$ARCH_SUFFIX
+    PORT_BIAS=0
     STACK_NAME=$BASE_STACK_NAME
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-prod
+    TAG=$DATE_TIME-${PIPE_PFX}prod
 
     MULTI_NODE_DEPLOYMENT=1
 
@@ -210,7 +271,7 @@ prod)
     #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/${PIPE_PFX}indexer/
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
@@ -223,15 +284,20 @@ staging)
     ELASTICSEARCH_IMPORTER_REPLICAS=1
     ELASTICSEARCH_IMPORTER_SHARDS=5
 
+    STORY_LIMIT=50000
+
     # don't run daily, fetch 10x more than dev:
     FETCHER_CRONJOB_ENABLE=false
-    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=50000"
-    FETCHER_NUM_BATCHES=10
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
+    FETCHER_NUM_BATCHES=10	# betch fetcher
 
     MULTI_NODE_DEPLOYMENT=1
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-indexer/
+    QUEUER_CRONJOB_ENABLE=false
+    QUEUER_CRONJOB_REPLICAS=0
+    QUEUER_INITIAL_REPLICAS=1
     SENTRY_ENVIRONMENT="staging"
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
     ;;
 dev)
     ARCHIVER_PREFIX=$LOGIN_USER
@@ -244,13 +310,19 @@ dev)
     ELASTICSEARCH_IMPORTER_REPLICAS=0
     ELASTICSEARCH_IMPORTER_SHARDS=2
 
+    STORY_LIMIT=5000
+
+    # batch fetcher:
     # fetch limited articles under development, don't run daily:
     FETCHER_CRONJOB_ENABLE=false
-    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=5000"
+    FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
     FETCHER_NUM_BATCHES=10
 
     MULTI_NODE_DEPLOYMENT=
     NEWS_SEARCH_UI_TITLE="$LOGIN_USER Development $NEWS_SEARCH_UI_TITLE"
+    QUEUER_CRONJOB_ENABLE=false
+    QUEUER_CRONJOB_REPLICAS=0
+    QUEUER_INITIAL_REPLICAS=1
     STACK_NAME=${LOGIN_USER}-$BASE_STACK_NAME
     VOLUME_DEVICE_PREFIX=
     ;;
@@ -259,12 +331,18 @@ esac
 # NOTE! in-network containers see native (unmapped) ports,
 # so set environment variable values BEFORE applying PORT_BIAS!!
 if [ "x$RABBITMQ_CONTAINERS" = x0 ]; then
-    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_HOST!!!" 1>&2
+    # if production switches to using an external (non-docker)
+    # RabbitMQ cluster, set RABBITMQ_VHOST (to "/${PIPELINE_TYPE}" for
+    # anything but batch-fetcher) to give each pipe-type it's own
+    # queue namespace (would want to clear PIPE_TYPE_BIAS for
+    # RABBITMQ_PORT!), and have index.pipeline "configure" make sure
+    # vhost exists.
+    echo "RABBITMQ_CONTAINERS is zero: need RABBITMQ_(V)HOST!!!" 1>&2
     exit 1
 else
     RABBITMQ_HOST=rabbitmq
 fi
-RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT/?connection_attempts=10&retry_delay=5"
+RABBITMQ_URL="amqp://$RABBITMQ_HOST:$RABBITMQ_PORT$RABBITMQ_VHOST/?connection_attempts=10&retry_delay=5"
 
 if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
     ELASTICSEARCH_HOSTS=http://elasticsearch1:$ELASTICSEARCH_PORT_BASE
@@ -273,13 +351,6 @@ if [ "x$ELASTICSEARCH_CONTAINERS" != x0 ]; then
 	ELASTICSEARCH_NODES="$ELASTICSEARCH_NODES,elasticsearch$I"
 	ELASTICSEARCH_HOSTS="$ELASTICSEARCH_HOSTS,http://elasticsearch$I:$(expr $ELASTICSEARCH_PORT_BASE + $I - 1)"
     done
-fi
-
-if [ "x$PORT_BIAS" != x ]; then
-    ELASTICSEARCH_PORT_BASE=$(expr $ELASTICSEARCH_PORT_BASE + $PORT_BIAS)
-    NEWS_SEARCH_API_PORT=$(expr $NEWS_SEARCH_API_PORT + $PORT_BIAS)
-    NEWS_SEARCH_UI_PORT=$(expr $NEWS_SEARCH_UI_PORT + $PORT_BIAS)
-    RABBITMQ_PORT=$(expr $RABBITMQ_PORT + $PORT_BIAS)
 fi
 
 # XXX set all of this above separately for prod/staging/dev?!
@@ -300,17 +371,48 @@ fi
 if [ "x$IS_DIRTY" = x ]; then
     # use git tag for image tag.
     # in development this means old tagged images will pile up until removed
-    WORKER_IMAGE_TAG=$TAG
+    WORKER_IMAGE_TAG=$(echo $TAG | sed 's/[^a-zA-Z0-9_.-]/_/g')
 else
     # _could_ include DATE_TIME, but old images can be easily pruned:
     WORKER_IMAGE_TAG=$LOGIN_USER-dirty
+    # for use with git hash
+    DIRTY=-dirty
 fi
+
+# identification unique to this deployment
+# used as an exchange name to signal pipeline config complete
+# MUST start with mc-configuration- and be less than 256 bytes:
+DEPLOYMENT_ID=mc-configuration-${DATE_TIME}-${STACK_NAME}
+
+# for context comments at top of generated docker-compose.yml:
+DEPLOYMENT_BRANCH=$BRANCH
+DEPLOYMENT_DATE_TIME=$DATE_TIME
+DEPLOYMENT_GIT_HASH=$(git rev-parse HEAD)$DIRTY
+DEPLOYMENT_HOST=$HOSTNAME
+DEPLOYMENT_USER=$LOGIN_USER
 
 NEWS_SEARCH_IMAGE=$NEWS_SEARCH_IMAGE_REGISTRY$NEWS_SEARCH_IMAGE_NAME:$NEWS_SEARCH_IMAGE_TAG
 WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
+
+# construct QUEUER_ARGS for {arch,hist,rss}-queuers
+if [ "x$QUEUER_TYPE" != x ]; then
+    if [ "x$STORY_LIMIT" != x ]; then
+	# pick random sample:
+	QUEUER_ARGS="--force --sample-size $STORY_LIMIT"
+    fi
+    QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
+else
+    QUEUER_ARGS='N/A'
+fi
+
+# calculate exported port numbers using pipeline-type and deployment-type biases:
+ELASTICSEARCH_PORT_BASE_EXPORTED=$(expr $ELASTICSEARCH_PORT_BASE + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_API_PORT_EXPORTED=$(expr $NEWS_SEARCH_API_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+NEWS_SEARCH_UI_PORT_EXPORTED=$(expr $NEWS_SEARCH_UI_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
+RABBITMQ_PORT_EXPORTED=$(expr $RABBITMQ_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
 
 # some commands require docker-compose.yml in the current working directory:
 cd $SCRIPT_DIR
@@ -351,11 +453,22 @@ dev)
     ;;
 esac
 
+
 if [ ! -f $PRIVATE_CONF_FILE ]; then
     echo "FATAL: could not access $PRIVATE_CONF_FILE" 1>&2
     exit 1
 fi
 . $PRIVATE_CONF_FILE
+
+# after reading PRIVATE_CONF_FILE!!
+case $QUEUER_TYPE in
+arch-queuer)
+    # borrow (r/w) key from archiver config for reading archive files
+    QUEUER_S3_ACCESS_KEY_ID=$ARCHIVER_S3_ACCESS_KEY_ID
+    QUEUER_S3_REGION=$ARCHIVER_S3_REGION
+    QUEUER_S3_SECRET_ACCESS_KEY=$ARCHIVER_S3_SECRET_ACCESS_KEY
+    ;;
+esac
 
 # function to add a parameter to JSON CONFIG file
 add() {
@@ -415,6 +528,13 @@ add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
 add ARCHIVER_S3_SECRET_ACCESS_KEY  # private
 add ARCHIVER_S3_ACCESS_KEY_ID	   # private
+add DEPLOYMENT_BRANCH		   # for context
+add DEPLOYMENT_DATE_TIME	   # for context
+add DEPLOYMENT_GIT_HASH		   # for context
+add DEPLOYMENT_HOST		   # for context
+add DEPLOYMENT_ID		   # for RabbitMQ sentinal
+add DEPLOYMENT_OPTIONS allow-empty # for context
+add DEPLOYMENT_USER		   # for context
 add ELASTICSEARCH_CLUSTER
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
@@ -426,18 +546,34 @@ if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     add ELASTICSEARCH_IMAGE
     add ELASTICSEARCH_PLACEMENT_CONSTRAINT
     add ELASTICSEARCH_PORT_BASE int
+    add ELASTICSEARCH_PORT_BASE_EXPORTED int
     add ELASTICSEARCH_NODES
 fi
-add FETCHER_CRONJOB_ENABLE	# NOT bool!
-add FETCHER_NUM_BATCHES int
-add FETCHER_OPTIONS
+add FETCHER_CRONJOB_ENABLE	# batch-fetcher: NOT bool!
+add FETCHER_NUM_BATCHES int	# batch-fetcher
+add FETCHER_OPTIONS		# batch-fetcher (see QUEUER_ARGS)
+add HIST_FETCHER_REPLICAS int
+add IMPORTER_ARGS allow-empty
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
+add NEWS_SEARCH_API_PORT_EXPORTED int
 add NEWS_SEARCH_IMAGE
 add NEWS_SEARCH_UI_PORT int
+add NEWS_SEARCH_UI_PORT_EXPORTED int
 add NEWS_SEARCH_UI_TITLE
+add PIPELINE_TYPE
+add QUEUER_ARGS
+add QUEUER_CRONJOB_ENABLE	# NOT bool!
+add QUEUER_CRONJOB_REPLICAS int
+add QUEUER_INITIAL_REPLICAS int
+add QUEUER_S3_ACCESS_KEY_ID	# private
+add QUEUER_S3_REGION		# private
+add QUEUER_S3_SECRET_ACCESS_KEY # private
+add QUEUER_TYPE allow-empty	# empty for batch-fetcher
+add PARSER_REPLICAS int
 add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
+add RABBITMQ_PORT_EXPORTED int
 add RABBITMQ_URL
 add SENTRY_DSN allow-empty	# private: empty to disable
 add SENTRY_ENVIRONMENT		# private
@@ -498,7 +634,7 @@ fi
 
 if [ "x$BUILD_ONLY" = x ]; then
     echo ''
-    echo -n "Deploy from branch $BRANCH as stack $STACK_NAME? [no] "
+    echo -n "Deploy from branch $BRANCH stack $STACK_NAME ($PIPELINE_TYPE)? [no] "
     read CONFIRM
     case "$CONFIRM" in
     [yY]|[yY][eE][sS]) ;;
@@ -571,7 +707,7 @@ fi
 
 # TEMP OFF (only run if repo not localhost?)
 echo docker compose push:
-docker compose push
+docker compose push --quiet
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo docker compose push failed: $STATUS 1>&2

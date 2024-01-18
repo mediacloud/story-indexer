@@ -4,7 +4,7 @@
 #
 #    pip-compile --allow-unsafe --strip-extras pyproject.toml
 #
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   automat
     #   service-identity
@@ -64,7 +64,7 @@ dateparser==1.2.0
     #   mediacloud-metadata
 docker==6.1.3
     # via story-indexer (pyproject.toml)
-elastic-transport==8.10.0
+elastic-transport==8.11.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
@@ -72,15 +72,15 @@ faust-cchardet==2.1.19
     # via mediacloud-metadata
 feedfinder2==0.0.4
     # via newspaper3k
-feedparser==6.0.10
+feedparser==6.0.11
     # via newspaper3k
 filelock==3.13.1
     # via tldextract
 furl==2.1.3
     # via mediacloud-metadata
-goose3==3.1.17
+goose3==3.1.18
     # via mediacloud-metadata
-htmldate==1.6.0
+htmldate==1.6.1
     # via
     #   mediacloud-metadata
     #   trafilatura
@@ -115,7 +115,7 @@ langcodes==3.3.0
     # via courlan
 langdetect==1.0.9
     # via goose3
-lxml==4.9.3
+lxml==4.9.4
     # via
     #   goose3
     #   htmldate
@@ -131,7 +131,7 @@ newspaper3k==0.2.8
     # via mediacloud-metadata
 nltk==3.8.1
     # via newspaper3k
-numpy==1.26.2
+numpy==1.26.3
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
@@ -146,7 +146,7 @@ parsel==1.8.1
     #   scrapy
 pika==1.3.2
     # via story-indexer (pyproject.toml)
-pillow==10.1.0
+pillow==10.2.0
     # via
     #   goose3
     #   newspaper3k
@@ -185,7 +185,7 @@ rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.1
     # via mediacloud-metadata
-regex==2023.10.3
+regex==2023.12.25
     # via
     #   dateparser
     #   nltk
@@ -248,7 +248,7 @@ trafilatura==1.6.3
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
-typing-extensions==4.8.0
+typing-extensions==4.9.0
     # via twisted
 tzlocal==5.2
     # via dateparser
@@ -279,7 +279,7 @@ zope-interface==6.1
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==69.0.2
+setuptools==69.0.3
     # via
     #   scrapy
     #   supervisor
