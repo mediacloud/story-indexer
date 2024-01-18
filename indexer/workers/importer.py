@@ -164,7 +164,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             response = self.import_story(data)
             if response and self.output_msgs:
                 # pass story along to archiver (unless disabled)
-                self.import_story(data)
+                sender.send_story(story)
 
     def import_story(
         self,
@@ -189,7 +189,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             except RequestError as e:
                 self.incr("stories", labels=[("status", "reqerr")])
                 raise QuarantineException(repr(e))
-            except Exception as e:
+            except Exception:
                 # Capture other exceptions here
                 self.incr("stories", labels=[("status", "failed")])
                 raise
