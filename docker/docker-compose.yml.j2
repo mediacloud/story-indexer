@@ -73,6 +73,7 @@ x-es-service-settings: &es-service-settings
     cluster.name: {{elasticsearch_cluster}}
     discovery.seed_hosts: {{elasticsearch_nodes}}
     network.publish_host: _eth1_
+    node.roles: master,data_content, data_hot
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
     discovery.type: single-node
@@ -220,13 +221,6 @@ services:
     environment:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
-      {% if i in [1, 2] %}
-        node.roles: master,data_hot
-      {% elif i in [3, 4] %}
-        node.roles: master,data_warm
-      {% elif i == 5 %}
-        node.roles: master,data cold
-      {% endif %}
     ports:
       {% set port9200mapping = elasticsearch_port_base + i - 1 -%}
       - {{port9200mapping}}:9200
