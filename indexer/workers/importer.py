@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
-from elastic_transport import NodeConfig, ObjectApiResponse
+from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
@@ -150,11 +150,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
-            self.import_story(data)
-
-            # pass story along to archiver
-            # (have an option to disable, for previously archived data?)
-            sender.send_story(story)
+            response = self.import_story(data)
+            if response:
+                # pass story along to archiver
+                # (have an option to disable, for previously archived data?)
+                sender.send_story(story)
 
     def import_story(
         self,
@@ -176,22 +176,21 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
-
             except RequestError as e:
                 self.incr("stories", labels=[("status", "reqerr")])
-                raise QuarantineException(getattr(e, "message", repr(e)))
+                raise QuarantineException(repr(e))
+            except Exception as e:
+                # Capture other exceptions here
+                self.incr("stories", labels=[("status", "failed")])
+                raise
 
             if response and response.get("result") == "created":
                 logger.info(
                     f"Story has been successfully imported. to index {target_index}"
                 )
                 import_status_label = "success"
-            else:
-                # Log no imported stories
-                logger.info("Story was not imported.")
-                import_status_label = "failed"
+                self.incr("stories", labels=[("status", import_status_label)])
 
-        self.incr("imported-stories", labels=[("status", import_status_label)])
         return response
 
 
