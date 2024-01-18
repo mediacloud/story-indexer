@@ -9,13 +9,15 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
-from elastic_transport import NodeConfig, ObjectApiResponse
+from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
+from indexer.app import run
 from indexer.elastic import ElasticMixin
 from indexer.story import BaseStory
-from indexer.worker import QuarantineException, StorySender, StoryWorker, run
+from indexer.storyapp import StorySender, StoryWorker
+from indexer.worker import QuarantineException
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,13 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
             help="Elasticsearch index name prefix",
         )
+        ap.add_argument(
+            "--no-output",
+            action="store_false",
+            dest="output_msgs",
+            default=True,
+            help="Disable output to archiver",
+        )
 
     def process_args(self) -> None:
         super().process_args()
@@ -110,6 +119,8 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             mappings=es_mappings,
             settings=es_settings,
         )
+
+        self.output_msgs = self.args.output_msgs
 
     def index_routing(self, publication_date_str: Optional[str]) -> str:
         """
@@ -151,15 +162,16 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             data: Mapping[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
+
             # if publication date is none, fallback to rss_fetcher pub_date
             if data["publication_date"] is None:
                 data["publication_date"] = story.rss_entry().as_dict()["pub_date"]
 
-            self.import_story(data)
+            response = self.import_story(data)
+            if response and self.output_msgs:
+                # pass story along to archiver (unless disabled)
+                sender.send_story(story)
 
-            # pass story along to archiver
-            # (have an option to disable, for previously archived data?)
-            sender.send_story(story)
 
     def import_story(
         self,
@@ -185,22 +197,21 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
-
             except RequestError as e:
                 self.incr("stories", labels=[("status", "reqerr")])
-                raise QuarantineException(getattr(e, "message", repr(e)))
+                raise QuarantineException(repr(e))
+            except Exception:
+                # Capture other exceptions here
+                self.incr("stories", labels=[("status", "failed")])
+                raise
 
             if response and response.get("result") == "created":
                 logger.info(
                     f"Story has been successfully imported. to index {target_index}"
                 )
                 import_status_label = "success"
-            else:
-                # Log no imported stories
-                logger.info("Story was not imported.")
-                import_status_label = "failed"
+                self.incr("stories", labels=[("status", import_status_label)])
 
-        self.incr("imported-stories", labels=[("status", import_status_label)])
         return response
 
 

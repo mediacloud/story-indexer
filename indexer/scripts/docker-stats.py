@@ -8,7 +8,7 @@ Must:
 
 import argparse
 from logging import getLogger
-from typing import Any, Dict
+from typing import Dict
 
 import docker.client  # mypy doesn't see from_env in top module
 

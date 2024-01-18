@@ -13,16 +13,17 @@ import socket
 import sys
 from logging import getLogger
 from types import FrameType
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Callable, List, Optional, cast
 
 # PyPI
 from pika import BasicProperties
-from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from pika.spec import Basic, Queue
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic
 
 from indexer.story import BaseStory
 from indexer.story_archive_writer import StoryArchiveReader, StoryArchiveWriter
-from indexer.worker import DEFAULT_ROUTING_KEY, QApp, StorySender
+from indexer.storyapp import StorySender
+from indexer.worker import DEFAULT_ROUTING_KEY, QApp
 
 logger = getLogger("qutil")
 
@@ -61,6 +62,13 @@ class QUtil(QApp):
         self.get_command_func(cmd)()
 
     #### commands (in alphabetical order, docstring is help)
+
+    @command
+    def delete(self) -> None:
+        q = self.get_queue()  # takes command line argument
+        chan = self.get_channel()
+        resp = chan.queue_delete(queue=q)
+        print(resp)
 
     @command
     def dump_archives(self) -> None:
