@@ -184,11 +184,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if data:
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            # We want actual None, not 'None', if pub_date is missing
-            if (pub_date := data.get("publication_date")) is None:
-                publication_date = None
+            # We want actual None, not 'None', if publication_date is missing
+            if ("publication_date" in data):
+                publication_date = str(data["publication_date"])
             else:
-                publication_date = str(pub_date)
+                publication_date = None
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
