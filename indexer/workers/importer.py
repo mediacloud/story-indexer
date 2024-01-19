@@ -184,7 +184,10 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             # We want actual None, not 'None', if publication_date is missing
-            if "publication_date" in data:
+            if "publication_date" in data and data["publication_date"] not in [
+                None,
+                "None",
+            ]:
                 publication_date = str(data["publication_date"])
             else:
                 publication_date = None
