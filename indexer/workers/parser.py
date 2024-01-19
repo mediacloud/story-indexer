@@ -120,7 +120,7 @@ class Parser(StoryWorker):
         if mdd["publication_date"] is not None:
             pub_date = mdd["publication_date"].strftime("%Y-%m-%d")
         else:
-            pub_date = "None"  # XXX change this to None??? Please!!!
+            pub_date = None
         mdd["publication_date"] = pub_date
 
         method = mdd["text_extraction_method"]

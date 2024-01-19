@@ -165,13 +165,12 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             # if publication date is none, fallback to rss_fetcher pub_date
             if data["publication_date"] is None:
-                data["publication_date"] = story.rss_entry().as_dict()["pub_date"]
+                data["publication_date"] = story.rss_entry()["pub_date"]
 
             response = self.import_story(data)
             if response and self.output_msgs:
                 # pass story along to archiver (unless disabled)
                 sender.send_story(story)
-
 
     def import_story(
         self,
@@ -185,7 +184,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             # We want actual None, not 'None', if publication_date is missing
-            if ("publication_date" in data):
+            if "publication_date" in data:
                 publication_date = str(data["publication_date"])
             else:
                 publication_date = None
