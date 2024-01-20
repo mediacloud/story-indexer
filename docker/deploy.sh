@@ -271,7 +271,7 @@ prod)
 
     # rss-fetcher extracts package version and uses that for tag,
     # refusing to deploy if tag already exists.
-    TAG=$DATE_TIME-${PIPE_PFX}prod
+    TAG=$DATE_TIME-${PIPE_TYPE_PFX}prod
 
     MULTI_NODE_DEPLOYMENT=1
 
@@ -288,7 +288,7 @@ prod)
     #ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=true
 
     # for RabbitMQ and worker_data:
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/${PIPE_PFX}indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/${PIPE_TYPE_PFX}indexer/
     SENTRY_ENVIRONMENT="production"
     ;;
 staging)
@@ -314,7 +314,7 @@ staging)
     QUEUER_CRONJOB_REPLICAS=0
     QUEUER_INITIAL_REPLICAS=1
     SENTRY_ENVIRONMENT="staging"
-    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_PFX}indexer/
+    VOLUME_DEVICE_PREFIX=/srv/data/docker/staging-${PIPE_TYPE_PFX}indexer/
     ;;
 dev)
     ARCHIVER_PREFIX=$LOGIN_USER$ARCH_SUFFIX
