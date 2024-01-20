@@ -175,7 +175,7 @@ class Queuer(StoryProducer):
             if self.sender is None:
                 self.sender = self.story_sender()
             self.sender.send_story(story)
-            status = "success"
+            status = "queued"
 
         self.incr_stories(status, url, log_level=level)
 
@@ -384,11 +384,9 @@ class Queuer(StoryProducer):
                 with tracker:
                     f = self.open_file(fname)
                     logger.info("process_file %s", fname)
-                    self.process_file(fname, f)
+                    with self.timer("process_file"):
+                        self.process_file(fname, f)
                 incr_files("success")
-                if self.args and not self.args.loop:
-                    # you CAN eat just one!
-                    sys.exit(0)
             except Exception as e:  # YIKES (reraised)
                 logger.error("%s failed: %r", fname, e)
                 incr_files("failed")
@@ -405,6 +403,21 @@ class Queuer(StoryProducer):
             logger.error("no inputs!")
             sys.exit(1)
 
-        # command line items may include S3 wildcards
+        # command line items may include S3 wildcards, local directories
         for item in self.args.input_files:
             self.maybe_process_files(item)
+        logger.info("end of input files: queued %d stories", self.queued_stories)
+
+
+if __name__ == "__main__":
+    # here via "python -m indexer.queuer" for testing options, path expansion
+    from indexer.app import run
+
+    class TestQueuer(Queuer):
+        AWS_PREFIX = "FOO"
+        HANDLE_GZIP = True
+
+        def process_file(self, fname: str, fobj: BinaryIO) -> None:
+            print("process_file", fname, fobj)
+
+    run(TestQueuer, "queue-rss", "parse and queue rss-fetcher RSS entries")
