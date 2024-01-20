@@ -259,7 +259,6 @@ class QUtil(QApp):
             written += 1
             if written == max:
                 # cancel basic_consume
-                logger.info("wrote %d stories", written)
                 chan.basic_cancel(consumer_tag)
             elif (written % 1000) == 0:
                 # give progress reports
@@ -277,6 +276,7 @@ class QUtil(QApp):
 
         chan.start_consuming()  # enter pika main loop; calls on_message
         flush()  # finish writing any open archive
+        logger.info("dumped %d stories", written)
 
 
 if __name__ == "__main__":
