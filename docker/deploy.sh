@@ -119,6 +119,8 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
+ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers?
+
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
@@ -130,6 +132,8 @@ FETCHER_NUM_BATCHES=20		# batch fetcher
 FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
 HIST_FETCHER_REPLICAS=4		# needs tuning
+
+IMPORTER_REPLICAS=1
 
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
@@ -212,7 +216,18 @@ historical)
     QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
 archive)
+    ARCHIVER_REPLICAS=0		# no archivers
     IMPORTER_ARGS=--no-output	# no archives!!!
+    if [ "x$DEPLOY_TYPE" = xprod ]; then
+	# After ES server downtime, ramos imported 60 stories/second,
+	# with one importer, and 120/sec with two.  Examination of the
+	# week 2023-11-13 thru 2023-11-19 averaged 427K stories/day.
+	# Four importers should be able to load 2023-11-12 thru
+	# 2024-01-26 (10 weeks) in under two days
+	# (approx 2 archive days per hour).
+	IMPORTER_REPLICAS=4
+    fi
+    PARSER_REPLICAS=0		# no parsing required!
     PIPE_TYPE_PFX='arch-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=400	# own port range
     # maybe require command line option to select file(s)?
@@ -527,6 +542,7 @@ echo '{' > $CONFIG
 # environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
 
 add ARCHIVER_PREFIX
+add ARCHIVER_REPLICAS int
 add ARCHIVER_S3_BUCKET		   # private
 add ARCHIVER_S3_REGION allow-empty # private: empty to disable
 add ARCHIVER_S3_SECRET_ACCESS_KEY  # private
@@ -557,6 +573,7 @@ add FETCHER_NUM_BATCHES int	# batch-fetcher
 add FETCHER_OPTIONS		# batch-fetcher (see QUEUER_ARGS)
 add HIST_FETCHER_REPLICAS int
 add IMPORTER_ARGS allow-empty
+add IMPORTER_REPLICAS int
 add NETWORK_NAME
 add NEWS_SEARCH_API_PORT int
 add NEWS_SEARCH_API_PORT_EXPORTED int
