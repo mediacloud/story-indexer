@@ -65,6 +65,7 @@ class QUtil(QApp):
 
     @command
     def delete(self) -> None:
+        """delete queue"""
         q = self.get_queue()  # takes command line argument
         chan = self.get_channel()
         resp = chan.queue_delete(queue=q)
@@ -231,8 +232,10 @@ class QUtil(QApp):
         assert self.args
         max = int(self.args.max or sys.maxsize)
 
+        written = 0
+
         def renew() -> None:
-            signal.alarm(60)
+            signal.alarm(10)
 
         def on_message(
             chan: BlockingChannel,
@@ -240,7 +243,7 @@ class QUtil(QApp):
             properties: BasicProperties,
             body: bytes,
         ) -> None:
-            nonlocal max
+            nonlocal written
 
             tag = method.delivery_tag
             if tag is None:
@@ -253,10 +256,14 @@ class QUtil(QApp):
             writer(body, tag, properties)
             chan.basic_ack(tag)  # discard
 
-            max -= 1
-            if max == 0:
+            written += 1
+            if written == max:
                 # cancel basic_consume
+                logger.info("wrote %d stories", written)
                 chan.basic_cancel(consumer_tag)
+            elif (written % 1000) == 0:
+                # give progress reports
+                logger.info("%d stories written", written)
 
         chan = self.get_channel()
         consumer_tag = chan.basic_consume(queue, on_message)
