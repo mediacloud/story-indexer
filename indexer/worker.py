@@ -367,13 +367,16 @@ class QApp(App):
         self._subscribe()
 
         try:
-            # Timeout value means _running can be set to False and main thread
-            # may have to wait for timeout before this thread wakes up and exits.
-            while self._running and self.connection and self.connection.is_open:
-                # add_callback_threadsafe will wake.
-                # Pika 1.3.2 sources accept None as an argument
-                # (block indefinitely), but types-pika 1.2.0b3 doesn't
-                # reflect that.
+            while True:
+                if not self._running:
+                    logger.info("pika thread: _running False")
+                    break
+                if not (self.connection and self.connection.is_open):
+                    logger.info("pika thread: connection closed")
+                    break
+                # Pika 1.3.2 sources accept None as an argument to block, but
+                # types-pika 1.2.0b3 doesn't reflect that, so sleep 24 hrs.
+                # _stop_pika_thread does _call_in_pika_thread(nop) to wake:
                 self.connection.process_data_events(SECONDS_PER_DAY)
 
         finally:
