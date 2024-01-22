@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 
 import pytest
 from elastic_transport import NodeConfig
-
 from elasticsearch import ConflictError, Elasticsearch
+
 from indexer.worker import QuarantineException
 
 # from indexer.elastic import create_elasticsearch_client
@@ -25,7 +25,7 @@ def set_env() -> None:
     os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
         ["http://localhost:9200", "http://localhost:9201", "http://localhost:9202"]
     )
-    os.environ["ELASTICSEARCH_INDEX_NAME_PREFIX"] = "test_mediacloud_search_text"
+    os.environ["ELASTICSEARCH_INDEX_NAME_ALIAS"] = "test_mediacloud_search"
 
 
 def recreate_indices(client: Elasticsearch, index_name: str) -> None:

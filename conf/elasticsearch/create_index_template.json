@@ -10,72 +10,74 @@
     },
     "mappings": {
       "properties": {
-        "article_title": {
-          "type": "text",
-          "fields": {
-            "keyword": {
+          "article_title": {
+              "type": "text",
+              "fields": {
+                  "keyword": {
+                      "type": "keyword"
+                  }
+              },
+              "fielddata": true
+          },
+          "canonical_domain": {
               "type": "keyword"
-            }
-          }
-        },
-        "canonical_domain": {
-          "type": "keyword"
-        },
-        "full_language": {
-          "type": "keyword"
-        },
-        "indexed_date": {
-          "type": "date"
-        },
-        "language": {
-          "type": "text",
-          "fields": {
-            "keyword": {
+          },
+          "full_language": {
               "type": "keyword"
-            }
-          }
-        },
-        "normalized_article_title": {
-          "type": "text",
-          "fields": {
-            "keyword": {
+          },
+          "indexed_date": {
+              "type": "date"
+          },
+          "language": {
+              "type": "text",
+              "fields": {
+                  "keyword": {
+                      "type": "keyword"
+                  }
+              }
+          },
+          "normalized_article_title": {
+              "type": "text",
+              "fields": {
+                  "keyword": {
+                      "type": "keyword"
+                  }
+              }
+          },
+          "normalized_url": {
               "type": "keyword"
-            }
-          }
-        },
-        "normalized_url": {
-          "type": "keyword"
-        },
-        "original_url": {
-          "type": "keyword"
-        },
-        "publication_date": {
-          "type": "date",
-          "ignore_malformed": true
-        },
-        "text_content": {
-          "type": "text",
-          "fields": {
-            "keyword": {
+          },
+          "original_url": {
               "type": "keyword"
-            }
+          },
+          "publication_date": {
+              "type": "date",
+              "ignore_malformed": true
+          },
+          "text_content": {
+              "type": "text",
+              "fields": {
+                  "keyword": {
+                      "type": "keyword"
+                  }
+              },
+              "fielddata": true
+          },
+          "text_extraction": {
+              "type": "keyword"
+          },
+          "text_extraction_method": {
+              "type": "text",
+              "fields": {
+                  "keyword": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                  }
+              }
+          },
+          "url": {
+              "type": "keyword"
           }
-        },
-        "text_extraction": {
-          "type": "keyword"
-        },
-        "text_extraction_method": {
-          "type": "text",
-          "fields": {
-            "keyword": {
-              "type": "keyword",
-              "ignore_above": 256
-            }
-          }
-        },
-        "url": {
-          "type": "keyword"
-        }
       }
     }
   }
