@@ -7,8 +7,6 @@ Report RabbitMQ stats
 # which uses
 # https://github.com/KristjanTammekivi/rabbitmq-admin
 
-import argparse
-import time
 from logging import getLogger
 from socket import gaierror  # DNS errors
 from typing import Any, Dict

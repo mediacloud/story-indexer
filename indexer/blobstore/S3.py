@@ -29,6 +29,5 @@ class S3Store(indexer.blobstore.BlobStore):
         )
 
     def store_from_local_file(self, local_path: str, remote_path: str) -> None:
-        if self.s3.upload_file(local_path, self.s3_bucket, remote_path):
-            return
-        raise S3Error("upload_file returned False")
+        # mypy says it doesn't return a value:
+        self.s3.upload_file(local_path, self.s3_bucket, remote_path)

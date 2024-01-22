@@ -11,8 +11,9 @@ import scrapy.utils.log
 from mcmetadata.urls import NON_NEWS_DOMAINS
 from scrapy.crawler import CrawlerProcess
 
+from indexer.app import run
 from indexer.story import BaseStory, StoryFactory
-from indexer.worker import StoryProducer, run
+from indexer.storyapp import StoryProducer, StoryWorker
 from indexer.workers.fetcher.batch_spider import BatchSpider
 from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_daily_rss
 
@@ -150,7 +151,7 @@ class FetchWorker(StoryProducer):
         else:
             status_label = f"http-{http_meta.response_code//100}xx"
 
-        self.incr("stories", labels=[("status", status_label)])
+        self.incr_stories(status_label, http_meta.final_url or "")
 
     def main_loop(self) -> None:
         # Fetch and batch rss

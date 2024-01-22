@@ -2,19 +2,19 @@
 Media Cloud Archiver Worker
 """
 
-import argparse
 import logging
 import os
 import socket
 import time
-from enum import Enum
-from io import BytesIO, RawIOBase
-from typing import List, Optional
+from typing import Optional
 
 import indexer.blobstore
+from indexer.app import run
+from indexer.path import DATAROOT
 from indexer.story import BaseStory
 from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
-from indexer.worker import BatchStoryWorker, QuarantineException, StorySender, run
+from indexer.storyapp import BatchStoryWorker, StorySender
+from indexer.worker import QuarantineException
 
 logger = logging.getLogger("indexer.workers.archiver")
 
@@ -34,7 +34,7 @@ class Archiver(BatchStoryWorker):
         self.archives = 0  # number of archives written
 
         # default to Docker worker volume so files persist if not uploaded
-        self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", "/app/data/archiver")
+        self.work_dir = os.environ.get("ARCHIVER_WORK_DIR", DATAROOT() + "archiver")
 
     def process_args(self) -> None:
         super().process_args()

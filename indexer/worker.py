@@ -1,5 +1,9 @@
 """
-Pipeline Worker Definitions
+Pipeline Worker Definitions.
+Written to be a generic utility package.
+Tries to hide Pika/RabbitMQ/AMQP as much as reasonably possible.
+
+Story-specific things are in storyworker.py
 """
 
 # NOTE!!!! This file has been CAREFULLY coded to NOT assume consumers
@@ -8,18 +12,14 @@ Pipeline Worker Definitions
 # * The code DOES assume there is only one Pika connection.
 # * For code processing messages: Pika ops MUST be done from Pika thread
 
-# log.debug calls w/ "move to debug?" comments
-# can be acted upon once the Pika-thread code is trusted.
-
 import argparse
 import logging
 import os
-import pickle
 import queue
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, NamedTuple, Optional
+from typing import Callable, Dict, NamedTuple, Optional, Tuple, Type
 
 import pika.credentials
 import pika.exceptions
@@ -34,10 +34,11 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
 from indexer.app import App, AppException
-from indexer.story import BaseStory
 
 logger = logging.getLogger(__name__)
-ptlogger = logging.getLogger("Pika-thread")  # used for logging from Pika-thread
+
+# for use w/ -L option:
+msglogger = logging.getLogger(__name__ + ".msgs")
 
 DEFAULT_EXCHANGE = ""  # routes to queue named by routing key
 DEFAULT_ROUTING_KEY = "default"
@@ -46,19 +47,21 @@ DEFAULT_ROUTING_KEY = "default"
 # https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
 CONSUMER_TIMEOUT_SECONDS = 30 * 60
 
-# semaphore in the sense of railway signal tower!
-# an exchange rather than a queue to avoid crocks to not monitor it!
-_CONFIGURED_SEMAPHORE_EXCHANGE = "mc-configuration-semaphore"
+# Semaphore in the sense of railway signal tower!
+# An exchange rather than a queue to avoid crocks to not monitor it!
+# deploy.sh puts a unique ID in DEPLOYMENT_ID in docker-compose.yml,
+# so workers will wait until the matching version of pipeline.py has
+# configured things.
+
+DEPLOYMENT_ID = "DEPLOYMENT_ID"
+_CONFIGURED_SEMAPHORE_EXCHANGE = os.environ.get(DEPLOYMENT_ID)
 
 # Media Cloud headers where code examines values:
 RETRIES_HDR = "x-mc-retries"
 EXCEPTION_HDR = "x-mc-what"
 
-# MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
-# before quarantine:
-MAX_RETRIES = 10
-RETRY_DELAY_MINUTES = 60
 MS_PER_MINUTE = 60 * 1000
+SECONDS_PER_DAY = 24 * 60 * 60
 
 
 class QuarantineException(AppException):
@@ -75,7 +78,6 @@ class InputMessage(NamedTuple):
     """
     would prefer _channel, but not allowed for NamedTuple,
     maybe a DataObject would be better?
-    And/or have this inherit from StorySender??
     """
 
     channel: BlockingChannel
@@ -83,27 +85,6 @@ class InputMessage(NamedTuple):
     properties: BasicProperties
     body: bytes
     mtime: float  # time.monotonic() recv time
-
-
-class StorySender:
-    """
-    object to hide channel.
-    Stories must be sent on the channel they came in on,
-    so transmission and ACK of original can be made atomic
-    with tx_commit.
-    """
-
-    def __init__(self, app: "QApp", channel: BlockingChannel):
-        self.app = app
-        self._channel = channel
-
-    def send_story(
-        self,
-        story: BaseStory,
-        exchange: Optional[str] = None,
-        routing_key: str = DEFAULT_ROUTING_KEY,
-    ) -> None:
-        self.app._send_message(self._channel, story.dump(), exchange, routing_key)
 
 
 # NOTE!! base_queue_name depends on the following
@@ -136,6 +117,11 @@ def quarantine_queue_name(procname: str) -> str:
 def delay_queue_name(procname: str) -> str:
     """take process name, return retry delay queue name"""
     return procname + "-delay"
+
+
+def fast_queue_name(procname: str) -> str:
+    """take process name, return fast delay queue name"""
+    return procname + "-fast"
 
 
 def base_queue_name(qname: str) -> str:
@@ -186,7 +172,10 @@ class QApp(App):
     """
     Base class for AMQP/pika based App.
     Producers (processes that have no input queue)
-    should derive from this class
+    should derive from this class.
+
+    BUT, this class knows nothing about Stories.
+    BY DESIGN (see StoryMixin)
     """
 
     # set to False to delay connecting until self.qconnect called
@@ -216,9 +205,6 @@ class QApp(App):
         self.output_exchange_name = output_exchange_name(self.process_name)
         self.delay_queue_name = delay_queue_name(self.process_name)
 
-        # avoid needing to create senders on the fly
-        self.senders: Dict[BlockingChannel, StorySender] = {}
-
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
 
@@ -232,12 +218,6 @@ class QApp(App):
             default=default_url,
             help="override RABBITMQ_URL ({default_url}",
         )
-        ap.add_argument(
-            "--from-quarantine",
-            action="store_true",
-            default=False,
-            help="Take input from quarantine queue",
-        )
 
         if self.PIKA_LOG_DEFAULT is not None:
             logging.getLogger("pika").setLevel(self.PIKA_LOG_DEFAULT)
@@ -250,9 +230,6 @@ class QApp(App):
             logger.fatal("need --rabbitmq-url or RABBITMQ_URL")
             sys.exit(1)
 
-        if self.args.from_quarantine:
-            self.input_queue_name = quarantine_queue_name(self.process_name)
-
         if self.AUTO_CONNECT:
             self.qconnect()
 
@@ -264,6 +241,11 @@ class QApp(App):
         assert self.args and self.args.amqp_url
         url = self.args.amqp_url
         conn = None
+
+        if not _CONFIGURED_SEMAPHORE_EXCHANGE:
+            # allow user testing outside docker
+            logger.warning("%s not set", DEPLOYMENT_ID)
+            return True
 
         for handler in logging.root.handlers:
             handler.addFilter(_pika_message_filter)
@@ -296,6 +278,23 @@ class QApp(App):
 
     def _set_configured(self, chan: BlockingChannel, set_true: bool) -> None:
         """INTERNAL: for use by indexer.pipeline ONLY!"""
+        if not _CONFIGURED_SEMAPHORE_EXCHANGE:
+            # error to run pipeline.py configure command without
+            # a deployment id set in environment.
+            raise Exception(f"{DEPLOYMENT_ID} not set")
+
+        # remove old semaphores.  (deploy on a running stack doesn't
+        # restart RabbitMQ container?  and RabbitMQ outside a
+        # container will keep old semaphores indefinitely)
+        api = self.admin_api()
+        for exchange in api.list_exchanges():
+            name = exchange["name"]
+            if (
+                name.startswith("mc-configuration-")
+                and name != _CONFIGURED_SEMAPHORE_EXCHANGE
+            ):
+                chan.exchange_delete(name)
+
         if set_true:
             chan.exchange_declare(_CONFIGURED_SEMAPHORE_EXCHANGE)
         else:
@@ -355,10 +354,13 @@ class QApp(App):
         """
         Body for Pika-thread.  Processes all Pika I/O events.
 
+        Pika is not thread aware, so once started, the connection
+        is owned by this thread!!!
+
         ALL channel methods MUST be executed via
         self._call_in_pika_thread to run here.
         """
-        ptlogger.info("Pika thread starting")
+        logger.info("Pika thread starting")
 
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
@@ -368,19 +370,28 @@ class QApp(App):
             # Timeout value means _running can be set to False and main thread
             # may have to wait for timeout before this thread wakes up and exits.
             while self._running and self.connection and self.connection.is_open:
-                # process_data_events is called by conn.sleep,
-                # but may return sooner:
-                self.connection.process_data_events(10)
+                # add_callback_threadsafe will wake.
+                # Pika 1.3.2 sources accept None as an argument
+                # (block indefinitely), but types-pika 1.2.0b3 doesn't
+                # reflect that.
+                self.connection.process_data_events(SECONDS_PER_DAY)
+
         finally:
+            # tell _process_messages
+            # (some completed work won't be queued/acked)
+            # XXX race here still possible w/ _call_in_pika_thread?
+            self._running = False
+
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
             if self.connection and self.connection.is_open:
+                logger.info("closing Pika connection")
                 self.connection.close()
             self.connection = None
             self._running = False  # tell _process_messages
 
             # here if _running was set False, connection closed, exception thrown
-            ptlogger.info("Pika thread exiting")
+            logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
         assert self.connection
@@ -391,18 +402,34 @@ class QApp(App):
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()
+        elif not self._pika_thread.is_alive():
+            logger.info("Pika thread not running: %s", cb.__name__)
+            return
+        elif not (self.connection and self.connection.is_open):
+            logger.info("No Pika connection: %s", cb.__name__)
+            return
+        # RACE HERE, but only on shutdown?
 
+        # NOTE! add_callback_threadsafe is documented (in the Pika
+        # 1.3.2 comments) as the ONLY thread-safe connection method!!!
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
         if self._pika_thread:
             if self._pika_thread.is_alive():
                 self._running = False
+
                 # Log message in case Pika thread hangs.
                 logger.info("Waiting for Pika thread to exit")
+
+                # wake up Pika thread:
+                def nop() -> None:
+                    logger.info("nop")
+
+                self._call_in_pika_thread(nop)
+
                 # could issue join with timeout.
                 self._pika_thread.join()
-            self._pika_thread = None
 
     def cleanup(self) -> None:
         super().cleanup()
@@ -437,7 +464,7 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def sender() -> None:
-            ptlogger.debug(
+            logger.debug(
                 "send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data)
             )
             chan.basic_publish(exchange, routing_key, data, properties)
@@ -465,13 +492,40 @@ class QApp(App):
 
 
 class Worker(QApp):
-    """Base class for Workers that consume messages"""
+    """
+    Base class for Workers that consume messages
+    (knows nothing about stories)
+    """
 
+    # MAX_RETRIES * RETRY_DELAY_MINUTES determines how long stories will be retried
+    # before quarantine:
+    MAX_RETRIES = 10
+    RETRY_DELAY_MINUTES = 60
+
+    # exception classes to discard instead of quarantine
+    NO_QUARANTINE: Tuple[Type[Exception], ...] = ()
+
+    # always start Pika thread:
     START_PIKA_THREAD = True
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._message_queue: queue.Queue[InputMessage] = queue.Queue()
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--from-quarantine",
+            action="store_true",
+            default=False,
+            help="Take input from quarantine queue",
+        )
+
+    def process_args(self) -> None:
+        super().process_args()
+        assert self.args
+        if self.args.from_quarantine:
+            self.input_queue_name = quarantine_queue_name(self.process_name)
 
     def main_loop(self) -> None:
         """
@@ -480,6 +534,7 @@ class Worker(QApp):
         """
 
         self._process_messages()
+        sys.exit(1)
 
     def _on_message(
         self,
@@ -494,7 +549,7 @@ class Worker(QApp):
         ack will be done back in Pika thread.
         """
         im = InputMessage(chan, method, properties, body, time.monotonic())
-        ptlogger.info("on_message tag #%s", method.delivery_tag)  # move to debug?
+        msglogger.debug("on_message tag #%s", method.delivery_tag)
         self._message_queue.put(im)
 
     def _subscribe(self) -> None:
@@ -519,25 +574,21 @@ class Worker(QApp):
         set "prefetch" limit: distributes messages among workers
         processes, limits the number of unacked messages queued
         """
+        # double buffered: one to work on, one on deck
         chan.basic_qos(prefetch_count=2)
 
     def _process_messages(self) -> None:
         """
         Blocking loop for running Worker processing code.  Processes
         messages queued by _on_message (called from Pika thread).
-        _COULD_ run more than one thread processing messages, but
-        running multiple instances of the process is easier to see and
-        control.
+        May run in multiple threads!
         """
 
         while self._running:
             im = self._message_queue.get()  # blocking
             self._process_one_message(im)
             self._ack_and_commit(im)
-
-            sys.stdout.flush()  # for redirection, supervisord
-        logger.info("_process_messages exiting")
-        sys.exit(1)  # give error status so docker restarts
+        logger.info("_process_messages returning")
 
     def _process_one_message(self, im: InputMessage) -> bool:
         """
@@ -545,7 +596,7 @@ class Worker(QApp):
         """
         tag = im.method.delivery_tag
         assert tag is not None
-        logger.info("_process_one_message #%s", tag)  # move to debug?
+        msglogger.debug("_process_one_message #%s", tag)
         t0 = time.monotonic()
         # XXX report t0-im.mtime as latency since message queued timing stat?
 
@@ -564,9 +615,7 @@ class Worker(QApp):
         ms = 1000 * (time.monotonic() - t0)
         # NOTE! statsd timers have .count but not .rate
         self.timing("message", ms, [("stat", status)])
-        logger.info(
-            "processed #%s in %.3f ms, status: %s", tag, ms, status
-        )  # move to debug?
+        msglogger.debug("processed #%s in %.3f ms, status: %s", tag, ms, status)
 
         return status == "ok"
 
@@ -588,7 +637,7 @@ class Worker(QApp):
         assert tag is not None
 
         def acker() -> None:
-            ptlogger.info("ack and commit #%s", tag)  # move to debug?
+            msglogger.debug("ack and commit #%s", tag)
 
             im.channel.basic_ack(delivery_tag=tag, multiple=multiple)
 
@@ -653,13 +702,17 @@ class Worker(QApp):
         )
 
     def _retry(self, im: InputMessage, e: Exception) -> bool:
-        # XXX if debugging re-raise exception???
-
+        """
+        returns False if retries exhausted
+        """
         oh = im.properties.headers  # old headers
         if oh:
             retries = oh.get(RETRIES_HDR, 0)
-            if retries >= MAX_RETRIES:
-                self._quarantine(im, e)
+            if retries >= self.MAX_RETRIES:
+                if isinstance(e, self.NO_QUARANTINE):
+                    logger.info("discard %r", e)  # TEMP: change to debug
+                else:
+                    self._quarantine(im, e)
                 return False  # retries exhausted
         else:
             retries = 0
@@ -669,7 +722,7 @@ class Worker(QApp):
 
         logger.info(f"retry #{retries} failed: {headers[EXCEPTION_HDR]}")
 
-        # Queue message to -delay queue, which has no consumers with
+        # Queue message to -delay queue, which has no consumers, with
         # an expiration/TTL; when messages expire, they are routed
         # back to the -in queue via dead-letter-{exchange,routing-key}.
 
@@ -678,7 +731,12 @@ class Worker(QApp):
         #    When setting per-message TTL expired messages can queue
         #    up behind non-expired ones until the latter are consumed
         #    or expired.
-        expiration_ms_str = str(int(RETRY_DELAY_MINUTES * MS_PER_MINUTE))
+        # ie; expiration only happens at head of queue (FIFO), and
+        # all messages must have uniform expiration.
+        #
+        # The alternative, the delayed-message-exchange plugin has many
+        # limitations (no clustering), and is not supported.
+        expiration_ms_str = str(int(self.RETRY_DELAY_MINUTES * MS_PER_MINUTE))
 
         # send to retry delay queue via default exchange
         props = BasicProperties(headers=headers, expiration=expiration_ms_str)
@@ -695,176 +753,4 @@ class Worker(QApp):
         raise NotImplementedError("Worker.process_message not overridden")
 
 
-################################################################
-# classes above this line are independent of Story object
-
-
-class StoryProducer(QApp):
-    """
-    QApp that sends stories
-    """
-
-    def story_sender(self) -> StorySender:
-        """
-        MUST be called after qconnect, before Pika thread running
-        """
-        assert self.connection
-        assert self._pika_thread is None
-        return StorySender(self, self.connection.channel())
-
-
-class StoryWorker(Worker):
-    """
-    Process Stories in Queue Messages
-    """
-
-    def process_message(self, im: InputMessage) -> None:
-        chan = im.channel
-        if chan in self.senders:
-            sender = self.senders[chan]
-        else:
-            sender = self.senders[chan] = StorySender(self, chan)
-
-        # raised exceptions will cause retry; quarantine immediately?
-        story = BaseStory.load(im.body)
-
-        self.process_story(sender, story)
-
-    def process_story(self, sender: StorySender, story: BaseStory) -> None:
-        raise NotImplementedError("StoryWorker.process_story not overridden")
-
-
-class BatchStoryWorker(StoryWorker):
-    """
-    A worker processing batches of stories
-    """
-
-    # Default values: just guesses, should be tuned.
-    # Can be overridden in subclass.
-    BATCH_SECONDS = 15 * 60  # time to wait for full batch
-    BATCH_SIZE = 5000  # max batch size
-    WORK_TIME = 5 * 60  # time to reserve for end_of_batch
-
-    def define_options(self, ap: argparse.ArgumentParser) -> None:
-        super().define_options(ap)
-
-        ap.add_argument(
-            "--batch-size",
-            type=int,
-            default=self.BATCH_SIZE,
-            help=f"set batch size in stories (default {self.BATCH_SIZE})",
-        )
-        ap.add_argument(
-            "--batch-seconds",
-            type=int,
-            default=self.BATCH_SECONDS,
-            help=f"set batch timeout in seconds (default {self.BATCH_SECONDS})",
-        )
-
-    def process_args(self) -> None:
-        super().process_args()
-
-        batch_seconds_max = CONSUMER_TIMEOUT_SECONDS - self.WORK_TIME
-        assert self.args
-        if self.args.batch_seconds > batch_seconds_max:
-            logger.error(
-                "--batch-seconds %d too large (must be <= %d)",
-                self.args.batch_seconds,
-                batch_seconds_max,
-            )
-            sys.exit(1)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
-        assert self.args
-        chan.basic_qos(prefetch_count=self.args.batch_size)
-
-    def _process_messages(self) -> None:
-        """
-        Blocking loop for running Worker processing code on batches.
-        Processes messages queued by _on_message (called from Pika thread).
-        NOTE! Assumes all messages received on same channel!!
-        """
-        assert self.args
-        batch_size = int(self.args.batch_size)
-        batch_seconds = self.args.batch_seconds
-        batch_deadline = 0.0  # deadline for starting batch processing
-        batch_start_time = 0.0
-        msg_number = 1
-        msgs: List[InputMessage] = []
-
-        logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._running:
-            while msg_number <= batch_size:  # msg_number is one-based
-                if msg_number == 1:
-                    logger.info("waiting for first batch message")  # move to debug?
-                    im = self._message_queue.get()  # blocking
-                    batch_start_time = time.monotonic()  # for logging
-
-                    # base on when recieved from channel by Pika thread!!
-                    batch_deadline = im.mtime + batch_seconds
-                else:
-                    try:
-                        timeout = batch_deadline - time.monotonic()
-                        if timeout <= 0:
-                            break  # time is up! break batch loop
-                        logger.info(  # move to debug?
-                            "waiting %.3f seconds for batch message %d",
-                            timeout,
-                            msg_number,
-                        )
-                        im = self._message_queue.get(timeout=timeout)
-                    except queue.Empty:
-                        # exhausted the clock
-                        break  # break batch loop
-
-                if self._process_one_message(im):
-                    # only keep & count if processed ok
-                    msgs.append(im)
-                    msg_number += 1
-            # end of batch loop
-
-            # here with at least one message and time expired,
-            # or a full batch
-
-            logger.info(
-                "collected %d msg(s) in %.3f seconds",
-                len(msgs),
-                time.monotonic() - batch_start_time,
-            )
-            try:
-                with self.timer("batch"):
-                    self.end_of_batch()
-            except Exception as e:
-                # log as error, w/ exc_info=True?
-                logger.info("end_of_batch caught %r", e)
-
-                for im in msgs:
-                    self._retry(im, e)
-                self.incr("batches", labels=[("status", "retry")])
-
-            # assumes all msgs from same channel:
-            last_msg = msgs[-1]
-            assert last_msg
-            self._ack_and_commit(last_msg, multiple=True)
-            msg_number = 1
-            msgs = []
-
-        sys.stdout.flush()  # for redirection, supervisord
-        logger.info("_process_messages exiting")
-        sys.exit(1)  # give error status so docker restarts
-
-    def end_of_batch(self) -> None:
-        raise NotImplementedError("BatchStoryWorker.end_of_batch not overridden")
-
-
-def run(klass: type[App], *args: Any, **kw: Any) -> None:
-    """
-    run app process
-    could, in theory create threads or asyncio tasks.
-    """
-    worker = klass(*args, **kw)
-    worker.main()
+# story-related classes etc moved to storyworker.py

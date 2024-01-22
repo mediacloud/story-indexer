@@ -45,6 +45,16 @@ version: "3.8"
  # (declared inline under foo-service-settings)
  #}
 
+# context:
+# stack_name: {{stack_name}}
+# deployment_branch: {{deployment_branch}}
+# deployment_date_time: {{deployment_date_time}}
+# deployment_git_hash: {{deployment_git_hash}}
+# deployment_host: {{deployment_host}}
+# deployment_options: {{deployment_options}}
+# deployment_user: {{deployment_user}}
+# pipeline_type: {{pipeline_type}}
+
 ################ common settings for all services
 
 x-base-service-settings: &base-service-settings
@@ -90,6 +100,9 @@ x-es-service-settings: &es-service-settings
       hard: -1
 
 # common volume for elasticsearch containers
+# (would be nice to declare default volumes list above,
+# but YAML doesn't have a list merge operator (like <<: does for mappings)
+# see https://github.com/yaml/yaml/issues/48)
 x-es-backup-volume: &es-backup-volume "elasticsearch_data_backup:/var/backups/elasticsearch"
 {% endif %}
 
@@ -107,6 +120,7 @@ x-worker-service-settings: &worker-service-settings
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
+    DEPLOYMENT_ID: {{deployment_id}}
     ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
@@ -195,8 +209,8 @@ services:
     hostname: rabbitmq
     image: rabbitmq:3.11-management-alpine
     ports:
-      - "{{rabbitmq_port}}:5672"
-      - "{{rabbitmq_port+10000}}:15672"
+      - "{{rabbitmq_port_exported}}:{{rabbitmq_port}}"
+      - "{{rabbitmq_port_exported+10000}}:{{rabbitmq_port+10000}}"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 {% endif %}
@@ -222,9 +236,9 @@ services:
       <<: *es-environment-vars
       node.name: elasticsearch{{i}}
     ports:
-      {% set port9200mapping = elasticsearch_port_base + i - 1 -%}
-      - {{port9200mapping}}:9200
-      - {{port9200mapping+100}}:9300
+      {% set port9200mapping = elasticsearch_port_base_exported + i - 1 -%}
+      - {{port9200mapping}}:{{elasticsearch_port_base}}
+      - {{port9200mapping+100}}:{{elasticsearch_port_base+100}}
     volumes:
       - *es-backup-volume
       - elasticsearch_data_{{"%02d" % i}}:/usr/share/elasticsearch/data
@@ -238,8 +252,29 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: configure-pipeline
-      ARGS: "configure_and_loop"
+      ARGS: "--type {{pipeline_type}} configure_and_loop"
 
+{% if queuer_type != '' %}
+  # hist-queuer, arch-queuer, rss-queuer
+  {{queuer_type}}:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      labels:
+         swarm.cronjob.enable: "{{queuer_cronjob_enable}}"
+         swarm.cronjob.schedule: "0 3-59/5 * * * *" {# sec min hr DOM mon DOW #}
+         swarm.cronjob.replicas: {{queuer_cronjob_replicas}}
+      replicas: {{queuer_initial_replicas}}
+    environment:
+      <<: *worker-environment-vars
+      RUN: {{queuer_type}}
+      ARGS: "{{queuer_args}}"
+      QUEUER_S3_ACCESS_KEY_ID: {{queuer_s3_access_key_id}}
+      QUEUER_S3_REGION: {{queuer_s3_region}}
+      QUEUER_S3_SECRET_ACCESS_KEY: {{queuer_s3_secret_access_key}}
+{% endif %}
+{% if pipeline_type == 'batch-fetcher' %}
+  # scrapy batch-based fetcher:
   fetcher-worker:
     <<: *worker-service-settings
     deploy:
@@ -253,27 +288,58 @@ services:
       <<: *worker-environment-vars
       RUN: fetcher
       ARGS: "{{fetcher_options}} --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
+{% elif pipeline_type == 'historical' %}
+  # fetches historical articles from S3, using Stories queued by hist-queuer:
+  hist-fetcher:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: {{hist_fetcher_replicas}}
+    environment:
+      <<: *worker-environment-vars
+      RUN: hist-fetcher
+      QUEUER_S3_ACCESS_KEY_ID: {{queuer_s3_access_key_id}}
+      QUEUER_S3_REGION: {{queuer_s3_region}}
+      QUEUER_S3_SECRET_ACCESS_KEY: {{queuer_s3_secret_access_key}}
+{% elif pipeline_type == 'queue-fetcher' %}
+  # queue-based HTTP fetcher, using Stories queued by rss-queuer:
+  queue-fetcher:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: queue-fetcher
+      # pass ARGS: -Wn based on fetcher_replicas??
+{% elif pipeline_type == 'archive' %}
+   # No fetcher for loading archives (yet, anyway).
+   # arch-queuer reads archives directly and queues stories.
+   # Hopefully, each archive has enough stories to keep
+   # pipeline busy enough not to need parallel fetching.
+{% endif %}
 
   parser-worker:
     <<: *worker-service-settings
     deploy:
       <<: *worker-deploy-settings
-      replicas: 4
+      replicas: {{parser_replicas}}
     environment:
       <<: *worker-environment-vars
-      # Run numpy dot operator single threaded:
+      # Run py3lang/numpy/openblas dot operator single threaded:
       OPENBLAS_NUM_THREADS: 1
       RUN: parser
 
-  # PB: if running rabbitmq cluster (process on each ES node) w/ Docker
-  # have numbered service instances: importer-workerN,
-  # each tied to corresponding storage node?
+  # Have at least one importer-worker running on each storage node
+  # (connecting only to the local ES process)?
+  # If RabbitMQ cluster running (on each storage node)
+  # have the importer connect only to the local RabbitMQ??
   importer-worker:
     <<: *worker-service-settings
     # run multiple replicas? on es nodes??
     environment:
       <<: *worker-environment-vars
       RUN: importer
+      ARGS: {{importer_args}}
       ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
       ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
 
@@ -347,7 +413,7 @@ services:
       TERMAGGRS: top,significant,rare
       TERMFIELDS: article_title,text_content
     ports:
-      - {{news_search_api_port}}:8000
+      - {{news_search_api_port_exported}}:{{news_search_api_port}}
 
   news-search-ui:
     <<: *news-search-service-settings
@@ -357,7 +423,7 @@ services:
       APIURL: http://news-search-api:8000/v1
       TITLE: {{news_search_ui_title}}
     ports:
-      - {{news_search_ui_port}}:8501
+      - {{news_search_ui_port_exported}}:{{news_search_ui_port}}
 
   # run to apply ILM ES
   elastic-conf:
