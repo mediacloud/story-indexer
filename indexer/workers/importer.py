@@ -52,13 +52,6 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             default=True,
             help="Disable output to archiver",
         )
-        ap.add_argument(
-            "--no-output",
-            action="store_false",
-            dest="output_msgs",
-            default=True,
-            help="Disable output to archiver",
-        )
 
     def process_args(self) -> None:
         super().process_args()
@@ -69,9 +62,10 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if index_name_alias is None:
             logger.fatal("need --index-name-alias defined")
             sys.exit(1)
-        self.index_name_alias = index_name_alias
 
+        self.index_name_alias = index_name_alias
         self.connector = ElasticsearchConnector(self.elasticsearch_client())
+        self.output_msgs = self.args.output_msgs
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -81,7 +75,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    logger.error(f"Value for key '{key}' is not provided.")
+                    logger.warning(f"Value for key '{key}' is not provided.")
                     continue
 
             keys_to_skip = ["is_homepage", "is_shortened"]
@@ -92,7 +86,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             # if publication date is none, fallback to rss_fetcher pub_date
             if data["publication_date"] is None:
-                data["publication_date"] = story.rss_entry()["pub_date"]
+                pub_date = story.rss_entry().pub_date
+                if pub_date is not None or pub_date != "":
+                    data = {**data, "publication_date": pub_date}
 
             response = self.import_story(data)
             if response and self.output_msgs:
@@ -111,17 +107,18 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             # We want actual None, not 'None', if publication_date is missing
-            if "publication_date" in data and data["publication_date"] not in [
-                None,
-                "None",
-            ]:
-                publication_date = str(data["publication_date"])
-            else:
-                publication_date = None
+            # if "publication_date" in data and data["publication_date"] not in [
+            #     None,
+            #     "None",
+            # ]:
+            #     publication_date = str(data["publication_date"])
+            # else:
+            #     publication_date = None
+
             # Add the indexed_date with today's date in ISO 8601 format
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
-            # target_index = self.index_routing(publication_date)
+
             target_index = self.index_name_alias
             try:
                 response = self.connector.index(url_hash, target_index, data)

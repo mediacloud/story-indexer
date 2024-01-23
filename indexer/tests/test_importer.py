@@ -1,6 +1,6 @@
 import hashlib
+import json
 import os
-from argparse import Namespace
 from datetime import datetime
 from typing import Any, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
@@ -12,26 +12,15 @@ from elasticsearch import ConflictError, Elasticsearch
 from indexer.worker import QuarantineException
 
 # from indexer.elastic import create_elasticsearch_client
-from indexer.workers.importer import (
-    ElasticsearchConnector,
-    ElasticsearchImporter,
-    es_mappings,
-    es_settings,
-)
+from indexer.workers.importer import ElasticsearchConnector, ElasticsearchImporter
 
 
 @pytest.fixture(scope="class", autouse=True)
 def set_env() -> None:
     os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
-        ["http://localhost:9200", "http://localhost:9201", "http://localhost:9202"]
+        ["http://localhost:9210", "http://localhost:9211", "http://localhost:9212"]
     )
-    os.environ["ELASTICSEARCH_INDEX_NAME_ALIAS"] = "test_mediacloud_search"
-
-
-def recreate_indices(client: Elasticsearch, index_name: str) -> None:
-    if client.indices.exists(index=index_name):
-        client.indices.delete(index=index_name)
-    client.indices.create(index=index_name, mappings=es_mappings, settings=es_settings)
+    os.environ["ELASTICSEARCH_INDEX_NAME_ALIAS"] = "test_mc_search"
 
 
 @pytest.fixture(scope="class")
@@ -40,15 +29,65 @@ def elasticsearch_client() -> Any:
     assert hosts is not None, "ELASTICSEARCH_HOSTS is not set"
     client = Elasticsearch(hosts.split(","))
     assert client.ping(), "Failed to connect to Elasticsearch"
-    index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
-    assert index_name_prefix is not None, "ELASTICSEARCH_INDEX_NAME_PREFIX is not set"
-
-    recreate_indices(client, f"{index_name_prefix}_older")
-
     yield client
 
-    recreate_indices(client, f"{index_name_prefix}_older")
 
+test_index_template: Any = {
+    "name": "test_mediacloud_search_template",
+    "index_patterns": "test_mediacloud_search*",
+    "template": {
+        "settings": {
+            "index.lifecycle.name": "mediacloud-lifecycle-policy",
+            "index.lifecycle.rollover_alias": "mc_search",
+            "number_of_shards": 1,
+            "number_of_replicas": 1,
+        },
+        "mappings": {
+            "properties": {
+                "article_title": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword"}},
+                    "fielddata": True,
+                },
+                "canonical_domain": {"type": "keyword"},
+                "full_language": {"type": "keyword"},
+                "indexed_date": {"type": "date"},
+                "language": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword"}},
+                },
+                "normalized_article_title": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword"}},
+                },
+                "normalized_url": {"type": "keyword"},
+                "original_url": {"type": "keyword"},
+                "publication_date": {"type": "date", "ignore_malformed": True},
+                "text_content": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword"}},
+                    "fielddata": True,
+                },
+                "text_extraction": {"type": "keyword"},
+                "text_extraction_method": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword", "ignore_above": 256}},
+                },
+                "url": {"type": "keyword"},
+            }
+        },
+    },
+}
+
+test_ilm_policy: Any = {
+    "name": "test_mediacloud-lifecycle-policy",
+    "policy": {"phases": {"hot": {"actions": {"rollover": {"max_age": "10m"}}}}},
+}
+
+test_initial_index: Any = {
+    "name": "test_mediacloud_search-000001",
+    "aliases": {"test_mc_search": {"is_write_index": True}},
+}
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
@@ -66,32 +105,51 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
 }
 
 
-class TestElasticsearchConnection:
-    def test_create_index(self, elasticsearch_client: Any) -> None:
-        index_names = list(elasticsearch_client.indices.get_alias().keys())
-        index_name = index_names[0]
-        assert elasticsearch_client.indices.exists(index=index_name)
+class TestElasticsearchConf:
+    def test_create_index_template(self, elasticsearch_client: Any) -> None:
+        name = test_index_template.get("name")
+        template = test_index_template.get("template")
+        index_patterns = test_index_template.get("index_patterns")
 
+        result = elasticsearch_client.indices.put_index_template(
+            name=name, index_patterns=index_patterns, template=template
+        )
+        assert result.get("acknowledged") is True
+
+    def test_create_ilm_policy(self, elasticsearch_client: Any) -> None:
+        name = test_ilm_policy.get("name")
+        policy = test_ilm_policy.get("policy")
+        result = elasticsearch_client.ilm.put_lifecycle(name=name, policy=policy)
+        assert result.get("acknowledged") is True
+
+    def test_create_initial_index(self, elasticsearch_client: Any) -> None:
+        index = test_initial_index.get("name")
+        aliases = test_initial_index.get("aliases")
+        index_exists = elasticsearch_client.indices.exists(index=index)
+        if not index_exists:
+            result = elasticsearch_client.indices.create(index=index, aliases=aliases)
+            assert result.get("acknowledged") is True
+
+
+class TestElasticsearchConnection:
     def test_index_document(self, elasticsearch_client: Any) -> None:
-        index_names = list(elasticsearch_client.indices.get_alias().keys())
-        index_name = index_names[0]
+        index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
         test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
         response = elasticsearch_client.create(
-            index=index_name, id=test_id, document=test_data
+            index=index_name_alias, id=test_id, document=test_data
         )
         assert response["result"] == "created"
         assert "_id" in response
 
         with pytest.raises(ConflictError) as exc_info:
             elasticsearch_client.create(
-                index=index_name, id=test_id, document=test_data
+                index=index_name_alias, id=test_id, document=test_data
             )
         assert "ConflictError" in str(exc_info.type)
         assert "version_conflict_engine_exception" in str(exc_info.value)
 
     def test_index_document_with_none_date(self, elasticsearch_client: Any) -> None:
-        index_names = list(elasticsearch_client.indices.get_alias().keys())
-        index_name = index_names[0]
+        index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
         test_data_with_none_date = {
             **test_data,
             "id": "adrferdiyhyu9",
@@ -99,7 +157,7 @@ class TestElasticsearchConnection:
         }
         test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
         response = elasticsearch_client.create(
-            index=index_name,
+            index=index_name_alias,
             id=test_data_with_none_date["id"],
             document=test_data_with_none_date,
         )
@@ -108,7 +166,7 @@ class TestElasticsearchConnection:
 
         with pytest.raises(ConflictError) as exc_info:
             elasticsearch_client.create(
-                index=index_name, id=test_id, document=test_data_with_none_date
+                index=index_name_alias, id=test_id, document=test_data_with_none_date
             )
         assert "ConflictError" in str(exc_info.type)
         assert "version_conflict_engine_exception" in str(exc_info.value)
@@ -116,7 +174,7 @@ class TestElasticsearchConnection:
 
 @pytest.fixture(scope="class")
 def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector:
-    connector = ElasticsearchConnector(elasticsearch_client, es_mappings, es_settings)
+    connector = ElasticsearchConnector(elasticsearch_client)
     return connector
 
 
@@ -124,7 +182,7 @@ class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
         importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
-        importer.index_name_prefix = os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX")
+        importer.index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
         return importer
 
     def test_import_story_success(
@@ -140,25 +198,3 @@ class TestElasticsearchImporter:
 
         second_response = importer.import_story(test_import_data)
         assert second_response is None
-
-    def test_index_routing(
-        self,
-        importer: ElasticsearchImporter,
-        elasticsearch_connector: ElasticsearchConnector,
-    ) -> None:
-        importer.connector = elasticsearch_connector
-        assert (
-            importer.index_routing("2023-06-27") == f"{importer.index_name_prefix}_2023"
-        )
-        assert importer.index_routing(None) == f"{importer.index_name_prefix}_other"
-        assert (
-            importer.index_routing("2022-06-27") == f"{importer.index_name_prefix}_2022"
-        )
-        assert (
-            importer.index_routing("2020-06-27")
-            == f"{importer.index_name_prefix}_older"
-        )
-        assert (
-            importer.index_routing("2026-06-27")
-            == f"{importer.index_name_prefix}_other"
-        )
