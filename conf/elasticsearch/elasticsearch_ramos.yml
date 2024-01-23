@@ -59,7 +59,7 @@ network.host: _eno1np0_
 # By default Elasticsearch listens for HTTP traffic on the first free port it
 # finds starting at 9200. Set a specific HTTP port here:
 #
-http.port: 9204
+http.port: 9200
 transport.port: 9305
 #
 # For more information, consult the network module documentation.
