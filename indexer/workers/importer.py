@@ -168,8 +168,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             if data["publication_date"] is None:
                 pub_date = story.rss_entry().pub_date
                 if pub_date:
-                    tzinfos = {"UTC": tz.UTC} 
-                    es_date = parser.parse(pub_date, tzinfos=tzinfos).isoformat()
+                    es_date = parser.parse(pub_date)
                     data = {**data, "publication_date": es_date}
 
             response = self.import_story(data)
