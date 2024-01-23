@@ -25,6 +25,7 @@ node.name:
 #
 # Add custom attributes to the node:
 #
+node.roles: ["master", "data_content", "data_hot"]
 #node.attr.rack: r1
 # ----------------------------------- Paths ------------------------------------
 #
