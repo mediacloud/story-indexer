@@ -2,17 +2,16 @@
 
 ### Install Elasticseach from Debian Package
 
-The Debian package for Elasticsearch v8.9.2 can be downloaded from the website and installed as follows:
+# Install Debian package from APT repositoy
 
-`
-wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.9.2-amd64.deb`
+# Import the Elasticsearch PGP Key
+# Install apt-transport-https package before proceeding
+# Save the repository definition to  /etc/apt/sources.list.d/elastic-8.x.list
 
-`
-wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.9.2-amd64.deb.sha512`
-
-`shasum -a 512 -c elasticsearch-8.9.2-amd64.deb.sha512 `
-
-`sudo dpkg -i elasticsearch-8.9.2-amd64.deb`
+sudo wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+sudo apt-get install apt-transport-https
+echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/$ES_VERSION/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-$ES_VERSION.list
+sudo apt-get update && sudo apt-get install elasticsearch
 
 
 ### Running Elasticsearch with systemd
