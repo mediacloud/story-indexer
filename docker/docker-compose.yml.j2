@@ -430,6 +430,7 @@ services:
     <<: *worker-service-settings
     environment:
       <<: *worker-environment-vars
+      ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
       RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}
