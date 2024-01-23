@@ -86,9 +86,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             # if publication date is none, fallback to rss_fetcher pub_date
             if data["publication_date"] is None:
-                pub_date = story.rss_entry().pub_date
-                if pub_date is not None or pub_date != "":
-                    data = {**data, "publication_date": pub_date}
+                data["publication_date"] = story.rss_entry()["pub_date"]
 
             response = self.import_story(data)
             if response and self.output_msgs:
@@ -107,7 +105,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             ## This was needed for index routing, won't be necessary for ILM
-             
+
             # We want actual None, not 'None', if publication_date is missing
             # if "publication_date" in data and data["publication_date"] not in [
             #     None,

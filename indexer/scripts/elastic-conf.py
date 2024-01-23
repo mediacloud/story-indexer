@@ -4,11 +4,10 @@ configure Elasticsearch
 
 import argparse
 import json
-import subprocess
-import time
-from collections import Counter
+import os
+import sys
 from logging import getLogger
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Union, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
 from elasticsearch import Elasticsearch
@@ -20,13 +19,30 @@ logger = getLogger("elastic-stats")
 
 
 class ElasticConf(ElasticMixin, App):
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--elasticsearch-config-dir",
+            dest="elasticsearch_config_dir",
+            default=os.environ.get("ELASTICSEARCH_CONFIG_DIR") or "",
+            help="ES config files dir",
+        )
+
+    def process_args(self) -> None:
+        super().process_args()
+        assert self.args
+        if not self.args.elasticsearch_config_dir:
+            logger.fatal("need --elasticsearch-config-dir or ELASTICSEARCH_CONFIG_DIR")
+            sys.exit(1)
+        self.elasticsearch_config_dir = self.args.elasticsearch_config_dir
+
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
         assert es.ping(), "Failed to connect to Elasticsearch"
-
-        index_template_path = "./conf/elasticsearch/create_index_template.json"
-        ilm_policy_path = "./conf/elasticsearch/create_ilm_policy.json"
-        initial_index_template = "./conf/elasticsearch/create_initial_index.json"
+        ELASTICSEARCH_CONF_DIR = self.elasticsearch_config_dir
+        index_template_path = f"{ELASTICSEARCH_CONF_DIR}/create_index_template.json"
+        ilm_policy_path = f"{ELASTICSEARCH_CONF_DIR}/create_ilm_policy.json"
+        initial_index_template = f"{ELASTICSEARCH_CONF_DIR}/create_initial_index.json"
         # snapshot_policy_path = "/elasticsearch/conf/create_snapshot_policy.json"
 
         index_template_created = self.create_index_template(es, index_template_path)
@@ -38,20 +54,18 @@ class ElasticConf(ElasticMixin, App):
             logger.info("All ES configurations applied successfully.")
         else:
             logger.error("One or more configurations failed. Check logs for details.")
+            return
 
-    def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
+    def read_file(self, file_path: str) -> Union[dict, Any]:
         with open(file_path, "r") as file:
             data = file.read()
+        return json.loads(data)
 
-        json_data = json.loads(data)
-        name = json_data.get("name")
-        template = json_data.get("template")
-        index_patterns = json_data.get("index_patterns")
-
-        # Check if the index template already exists
-        if es.indices.exists_index_template(name=name):
-            logger.info("Index template ':%s' already exists. Skipping creation.", name)
-            return True
+    def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
+        json_data = self.read_file(file_path)
+        name = json_data["name"]
+        template = json_data["template"]
+        index_patterns = json_data["index_patterns"]
 
         response = es.indices.put_index_template(
             name=name, index_patterns=index_patterns, template=template
@@ -64,12 +78,9 @@ class ElasticConf(ElasticMixin, App):
             return False
 
     def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
-        with open(file_path, "r") as file:
-            data = file.read()
-
-        json_data = json.loads(data)
-        name = json_data.get("name")
-        policy = json_data.get("policy")
+        json_data = self.read_file(file_path)
+        name = json_data["name"]
+        policy = json_data["policy"]
         response = es.ilm.put_lifecycle(name=name, policy=policy)
         if response.get("acknowledged", False):
             logger.info("ILM policy created successfully.")
@@ -79,11 +90,9 @@ class ElasticConf(ElasticMixin, App):
             return False
 
     def create_initial_index(self, es: Elasticsearch, file_path: str) -> bool:
-        with open(file_path, "r") as file:
-            data = file.read()
-        json_data = json.loads(data)
-        index = json_data.get("name")
-        aliases = json_data.get("aliases")
+        json_data = self.read_file(file_path)
+        index = json_data["name"]
+        aliases = json_data["aliases"]
         response = es.indices.create(index=index, aliases=aliases)
         if not es.indices.exists(index=index):
             if response.get("acknowledged", False):
