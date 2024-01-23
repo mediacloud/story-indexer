@@ -91,3 +91,4 @@ if __name__ == "__main__":
         "Take elasticsearch snapshots regularly (daily)",
     )
     app.main()
+
