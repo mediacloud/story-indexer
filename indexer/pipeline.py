@@ -403,11 +403,13 @@ class MyPipeline(Pipeline):
                 "rss-queuer", [self.add_worker("fetcher", [p_i_a], fast_delay=True)]
             )
         elif pt == "historical":
+            # output to archiver may or may not be enabled
+            # (via command line options to importer)
             self.add_producer("hist-queuer", [self.add_worker("hist-fetcher", [p_i_a])])
-            # XXX don't want archiver??
-        elif pt == "warc":
-            self.add_producer("warc-queuer", [importer])
-            # XXX don't want archiver??
+        elif pt == "archive":
+            # output to archiver should be disabled!!
+            # (via command line options to importer)
+            self.add_producer("arch-queuer", [importer])
 
 
 if __name__ == "__main__":
