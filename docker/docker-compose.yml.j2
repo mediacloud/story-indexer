@@ -335,7 +335,10 @@ services:
   # have the importer connect only to the local RabbitMQ??
   importer-worker:
     <<: *worker-service-settings
-    # run multiple replicas? on es nodes??
+    deploy:
+      <<: *worker-deploy-settings
+      # run on each ES node?
+      replicas: {{importer_replicas}}
     environment:
       <<: *worker-environment-vars
       RUN: importer
@@ -345,6 +348,9 @@ services:
 
   archiver-worker:
     <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      replicas: {{archiver_replicas}}
     environment:
       <<: *worker-environment-vars
       RUN: archiver
