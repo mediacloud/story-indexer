@@ -5,15 +5,14 @@
         "hot": {
           "actions": {
             "rollover": {
-              "max_primary_shard_size": "5gb",
-              "max_age": "365d"
+              "max_age": "15m"
             }
           }
         }
       }
     },
     "_meta": {
-      "description": "built-in ILM policy using the hot phase with a rollover of 50gb on max_primary_shard_size or 365 days, whichever comes first",
+      "description": "built-in ILM policy using the hot phase with a rollover of max_age of 15mins , whichever comes first",
       "managed": true
     }
 }

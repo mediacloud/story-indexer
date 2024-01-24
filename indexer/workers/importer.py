@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Mapping, Optional, Union, cast
+from typing import Any, Dict, Mapping, Optional, Union, cast
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
@@ -20,6 +20,9 @@ from indexer.storyapp import StorySender, StoryWorker
 from indexer.worker import QuarantineException
 
 logger = logging.getLogger(__name__)
+
+# Index name alias defined in the index_template.json
+INDEX_NAME_ALIAS = "mc_search"
 
 
 class ElasticsearchConnector:
@@ -39,13 +42,6 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--index-name-alias",
-            dest="index_name_alias",
-            type=str,
-            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS"),
-            help="Elasticsearch index names alias",
-        )
-        ap.add_argument(
             "--no-output",
             action="store_false",
             dest="output_msgs",
@@ -58,14 +54,8 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        index_name_alias = self.args.index_name_alias
-        if index_name_alias is None:
-            logger.fatal("need --index-name-alias defined")
-            sys.exit(1)
-
-        self.index_name_alias = index_name_alias
-        self.connector = ElasticsearchConnector(self.elasticsearch_client())
         self.output_msgs = self.args.output_msgs
+        self.connector = ElasticsearchConnector(self.elasticsearch_client())
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -119,7 +109,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             indexed_date = datetime.now().isoformat()
             data = {**data, "indexed_date": indexed_date}
 
-            target_index = self.index_name_alias
+            target_index = INDEX_NAME_ALIAS
             try:
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:

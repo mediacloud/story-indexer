@@ -6,12 +6,8 @@ from typing import Any, Mapping, Optional, Union, cast
 from urllib.parse import urlparse
 
 import pytest
-from elastic_transport import NodeConfig
 from elasticsearch import ConflictError, Elasticsearch
 
-from indexer.worker import QuarantineException
-
-# from indexer.elastic import create_elasticsearch_client
 from indexer.workers.importer import ElasticsearchConnector, ElasticsearchImporter
 
 
@@ -20,7 +16,6 @@ def set_env() -> None:
     os.environ["ELASTICSEARCH_HOSTS"] = ",".join(
         ["http://localhost:9210", "http://localhost:9211", "http://localhost:9212"]
     )
-    os.environ["ELASTICSEARCH_INDEX_NAME_ALIAS"] = "test_mc_search"
 
 
 @pytest.fixture(scope="class")
@@ -133,7 +128,7 @@ class TestElasticsearchConf:
 
 class TestElasticsearchConnection:
     def test_index_document(self, elasticsearch_client: Any) -> None:
-        index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
+        index_name_alias = "test_mc_search"
         test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
         response = elasticsearch_client.create(
             index=index_name_alias, id=test_id, document=test_data
@@ -149,7 +144,7 @@ class TestElasticsearchConnection:
         assert "version_conflict_engine_exception" in str(exc_info.value)
 
     def test_index_document_with_none_date(self, elasticsearch_client: Any) -> None:
-        index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
+        index_name_alias = "test_mc_search"
         test_data_with_none_date = {
             **test_data,
             "id": "adrferdiyhyu9",
@@ -182,7 +177,6 @@ class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
         importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
-        importer.index_name_alias = os.environ.get("ELASTICSEARCH_INDEX_NAME_ALIAS")
         return importer
 
     def test_import_story_success(

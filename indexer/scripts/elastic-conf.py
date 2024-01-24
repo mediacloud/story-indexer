@@ -62,7 +62,8 @@ class ElasticConf(ElasticMixin, App):
 
     def read_file(self, file_path: str) -> Union[dict, Any]:
         with open(file_path, "r") as file:
-            return json.loads(file)
+            data = file.read()
+        return json.loads(data)
 
     def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
