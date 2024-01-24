@@ -9,7 +9,6 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
-from dateutil import parser, tz
 from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
@@ -160,7 +159,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             keys_to_skip = ["is_homepage", "is_shortened"]
 
-            data: Mapping[str, Optional[Union[str, bool]]] = {
+            data: Dict[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
 
@@ -168,8 +167,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             if data["publication_date"] is None:
                 pub_date = story.rss_entry().pub_date
                 if pub_date:
-                    es_date = parser.parse(pub_date)
-                    data = {**data, "publication_date": es_date}
+                    date_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %z")
+                    es_date = date_obj.isoformat()
+                    data["publication_date"] = es_date
 
             response = self.import_story(data)
             if response and self.output_msgs:
@@ -178,7 +178,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
     def import_story(
         self,
-        data: Mapping[str, Optional[Union[str, bool]]],
+        data: Dict[str, Optional[Union[str, bool]]],
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
