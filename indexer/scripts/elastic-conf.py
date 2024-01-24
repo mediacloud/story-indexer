@@ -12,10 +12,10 @@ from typing import Any, Dict, List, Union, cast
 from elastic_transport import ConnectionError, ConnectionTimeout
 from elasticsearch import Elasticsearch
 
-from indexer.app import App
+from indexer.app import App, run
 from indexer.elastic import ElasticMixin
 
-logger = getLogger("elastic-stats")
+logger = getLogger("elastic-conf")
 
 
 class ElasticConf(ElasticMixin, App):
@@ -40,9 +40,13 @@ class ElasticConf(ElasticMixin, App):
         es = self.elasticsearch_client()
         assert es.ping(), "Failed to connect to Elasticsearch"
         ELASTICSEARCH_CONF_DIR = self.elasticsearch_config_dir
-        index_template_path = f"{ELASTICSEARCH_CONF_DIR}/create_index_template.json"
-        ilm_policy_path = f"{ELASTICSEARCH_CONF_DIR}/create_ilm_policy.json"
-        initial_index_template = f"{ELASTICSEARCH_CONF_DIR}/create_initial_index.json"
+        index_template_path = os.path.join(
+            ELASTICSEARCH_CONF_DIR, "create_index_template.json"
+        )
+        ilm_policy_path = os.path.join(ELASTICSEARCH_CONF_DIR, "create_ilm_policy.json")
+        initial_index_template = os.path.join(
+            ELASTICSEARCH_CONF_DIR, "create_initial_index.json"
+        )
         # snapshot_policy_path = "/elasticsearch/conf/create_snapshot_policy.json"
 
         index_template_created = self.create_index_template(es, index_template_path)
@@ -58,8 +62,7 @@ class ElasticConf(ElasticMixin, App):
 
     def read_file(self, file_path: str) -> Union[dict, Any]:
         with open(file_path, "r") as file:
-            data = file.read()
-        return json.loads(data)
+            return json.loads(file)
 
     def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
@@ -108,8 +111,4 @@ class ElasticConf(ElasticMixin, App):
 
 
 if __name__ == "__main__":
-    app = ElasticConf(
-        "elastic-conf",
-        "Elasticsearch conf",
-    )
-    app.main()
+    run(ElasticConf, "elastic-conf", "Elasticsearch configuration")

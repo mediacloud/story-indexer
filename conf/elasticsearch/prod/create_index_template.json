@@ -6,7 +6,7 @@
       "index.lifecycle.name": "mediacloud-lifecycle-policy",
       "index.lifecycle.rollover_alias": "mc_search",
       "number_of_shards": 30,
-      "number_of_replicas": 30
+      "number_of_replicas": 1
     },
     "mappings": {
       "properties": {
