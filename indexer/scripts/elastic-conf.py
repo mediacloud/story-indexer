@@ -1,5 +1,7 @@
 """
-configure Elasticsearch
+This app provides a one time configuration for the Elasticsearch stack.
+Apps that write to Elasticsearch depend on these configurations
+Should exit gracefully if configurations already exists in Elasticsearch
 """
 
 import argparse
@@ -9,7 +11,6 @@ import sys
 from logging import getLogger
 from typing import Any, Dict, List, Union, cast
 
-from elastic_transport import ConnectionError, ConnectionTimeout
 from elasticsearch import Elasticsearch
 
 from indexer.app import App, run
@@ -97,18 +98,17 @@ class ElasticConf(ElasticMixin, App):
         json_data = self.read_file(file_path)
         index = json_data["name"]
         aliases = json_data["aliases"]
-        response = es.indices.create(index=index, aliases=aliases)
-        if not es.indices.exists(index=index):
+        if es.indices.exists(index=index):
+            logger.warning("Index already exists. Skipping creation.")
+            return False
+        else:
+            response = es.indices.create(index=index, aliases=aliases)
             if response.get("acknowledged", False):
                 logger.info("Index created successfully.")
                 return True
             else:
                 logger.error("Failed to create Index. Response:%s", response)
                 return False
-        else:
-            # Skip the index creation
-            logger.warning("Index already exists. Skipping creation.")
-            return False
 
 
 if __name__ == "__main__":

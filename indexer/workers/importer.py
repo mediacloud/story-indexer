@@ -65,7 +65,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    logger.warning(f"Value for key '{key}' is not provided.")
+                    logger.warning("Value for key: %s is not provided.", key)
                     continue
 
             keys_to_skip = ["is_homepage", "is_shortened"]

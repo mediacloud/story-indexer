@@ -276,7 +276,7 @@ prod)
     MULTI_NODE_DEPLOYMENT=1
 
     ELASTICSEARCH_CONTAINERS=0
-    ELASTICSEARCH_CONFIG_DIR=/conf/elasticsearch/prod
+    ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/prod
     # XXX change to 9200 once reconfigured:
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
 

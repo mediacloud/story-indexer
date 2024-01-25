@@ -3,7 +3,6 @@ import json
 import os
 from datetime import datetime
 from typing import Any, Mapping, Optional, Union, cast
-from urllib.parse import urlparse
 
 import pytest
 from elasticsearch import ConflictError, Elasticsearch
