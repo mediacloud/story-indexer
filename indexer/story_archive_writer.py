@@ -364,6 +364,13 @@ class StoryArchiveReader:
                 with story.content_metadata() as cmd:
                     for key, value in j["content_metadata"].items():
                         setattr(cmd, key, value)
+                    if not cmd.parsed_date:
+                        # For archives written before "parsed_date" added;
+                        # Use WARC metadata record WARC-Date header.
+                        date = record.rec_headers["WARC-Date"]
+                        if date.endswith("Z"):  # should always be the case
+                            date = date[:-1]  # remove Z
+                        cmd.parsed_date = date
                 with story.raw_html() as rh:
                     rh.html = html
                     rh.encoding = j["http_metadata"]["encoding"]

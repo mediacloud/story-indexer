@@ -157,7 +157,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                     logger.error(f"Value for key '{key}' is not provided.")
                     continue
 
-            keys_to_skip = ["is_homepage", "is_shortened"]
+            keys_to_skip = ["is_homepage", "is_shortened", "parsed_date"]
 
             data: dict[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
@@ -179,6 +179,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 with story.content_metadata() as cmd:
                     cmd.publication_date = pub_date
 
+            # pass parsed_date (from parser or an archive file) as indexed_date
+            # fall back to UTC now.
+            data["indexed_date"] = (
+                content_metadata.get("parsed_date") or datetime.utcnow().isoformat()
+            )
             response = self.import_story(data)
             if response and self.output_msgs:
                 # pass story along to archiver (unless disabled)
