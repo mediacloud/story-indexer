@@ -11,12 +11,13 @@ attrs==23.2.0
     #   twisted
 automat==22.10.0
     # via twisted
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
     # via
     #   feedfinder2
     #   goose3
     #   mediacloud-metadata
     #   newspaper3k
+    #   story-indexer (pyproject.toml)
 boilerpy3==1.0.7
     # via mediacloud-metadata
 boto3==1.28.85
@@ -46,7 +47,7 @@ constantly==23.10.4
     # via twisted
 courlan==0.9.5
     # via trafilatura
-cryptography==41.0.7
+cryptography==42.0.0
     # via
     #   pyopenssl
     #   scrapy
@@ -64,7 +65,7 @@ dateparser==1.2.0
     #   mediacloud-metadata
 docker==6.1.3
     # via story-indexer (pyproject.toml)
-elastic-transport==8.11.0
+elastic-transport==8.12.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
@@ -78,9 +79,9 @@ filelock==3.13.1
     # via tldextract
 furl==2.1.3
     # via mediacloud-metadata
-goose3==3.1.18
+goose3==3.1.19
     # via mediacloud-metadata
-htmldate==1.6.1
+htmldate==1.7.0
     # via
     #   mediacloud-metadata
     #   trafilatura
@@ -125,7 +126,7 @@ lxml==4.9.4
     #   readability-lxml
     #   scrapy
     #   trafilatura
-mediacloud-metadata==0.10.0
+mediacloud-metadata==0.11.2
     # via story-indexer (pyproject.toml)
 newspaper3k==0.2.8
     # via mediacloud-metadata
@@ -166,7 +167,7 @@ pycparser==2.21
     # via cffi
 pydispatcher==2.0.7
     # via scrapy
-pyopenssl==23.3.0
+pyopenssl==24.0.0
     # via scrapy
 python-dateutil==2.8.2
     # via
@@ -207,7 +208,7 @@ scrapy==2.10.1
     # via story-indexer (pyproject.toml)
 sentry-sdk==1.34.0
     # via story-indexer (pyproject.toml)
-service-identity==23.1.0
+service-identity==24.1.0
     # via scrapy
 sgmllib3k==1.0.0
     # via feedparser
@@ -244,7 +245,7 @@ tldextract==5.1.1
     #   surt
 tqdm==4.66.1
     # via nltk
-trafilatura==1.6.3
+trafilatura==1.6.4
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
