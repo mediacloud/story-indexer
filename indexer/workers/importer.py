@@ -165,16 +165,13 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             # if publication date is None (from parser) or "None"(from archiver), fallback to rss_fetcher pub_date
             pub_date = data["publication_date"]
-            if pub_date is None or pub_date == "None":
+            if pub_date in [None, "None"]:
                 rss_pub_date = story.rss_entry().pub_date
                 if rss_pub_date:
-                    es_pub_date = datetime.strptime(
-                        rss_pub_date, "%a, %d %b %Y %H:%M:%S %z"
-                    ).strftime("%Y-%m-%d")
+                    pub_date = datetime.strptime(rss_pub_date, "%a, %d %b %Y %H:%M:%S %z").strftime("%Y-%m-%d")
                 else:
-                    es_pub_date = None
-                if pub_date != es_pub_date:
-                    data["publication_date"] = es_pub_date
+                    pub_date = None
+                data["publication_date"] = pub_date
                     with story.content_metadata() as cmd:
                         cmd.publication_date = es_pub_date
 
