@@ -168,12 +168,16 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             if pub_date in [None, "None"]:
                 rss_pub_date = story.rss_entry().pub_date
                 if rss_pub_date:
-                    pub_date = datetime.strptime(rss_pub_date, "%a, %d %b %Y %H:%M:%S %z").strftime("%Y-%m-%d")
+                    pub_date = datetime.strptime(
+                        rss_pub_date, "%a, %d %b %Y %H:%M:%S %z"
+                    ).strftime("%Y-%m-%d")
                 else:
                     pub_date = None
+
                 data["publication_date"] = pub_date
-                    with story.content_metadata() as cmd:
-                        cmd.publication_date = es_pub_date
+
+                with story.content_metadata() as cmd:
+                    cmd.publication_date = pub_date
 
             response = self.import_story(data)
             if response and self.output_msgs:
@@ -194,7 +198,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             # XX This wont't be needed for Elasticsearch ILM -To remove
             publication_date = data.get("publication_date")
             # To move to Story index metadata
-            data["indexed_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+            data["indexed_date"] = datetime.utcnow().isoformat()
             target_index = self.index_routing(str(publication_date))
             try:
                 response = self.connector.index(url_hash, target_index, data)
