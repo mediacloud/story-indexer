@@ -1,7 +1,6 @@
 import gzip
 import random
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
-from uuid import NAMESPACE_URL, uuid3
 
 import requests
 from lxml import etree

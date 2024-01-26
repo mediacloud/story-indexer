@@ -1,15 +1,10 @@
 import hashlib
 import os
-from argparse import Namespace
 from datetime import datetime
-from typing import Any, Mapping, Optional, Union, cast
-from urllib.parse import urlparse
+from typing import Any, Mapping, Optional, Union
 
 import pytest
-from elastic_transport import NodeConfig
 from elasticsearch import ConflictError, Elasticsearch
-
-from indexer.worker import QuarantineException
 
 # from indexer.elastic import create_elasticsearch_client
 from indexer.workers.importer import (

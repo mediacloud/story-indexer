@@ -2,12 +2,11 @@
 schedule Elasticsearch snapshots
 """
 import argparse
-import logging
 import os
 import sys
 from datetime import date
 from logging import getLogger
-from typing import Any, Dict
+from typing import Dict
 
 from indexer.app import App
 from indexer.elastic import ElasticMixin

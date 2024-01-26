@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Union, cast
+from typing import Any, Mapping, Optional, Union
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch

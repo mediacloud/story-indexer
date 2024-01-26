@@ -1,6 +1,5 @@
 import os
 import shutil
-from importlib import reload
 from typing import Any, Generator
 
 import pytest
