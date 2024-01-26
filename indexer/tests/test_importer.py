@@ -7,7 +7,7 @@ from typing import Any, Mapping, Optional, Union, cast
 import pytest
 from elasticsearch import ConflictError, Elasticsearch
 
-from indexer.workers.importer import ElasticsearchConnector, ElasticsearchImporter
+from indexer.workers.importer import ElasticsearchImporter
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -166,24 +166,13 @@ class TestElasticsearchConnection:
         assert "version_conflict_engine_exception" in str(exc_info.value)
 
 
-@pytest.fixture(scope="class")
-def elasticsearch_connector(elasticsearch_client: Any) -> ElasticsearchConnector:
-    connector = ElasticsearchConnector(elasticsearch_client)
-    return connector
-
-
 class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
         importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
         return importer
 
-    def test_import_story_success(
-        self,
-        importer: ElasticsearchImporter,
-        elasticsearch_connector: ElasticsearchConnector,
-    ) -> None:
-        importer.connector = elasticsearch_connector
+    def test_import_story_success(self, importer: ElasticsearchImporter) -> None:
         test_import_data = {**test_data, "url": "http://example_import_story.com"}
         response = importer.import_story(test_import_data)
         if response is not None:

@@ -23,19 +23,6 @@ logger = logging.getLogger(__name__)
 INDEX_NAME_ALIAS = "mc_search"
 
 
-class ElasticsearchConnector:
-    def __init__(self, client: Elasticsearch) -> None:
-        self.client = client
-
-    def index(
-        self, id: str, index_name_alias: str, document: Mapping[str, Any]
-    ) -> ObjectApiResponse[Any]:
-        response: ObjectApiResponse[Any] = self.client.create(
-            index=index_name_alias, id=id, document=document
-        )
-        return response
-
-
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -53,7 +40,6 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         logger.info(self.args)
 
         self.output_msgs = self.args.output_msgs
-        self.connector = ElasticsearchConnector(self.elasticsearch_client())
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -108,7 +94,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             data["indexed_date"] = datetime.utcnow().isoformat()
             target_index = INDEX_NAME_ALIAS
             try:
-                response = self.connector.index(url_hash, target_index, data)
+                response = self.elasticsearch_client().index(
+                    id=url_hash, index=target_index, document=data
+                )
             except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
             except RequestError as e:

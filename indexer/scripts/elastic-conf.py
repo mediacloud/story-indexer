@@ -44,12 +44,6 @@ class ElasticConf(ElasticMixin, App):
         # ILM policy args
         ap.add_argument(
             "--ilm-max-age",
-            dest="ilm-max-age",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_AGE") or "",
-            help="ES ILM policy max age",
-        )
-        ap.add_argument(
-            "--ilm-max-age",
             dest="ilm_max_age",
             default=os.environ.get("ELASTICSEARCH_ILM_MAX_AGE") or "",
             help="ES ILM policy max age",
@@ -113,8 +107,9 @@ class ElasticConf(ElasticMixin, App):
 
     def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
+        json_data["template"]["settings"]["number_of_shards"] = self.shards
+        json_data["template"]["settings"]["number_of_replicas"] = self.replicas
         name = json_data["name"]
-
         template = json_data["template"]
         index_patterns = json_data["index_patterns"]
 
@@ -152,7 +147,7 @@ class ElasticConf(ElasticMixin, App):
         aliases = json_data["aliases"]
         if es.indices.exists(index=index):
             logger.warning("Index already exists. Skipping creation.")
-            return False
+            return True
         else:
             response = es.indices.create(index=index, aliases=aliases)
             if response.get("acknowledged", False):
