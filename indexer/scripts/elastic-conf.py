@@ -28,14 +28,59 @@ class ElasticConf(ElasticMixin, App):
             default=os.environ.get("ELASTICSEARCH_CONFIG_DIR") or "",
             help="ES config files dir",
         )
+        # Index template args
+        ap.add_argument(
+            "--shards",
+            dest="shards",
+            default=os.environ.get("ELASTICSEARCH_SHARDS") or "",
+            help="ES number of shards",
+        )
+        ap.add_argument(
+            "--replicas",
+            dest="replicas",
+            default=os.environ.get("ELASTICSEARCH_REPLICAS") or "",
+            help="ES number of replicas",
+        )
+        # ILM policy args
+        ap.add_argument(
+            "--ilm-max-age",
+            dest="ilm-max-age",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_AGE") or "",
+            help="ES ILM policy max age",
+        )
+        ap.add_argument(
+            "--ilm-max-age",
+            dest="ilm_max_age",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_AGE") or "",
+            help="ES ILM policy max age",
+        )
+        ap.add_argument(
+            "--ilm-max-shard-size",
+            dest="ilm_max_shard_size",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "",
+            help="ES ILM policy max shard size",
+        )
 
     def process_args(self) -> None:
         super().process_args()
         assert self.args
-        if not self.args.elasticsearch_config_dir:
-            logger.fatal("need --elasticsearch-config-dir or ELASTICSEARCH_CONFIG_DIR")
-            sys.exit(1)
+        required_args = [
+            ("elasticsearch_config_dir", "ELASTICSEARCH_CONFIG_DIR"),
+            ("shards", "ELASTICSEARCH_SHARDS"),
+            ("replicas", "ELASTICSEARCH_REPLICAS"),
+            ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
+            ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
+        ]
+        for arg, env in required_args:
+            if not getattr(self.args, arg):
+                logger.fatal(f"need --{arg} or {env}")
+                sys.exit(1)
+
         self.elasticsearch_config_dir = self.args.elasticsearch_config_dir
+        self.shards = self.args.shards
+        self.replicas = self.args.replicas
+        self.ilm_max_age = self.args.ilm_max_age
+        self.ilm_max_shard_size = self.args.ilm_max_shard_size
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -69,6 +114,7 @@ class ElasticConf(ElasticMixin, App):
     def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
         name = json_data["name"]
+
         template = json_data["template"]
         index_patterns = json_data["index_patterns"]
 
@@ -84,6 +130,12 @@ class ElasticConf(ElasticMixin, App):
 
     def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
+        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
+            "max_age"
+        ] = self.ilm_max_age
+        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
+            "max_primary_shard_size"
+        ] = self.ilm_max_shard_size
         name = json_data["name"]
         policy = json_data["policy"]
         response = es.ilm.put_lifecycle(name=name, policy=policy)

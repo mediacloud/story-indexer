@@ -123,6 +123,7 @@ ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers?
 
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
+ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
@@ -276,7 +277,11 @@ prod)
     MULTI_NODE_DEPLOYMENT=1
 
     ELASTICSEARCH_CONTAINERS=0
-    ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/prod
+    # ES index settings are static, prod settings should not change
+    ELASTICSEARCH_SHARDS=30
+    ELASTICSEARCH_REPLICAS=1
+    ELASTICSEARCH_ILM_MAX_AGE="365d"
+    ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     # XXX change to 9200 once reconfigured:
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
 
@@ -297,7 +302,10 @@ staging)
     PORT_BIAS=10		# ports: prod + 10
 
     ELASTICSEARCH_CONTAINERS=3
-    ELASTICSEARCH_CONFIG_DIR=/conf/elasticsearch/staging
+    ELASTICSEARCH_SHARDS=5
+    ELASTICSEARCH_REPLICAS=1
+    ELASTICSEARCH_ILM_MAX_AGE="90d"
+    ELASTICSEARCH_ILM_MAX_SHARD_SIZE="5gb"
 
     STORY_LIMIT=50000
 
@@ -322,7 +330,10 @@ dev)
     PORT_BIAS=${INDEXER_DEV_PORT_BIAS:-20}
 
     ELASTICSEARCH_CONTAINERS=1
-    ELASTICSEARCH_CONFIG_DIR=/conf/elasticsearch/staging
+    ELASTICSEARCH_SHARDS=2
+    ELASTICSEARCH_REPLICAS=1
+    ELASTICSEARCH_ILM_MAX_AGE="15m"
+    ELASTICSEARCH_ILM_MAX_SHARD_SIZE="100mb"
 
     STORY_LIMIT=5000
 
@@ -556,6 +567,10 @@ add ELASTICSEARCH_CONFIG_DIR
 add ELASTICSEARCH_CONTAINERS int
 add ELASTICSEARCH_HOSTS
 add ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE # NOT bool!
+add ELASTICSEARCH_SHARDS int
+add ELASTICSEARCH_REPLICAS int
+add ELASTICSEARCH_ILM_MAX_AGE
+add ELASTICSEARCH_ILM_MAX_SHARD_SIZE
 if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     # make these conditional rather than allow-empty
     add ELASTICSEARCH_IMAGE

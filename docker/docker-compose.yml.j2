@@ -61,7 +61,6 @@ x-base-service-settings: &base-service-settings
   environment: &base-environment-vars
     # Log everything in GMT!!!
     TZ: "GMT"
-    ELASTICSEARCH_INDEX_NAME_ALIAS: mc_search
 
 {% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
@@ -437,6 +436,10 @@ services:
     environment:
       <<: *worker-environment-vars
       ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
+      ELASTICSEARCH_SHARDS : {{elasticsearch_shards}}
+      ELASTICSEARCH_REPLICAS: {{elasticsearch_replicas}}
+      ELASTICSEARCH_ILM_MAX_AGE: {{elasticsearch_ilm_max_age}}
+      ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
       RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}
