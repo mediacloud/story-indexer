@@ -2,6 +2,7 @@
 metadata parser pipeline worker
 """
 
+import datetime as dt
 import logging
 from collections import Counter
 
@@ -130,6 +131,8 @@ class Parser(StoryWorker):
             for key, val in mdd.items():
                 if hasattr(cmd, key):  # avoid hardwired exceptions
                     setattr(cmd, key, val)
+
+            cmd.parsed_date = dt.datetime.utcnow().isoformat()
 
         sender.send_story(story)
         self.incr_stories(f"OK-{method}", final_url)
