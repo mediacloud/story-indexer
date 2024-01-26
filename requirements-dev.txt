@@ -11,17 +11,18 @@ attrs==23.2.0
     #   twisted
 automat==22.10.0
     # via twisted
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
     # via
     #   feedfinder2
     #   goose3
     #   mediacloud-metadata
     #   newspaper3k
+    #   story-indexer (pyproject.toml)
 boilerpy3==1.0.7
     # via mediacloud-metadata
 boto3==1.28.85
     # via story-indexer (pyproject.toml)
-boto3-stubs==1.34.13
+boto3-stubs==1.34.26
     # via
     #   boto3-stubs
     #   story-indexer (pyproject.toml)
@@ -29,7 +30,7 @@ botocore==1.31.85
     # via
     #   boto3
     #   s3transfer
-botocore-stubs==1.34.13
+botocore-stubs==1.34.26
     # via boto3-stubs
 certifi==2023.11.17
     # via
@@ -54,7 +55,7 @@ constantly==23.10.4
     # via twisted
 courlan==0.9.5
     # via trafilatura
-cryptography==41.0.7
+cryptography==42.0.0
     # via
     #   pyopenssl
     #   scrapy
@@ -74,7 +75,7 @@ distlib==0.3.8
     # via virtualenv
 docker==6.1.3
     # via story-indexer (pyproject.toml)
-elastic-transport==8.11.0
+elastic-transport==8.12.0
     # via elasticsearch
 elasticsearch==8.9.0
     # via story-indexer (pyproject.toml)
@@ -92,9 +93,9 @@ filelock==3.13.1
     #   virtualenv
 furl==2.1.3
     # via mediacloud-metadata
-goose3==3.1.18
+goose3==3.1.19
     # via mediacloud-metadata
-htmldate==1.6.1
+htmldate==1.7.0
     # via
     #   mediacloud-metadata
     #   trafilatura
@@ -119,7 +120,7 @@ itemloaders==1.1.0
     # via scrapy
 jieba3k==0.35.1
     # via newspaper3k
-jinja2==3.1.2
+jinja2==3.1.3
     # via jinja2-cli
 jinja2-cli==0.8.2
     # via story-indexer (pyproject.toml)
@@ -147,13 +148,13 @@ lxml==4.9.4
     #   readability-lxml
     #   scrapy
     #   trafilatura
-markupsafe==2.1.3
+markupsafe==2.1.4
     # via jinja2
-mediacloud-metadata==0.10.0
+mediacloud-metadata==0.11.2
     # via story-indexer (pyproject.toml)
 mypy==1.5.1
     # via story-indexer (pyproject.toml)
-mypy-boto3-s3==1.34.0
+mypy-boto3-s3==1.34.14
     # via boto3-stubs
 mypy-extensions==1.0.0
     # via mypy
@@ -185,7 +186,7 @@ pillow==10.2.0
     #   newspaper3k
 platformdirs==4.1.0
     # via virtualenv
-pluggy==1.3.0
+pluggy==1.4.0
     # via pytest
 pre-commit==3.4.0
     # via story-indexer (pyproject.toml)
@@ -205,7 +206,7 @@ pycparser==2.21
     # via cffi
 pydispatcher==2.0.7
     # via scrapy
-pyopenssl==23.3.0
+pyopenssl==24.0.0
     # via scrapy
 pytest==7.4.4
     # via story-indexer (pyproject.toml)
@@ -250,7 +251,7 @@ scrapy==2.10.1
     # via story-indexer (pyproject.toml)
 sentry-sdk==1.34.0
     # via story-indexer (pyproject.toml)
-service-identity==23.1.0
+service-identity==24.1.0
     # via scrapy
 sgmllib3k==1.0.0
     # via feedparser
@@ -291,15 +292,19 @@ tomli==2.0.1
     #   pytest
 tqdm==4.66.1
     # via nltk
-trafilatura==1.6.3
+trafilatura==1.6.4
     # via mediacloud-metadata
 twisted==22.10.0
     # via scrapy
-types-awscrt==0.20.0
+types-awscrt==0.20.2
     # via botocore-stubs
+types-beautifulsoup4==4.12.0.20240106
+    # via story-indexer (pyproject.toml)
+types-html5lib==1.1.11.20240106
+    # via types-beautifulsoup4
 types-pika==1.2.0b1
     # via story-indexer (pyproject.toml)
-types-requests==2.31.0.20231231
+types-requests==2.31.0.20240106
     # via story-indexer (pyproject.toml)
 types-s3transfer==0.10.0
     # via boto3-stubs

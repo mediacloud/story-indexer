@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Any, Dict, Mapping, Optional, Union, cast
+from typing import Any, Mapping, Optional, Union, cast
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
@@ -70,13 +70,25 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
             keys_to_skip = ["is_homepage", "is_shortened"]
 
-            data: Mapping[str, Optional[Union[str, bool]]] = {
+            data: dict[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
             }
 
-            # if publication date is none, fallback to rss_fetcher pub_date
-            if data["publication_date"] is None:
-                data["publication_date"] = story.rss_entry()["pub_date"]
+            # if publication date is None (from parser) or "None"(from archiver), fallback to rss_fetcher pub_date
+            pub_date = data["publication_date"]
+            if pub_date in [None, "None"]:
+                rss_pub_date = story.rss_entry().pub_date
+                if rss_pub_date:
+                    pub_date = datetime.strptime(
+                        rss_pub_date, "%a, %d %b %Y %H:%M:%S %z"
+                    ).strftime("%Y-%m-%d")
+                else:
+                    pub_date = None
+
+                data["publication_date"] = pub_date
+
+                with story.content_metadata() as cmd:
+                    cmd.publication_date = pub_date
 
             response = self.import_story(data)
             if response and self.output_msgs:
@@ -85,7 +97,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
     def import_story(
         self,
-        data: Mapping[str, Optional[Union[str, bool]]],
+        data: dict[str, Optional[Union[str, bool]]],
     ) -> Optional[ObjectApiResponse[Any]]:
         """
         Import a single story to Elasticsearch
@@ -94,22 +106,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if data:
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            ## This was needed for index routing, won't be necessary for ILM
-
-            # We want actual None, not 'None', if publication_date is missing
-            # if "publication_date" in data and data["publication_date"] not in [
-            #     None,
-            #     "None",
-            # ]:
-            #     publication_date = str(data["publication_date"])
-            # else:
-            #     publication_date = None
-
-            # Add the indexed_date with today's date in ISO 8601 format
-            indexed_date = datetime.now().isoformat()
-            data = {**data, "indexed_date": indexed_date}
-
-            target_index = INDEX_NAME_ALIAS
+            # XX This wont't be needed for Elasticsearch ILM -To remove
+            publication_date = data.get("publication_date")
+            # To move to Story index metadata
+            data["indexed_date"] = datetime.utcnow().isoformat()
+            target_index = self.index_routing(str(publication_date))
             try:
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:
