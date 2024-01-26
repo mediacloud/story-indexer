@@ -179,8 +179,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 with story.content_metadata() as cmd:
                     cmd.publication_date = pub_date
 
-            # pass parsed_date (from parser or an archive file) as indexed_date
-            # fall back to UTC now.
+            # Use parsed_date (from parser or an archive file) as indexed_date,
+            # falling back to UTC now (for everything parsed/queued before
+            # update applied to parser). API users use indexed_date to poll for
+            # newly added stories, so a timestamp.  By default, ES stores times
+            # with millisecond granularity.
             data["indexed_date"] = (
                 content_metadata.get("parsed_date") or datetime.utcnow().isoformat()
             )
