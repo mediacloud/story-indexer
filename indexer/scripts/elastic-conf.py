@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from logging import getLogger
-from typing import Any, Dict, List, Union, cast
+from typing import Any, Union
 
 from elasticsearch import Elasticsearch
 

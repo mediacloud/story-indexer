@@ -4,10 +4,8 @@ elasticsearch import pipeline worker
 import argparse
 import hashlib
 import logging
-import os
-import sys
-from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Union, cast
+from datetime import datetime
+from typing import Any, Mapping, Optional, Union
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch
@@ -106,11 +104,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if data:
             url = str(data.get("url"))
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            # XX This wont't be needed for Elasticsearch ILM -To remove
-            publication_date = data.get("publication_date")
             # To move to Story index metadata
             data["indexed_date"] = datetime.utcnow().isoformat()
-            target_index = self.index_routing(str(publication_date))
+            target_index = INDEX_NAME_ALIAS
             try:
                 response = self.connector.index(url_hash, target_index, data)
             except ConflictError:
