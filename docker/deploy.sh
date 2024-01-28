@@ -239,7 +239,15 @@ archive)
 queue-fetcher)
     PIPE_TYPE_PFX=''
     PIPE_TYPE_PORT_BIAS=0	# native ports
-    QUEUER_FILES='--days 7'	# check last seven days
+    # NOTE! If/when queue-fetcher is first used, --yesterdays (--days 1) will
+    # almost certainly queue the day AFTER the day processed by the most recent
+    # batch fetcher (which runs at midnight, before the rss-fetcher has written
+    # the day that just ended, so it always fetches the date for 48 hours ago).
+    # Using --days 2 will fetch both days (the older day first).  After N days,
+    # this can be switched to "--days N" so that if a day (or more) has been
+    # missed due to downtime, any holes will be filled on restart.  The code
+    # that remembers what has been queued is indexer.tracker.
+    QUEUER_FILES='--days 2'	# check last two days
     QUEUER_TYPE='rss-queuer'	# name of run- script
     ;;
 *)
