@@ -171,6 +171,14 @@ class ContentMetadata(StoryData):
     is_homepage: Optional[bool] = None
     is_shortened: Optional[bool] = None
 
+    # parsed_date used by importer to populate ES indexed_date, so
+    # that stories reimported from WARC files get same indexed_date.
+    # ISO format datetime (so researchers can query for new articles)
+    # by indexed date.  Formatted string has microseconds, and ES
+    # stores timestamps in millisecond resolution.  When reading old
+    # WARC files, populated from WARC metadata record WARC-Date header.
+    parsed_date: Optional[str] = None
+
 
 CONTENT_METADATA = class_to_member_name(ContentMetadata)
 

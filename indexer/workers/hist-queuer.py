@@ -2,10 +2,12 @@
 Read CSVs of articles from legacy system from S3, http or local
 files and queues Stories with URL and legacy downloads_id for
 hist-fetcher (S3 fetch latency is too high for a single process to
-achieve S3 request rate limit (5500 requests/second per prefix)
+achieve anything close to S3 request rate limit (5500 requests/second
+per prefix)
 """
 
 import csv
+import datetime as dt
 import io
 import logging
 from typing import BinaryIO
@@ -42,21 +44,40 @@ class HistQueuer(Queuer):
                 self.incr_stories("bad-dlid", url)
                 continue
 
-            collect_date = row.get("collect_date", None)
-
             story = Story()
             with story.rss_entry() as rss:
-                rss.link = dlid  # could pass as S3 url!
-                if collect_date:
-                    rss.fetch_date = collect_date
+                # store downloads_id (used to download HTML from S3)
+                # as the "original" location, for use by hist-fetcher.py
+                rss.link = dlid
 
+            collect_date = row.get("collect_date", None)
             with story.http_metadata() as hmd:
                 hmd.final_url = url
+                if collect_date:
+                    # convert original date/time (treat as UTC) to a
+                    # timestamp of the time the HTML was fetched,
+                    # to preserve this otherwise unused bit of information.
+
+                    # fromisoformat wants EXACTLY six digits of fractional
+                    # seconds, but the CSV files omit trailing zeroes, so
+                    # use strptime.  Append UTC timezone offset to prevent
+                    # timestamp method from treating naive datetime as in
+                    # the local time zone.  date/time stuff and time zones
+                    # are always a pain, but somehow, this particular
+                    # corner of Python seems particularly painful.
+                    collect_dt = dt.datetime.strptime(
+                        collect_date + " +00:00", "%Y-%m-%d %H:%M:%S.%f %z"
+                    )
+                    hmd.fetch_timestamp = collect_dt.timestamp()
 
             lang = row.get("language", None)
             if lang:
                 with story.content_metadata() as cmd:
                     cmd.language = cmd.full_language = lang
+
+            # content_metadata.parsed_date is not set, so parser.py will
+            # put in the actual parse time as usual:
+            # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
 
             self.send_story(story)  # increments counter
 
