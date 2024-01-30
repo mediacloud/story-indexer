@@ -5,7 +5,8 @@ Execute the following command to execute ILM
 
 Test ILM policy
 
-`{
+```yaml
+{
     "name": "mediacloud-lifecycle-policy",
     "policy": {
       "phases": {
@@ -23,7 +24,6 @@ Test ILM policy
       "managed": true
     }
 }
-`
 
 `
 PUT _cluster/settings { "transient": { "indices.lifecycle.poll_interval": "15s"  } }
