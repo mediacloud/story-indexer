@@ -70,7 +70,12 @@ class ElasticConf(ElasticMixin, App):
             if not arg_val:
                 logger.fatal(f"need --{arg_name} or {env_name}")
                 sys.exit(1)
-            setattr(self, arg_name, arg_val)
+
+        self.elasticsearch_config_dir = self.args.elasticsearch_config_dir
+        self.shards = self.args.shards
+        self.replicas = self.args.replicas
+        self.ilm_max_age = self.args.ilm_max_age
+        self.ilm_max_shard_size = self.args.ilm_max_shard_size
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -83,12 +88,10 @@ class ElasticConf(ElasticMixin, App):
         initial_index_template = os.path.join(
             ELASTICSEARCH_CONF_DIR, "create_initial_index.json"
         )
-        # snapshot_policy_path = "/elasticsearch/conf/create_snapshot_policy.json"
 
         index_template_created = self.create_index_template(es, index_template_path)
         ilm_policy_created = self.create_ilm_policy(es, ilm_policy_path)
         alias_created = self.create_initial_index(es, initial_index_template)
-        # snapshot_policy_created = self.create_snapshot_policy(es, snapshot_policy_path)
 
         if index_template_created and ilm_policy_created and alias_created:
             logger.info("All ES configurations applied successfully.")
@@ -101,7 +104,7 @@ class ElasticConf(ElasticMixin, App):
             data = file.read()
         return json.loads(data)
 
-    def create_index_template(self, es: Elasticsearch, file_path: str) -> bool:
+    def create_index_template(self, es: Elasticsearch, file_path: str) -> Any:
         json_data = self.read_file(file_path)
         json_data["template"]["settings"]["number_of_shards"] = self.shards
         json_data["template"]["settings"]["number_of_replicas"] = self.replicas
@@ -120,7 +123,7 @@ class ElasticConf(ElasticMixin, App):
             logger.error("Failed to create index template. Response: %s", response)
         return acknowledged
 
-    def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
+    def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> Any:
         json_data = self.read_file(file_path)
         rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
         rollover["max_age"] = self.ilm_max_age
@@ -128,14 +131,14 @@ class ElasticConf(ElasticMixin, App):
         name = json_data["name"]
         policy = json_data["policy"]
         response = es.ilm.put_lifecycle(name=name, policy=policy)
-        if response.get("acknowledged", False):
+        acknowledged = response.get("acknowledged", False)
+        if acknowledged:
             logger.info("ILM policy created successfully.")
-            return True
         else:
             logger.error("Failed to create ILM policy. Response:%s", response)
-            return False
+        return acknowledged
 
-    def create_initial_index(self, es: Elasticsearch, file_path: str) -> bool:
+    def create_initial_index(self, es: Elasticsearch, file_path: str) -> Any:
         json_data = self.read_file(file_path)
         index = json_data["name"]
         aliases = json_data["aliases"]
@@ -144,12 +147,12 @@ class ElasticConf(ElasticMixin, App):
             return True
         else:
             response = es.indices.create(index=index, aliases=aliases)
-            if response.get("acknowledged", False):
+            acknowledged = response.get("acknowledged", False)
+            if acknowledged:
                 logger.info("Index created successfully.")
-                return True
             else:
                 logger.error("Failed to create Index. Response:%s", response)
-                return False
+            return acknowledged
 
 
 if __name__ == "__main__":

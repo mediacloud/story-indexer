@@ -4,13 +4,10 @@ elasticsearch import pipeline worker
 import argparse
 import hashlib
 import logging
-import os
-import sys
-from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Union
+from datetime import datetime
+from typing import Any, Optional, Union
 
 from elastic_transport import ObjectApiResponse
-from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 
 from indexer.app import run
