@@ -1,17 +1,11 @@
-import csv
 import datetime
 import logging
-from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List
 
 import scrapy
-from scrapy.crawler import CrawlerProcess
-from scrapy.http import Response
 from scrapy.spidermiddlewares.httperror import HttpError
-from twisted.python.failure import Failure
 
 from indexer.story import BaseStory
-from indexer.workers.fetcher.rss_utils import RSSEntry
 
 logger = logging.getLogger(__name__)
 

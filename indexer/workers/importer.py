@@ -4,7 +4,9 @@ elasticsearch import pipeline worker
 import argparse
 import hashlib
 import logging
-from datetime import datetime
+import os
+import sys
+from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional, Union
 
 from elastic_transport import ObjectApiResponse

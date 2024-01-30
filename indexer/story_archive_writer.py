@@ -13,7 +13,7 @@ import os
 import time
 from io import BytesIO
 from logging import getLogger
-from typing import Any, BinaryIO, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, BinaryIO, Dict, Iterator, Optional, Union
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders

@@ -1,11 +1,9 @@
 import argparse
-import csv
 import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import List, Optional
 
 import scrapy.utils.log
 from mcmetadata.urls import NON_NEWS_DOMAINS
@@ -13,7 +11,7 @@ from scrapy.crawler import CrawlerProcess
 
 from indexer.app import run
 from indexer.story import BaseStory, StoryFactory
-from indexer.storyapp import StoryProducer, StoryWorker
+from indexer.storyapp import StoryProducer
 from indexer.workers.fetcher.batch_spider import BatchSpider
 from indexer.workers.fetcher.rss_utils import RSSEntry, batch_rss, fetch_daily_rss
 
