@@ -109,7 +109,7 @@ class RSSEntry(StoryData):
     title: Optional[str] = None
     domain: Optional[str] = None
     pub_date: Optional[str] = None
-    fetch_date: Optional[str] = None
+    fetch_date: Optional[str] = None  # date from input file name
 
 
 RSS_ENTRY = class_to_member_name(RSSEntry)

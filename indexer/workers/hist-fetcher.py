@@ -13,6 +13,7 @@ import gzip
 import io
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 
 import boto3
@@ -56,7 +57,6 @@ class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        # XXX use blobstore?!
         for app in ["HIST", "QUEUER"]:
             region = os.environ.get(f"{app}_S3_REGION")
             access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
@@ -73,7 +73,7 @@ class HistFetcher(StoryWorker):
         )
 
     def pick_version(
-        self, dlid: int, s3path: str, fetch_date: Optional[str]
+        self, dlid: int, s3path: str, fetch_date: str
     ) -> Optional[Dict[str, Any]]:
         """
         Determine if download id is in the range where multiple versions
@@ -121,19 +121,26 @@ class HistFetcher(StoryWorker):
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         rss = story.rss_entry()
+        hmd = story.http_metadata()
 
-        if rss.link:
-            # XXX inside try: Quarantine on error?
-            dlid = int(rss.link)
-        else:
-            # XXX count
+        dlid_str = rss.link
+        if dlid_str is None:
+            self.incr_stories("bad-dlid", "")
             return
 
-        s3path = DOWNLOADS_PREFIX + str(dlid)
+        # download id as int for version picker
+        dlid = int(dlid_str)  # pre-validated by hist-queuer.py
+
+        # format timestamp (CSV file collect_date) for version picker
+        dldate = time.strftime("%Y-%m-%d", time.gmtime(hmd.fetch_timestamp))
+
+        s3path = DOWNLOADS_PREFIX + dlid_str
+
+        # get ExtraArgs (w/ VersionId) if needed
+        extras = self.pick_version(dlid, s3path, dldate)
 
         # need to have whole story in memory (for Story object),
         # so download to a memory-based file object and decompress
-        extras = self.pick_version(dlid, s3path, rss.fetch_date)
         with io.BytesIO() as bio:
             # let any Exception cause retry/quarantine
             self.s3.download_fileobj(
@@ -143,7 +150,7 @@ class HistFetcher(StoryWorker):
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
-        # hist-queuer should have checked URL
+        # hist-queuer checked URL
         url = story.http_metadata().final_url or ""
 
         if not self.check_story_length(html, url):

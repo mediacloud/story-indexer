@@ -10,6 +10,7 @@ import csv
 import datetime as dt
 import io
 import logging
+import re
 from typing import BinaryIO
 
 from indexer.app import run
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 Story = StoryFactory()
 
+DATE_RE = re.compile(r"(\d\d\d\d)[_-](\d\d)[_-](\d\d)")
+
 
 class HistQueuer(Queuer):
     AWS_PREFIX = "HIST"  # S3 env var prefix
@@ -29,6 +32,13 @@ class HistQueuer(Queuer):
         """
         called for each input file with open binary/bytes I/O object
         """
+        # try extracting date from file name to create fetch_date for RSSEntry.
+        m = DATE_RE.match(fname)
+        if m:
+            fetch_date = "-".join(m.groups())
+        else:
+            fetch_date = fname  # better than nothing?
+
         # typical columns:
         # collect_date,stories_id,media_id,downloads_id,feeds_id,[language,]url
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
@@ -49,6 +59,7 @@ class HistQueuer(Queuer):
                 # store downloads_id (used to download HTML from S3)
                 # as the "original" location, for use by hist-fetcher.py
                 rss.link = dlid
+                rss.fetch_date = fetch_date
 
             collect_date = row.get("collect_date", None)
             with story.http_metadata() as hmd:
