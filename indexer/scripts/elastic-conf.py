@@ -126,12 +126,9 @@ class ElasticConf(ElasticMixin, App):
 
     def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
-        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
-            "max_age"
-        ] = self.ilm_max_age
-        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
-            "max_primary_shard_size"
-        ] = self.ilm_max_shard_size
+        rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
+        rollover["max_age"] = self.ilm_max_age
+        rollover["max_primary_shard_size"] = self.ilm_max_shard_size
         name = json_data["name"]
         policy = json_data["policy"]
         response = es.ilm.put_lifecycle(name=name, policy=policy)
