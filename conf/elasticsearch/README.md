@@ -24,6 +24,7 @@ Test ILM policy
       "managed": true
     }
 }
+```
 
 `
 PUT _cluster/settings { "transient": { "indices.lifecycle.poll_interval": "15s"  } }
