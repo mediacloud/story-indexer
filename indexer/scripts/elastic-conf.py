@@ -65,16 +65,12 @@ class ElasticConf(ElasticMixin, App):
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
         ]
-        for arg, env in required_args:
-            if not getattr(self.args, arg):
-                logger.fatal(f"need --{arg} or {env}")
+        for arg_name, env_name in required_args:
+            arg_val = getattr(self.args, arg_name)
+            if not arg_val:
+                logger.fatal(f"need --{arg_name} or {env_name}")
                 sys.exit(1)
-
-        self.elasticsearch_config_dir = self.args.elasticsearch_config_dir
-        self.shards = self.args.shards
-        self.replicas = self.args.replicas
-        self.ilm_max_age = self.args.ilm_max_age
-        self.ilm_max_shard_size = self.args.ilm_max_shard_size
+            setattr(self, arg_name, arg_val)
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -116,21 +112,19 @@ class ElasticConf(ElasticMixin, App):
         response = es.indices.put_index_template(
             name=name, index_patterns=index_patterns, template=template
         )
-        if response.get("acknowledged", False):
+
+        acknowledged = response.get("acknowledged", False)
+        if acknowledged:
             logger.info("Index template created successfully.")
-            return True
         else:
-            logger.error("Failed to create index template. Response:%s", response)
-            return False
+            logger.error("Failed to create index template. Response: %s", response)
+        return acknowledged
 
     def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
-        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
-            "max_age"
-        ] = self.ilm_max_age
-        json_data["policy"]["phases"]["hot"]["actions"]["rollover"][
-            "max_primary_shard_size"
-        ] = self.ilm_max_shard_size
+        rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
+        rollover["max_age"] = self.ilm_max_age
+        rollover["max_primary_shard_size"] = self.ilm_max_shard_size
         name = json_data["name"]
         policy = json_data["policy"]
         response = es.ilm.put_lifecycle(name=name, policy=policy)
