@@ -116,12 +116,13 @@ class ElasticConf(ElasticMixin, App):
         response = es.indices.put_index_template(
             name=name, index_patterns=index_patterns, template=template
         )
-        if response.get("acknowledged", False):
+
+        acknowledged = response.get("acknowledged", False)
+        if acknowledged:
             logger.info("Index template created successfully.")
-            return True
         else:
-            logger.error("Failed to create index template. Response:%s", response)
-            return False
+            logger.error("Failed to create index template. Response: %s", response)
+        return acknowledged
 
     def create_ilm_policy(self, es: Elasticsearch, file_path: str) -> bool:
         json_data = self.read_file(file_path)
