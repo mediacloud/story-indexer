@@ -342,8 +342,8 @@ services:
       <<: *worker-environment-vars
       RUN: importer
       ARGS: {{importer_args}}
-      ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
-      ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
+      ELASTICSEARCH_SHARD_COUNT: {{elasticsearch_shard_count}}
 
   archiver-worker:
     <<: *worker-service-settings
@@ -436,8 +436,8 @@ services:
     environment:
       <<: *worker-environment-vars
       ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
-      ELASTICSEARCH_SHARDS : {{elasticsearch_shards}}
-      ELASTICSEARCH_REPLICAS: {{elasticsearch_replicas}}
+      ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
+      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
       ELASTICSEARCH_ILM_MAX_AGE: {{elasticsearch_ilm_max_age}}
       ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
       RUN: elastic-conf

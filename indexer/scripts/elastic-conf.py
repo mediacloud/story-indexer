@@ -32,13 +32,13 @@ class ElasticConf(ElasticMixin, App):
         ap.add_argument(
             "--shards",
             dest="shards",
-            default=os.environ.get("ELASTICSEARCH_SHARDS") or "",
+            default=os.environ.get("ELASTICSEARCH_SHARD_COUNT") or "",
             help="ES number of shards",
         )
         ap.add_argument(
             "--replicas",
             dest="replicas",
-            default=os.environ.get("ELASTICSEARCH_REPLICAS") or "",
+            default=os.environ.get("ELASTICSEARCH_SHARD_REPLICAS") or "",
             help="ES number of replicas",
         )
         # ILM policy args
@@ -60,8 +60,8 @@ class ElasticConf(ElasticMixin, App):
         assert self.args
         required_args = [
             ("elasticsearch_config_dir", "ELASTICSEARCH_CONFIG_DIR"),
-            ("shards", "ELASTICSEARCH_SHARDS"),
-            ("replicas", "ELASTICSEARCH_REPLICAS"),
+            ("shards", "ELASTICSEARCH_SHARD_COUNT"),
+            ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
         ]
