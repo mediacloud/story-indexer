@@ -61,7 +61,6 @@ x-base-service-settings: &base-service-settings
   environment: &base-environment-vars
     # Log everything in GMT!!!
     TZ: "GMT"
-    ELASTICSEARCH_INDEX_NAME_PREFIX: mediacloud_search_text
 
 {% if elasticsearch_containers > 0 %}
 ################ Elastic Search settings
@@ -83,7 +82,7 @@ x-es-service-settings: &es-service-settings
     cluster.name: {{elasticsearch_cluster}}
     discovery.seed_hosts: {{elasticsearch_nodes}}
     network.publish_host: _eth1_
-    node.roles: master,data
+    node.roles: master,data_content, data_hot
 {% else %}
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
     discovery.type: single-node
@@ -343,8 +342,8 @@ services:
       <<: *worker-environment-vars
       RUN: importer
       ARGS: {{importer_args}}
-      ELASTICSEARCH_REPLICAS: {{elasticsearch_importer_replicas}}
-      ELASTICSEARCH_SHARDS: {{elasticsearch_importer_shards}}
+      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
+      ELASTICSEARCH_SHARD_COUNT: {{elasticsearch_shard_count}}
 
   archiver-worker:
     <<: *worker-service-settings
@@ -430,6 +429,18 @@ services:
       TITLE: {{news_search_ui_title}}
     ports:
       - {{news_search_ui_port_exported}}:{{news_search_ui_port}}
+
+  # run to apply ILM ES
+  elastic-conf:
+    <<: *worker-service-settings
+    environment:
+      <<: *worker-environment-vars
+      ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
+      ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
+      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
+      ELASTICSEARCH_ILM_MAX_AGE: {{elasticsearch_ilm_max_age}}
+      ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
+      RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
