@@ -2,13 +2,13 @@
 elasticsearch import pipeline worker
 """
 import argparse
-import hashlib
 import logging
 from datetime import datetime
 from typing import Any, Optional, Union
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch.exceptions import ConflictError, RequestError
+from mcmetadata.urls import unique_url_hash
 
 from indexer.app import run
 from indexer.elastic import ElasticMixin
@@ -95,8 +95,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         response = None
         if data:
-            url = str(data.get("url"))
-            url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+            url_hash = unique_url_hash(str(data.get("url")))
             # To move to Story index metadata
             data["indexed_date"] = datetime.utcnow().isoformat()
             target_index = INDEX_NAME_ALIAS
