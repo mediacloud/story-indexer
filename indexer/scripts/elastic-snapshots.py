@@ -1,6 +1,7 @@
 """
 schedule Elasticsearch snapshots
 """
+
 import argparse
 import os
 import sys

@@ -342,8 +342,6 @@ services:
       <<: *worker-environment-vars
       RUN: importer
       ARGS: {{importer_args}}
-      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
-      ELASTICSEARCH_SHARD_COUNT: {{elasticsearch_shard_count}}
 
   archiver-worker:
     <<: *worker-service-settings
@@ -436,10 +434,10 @@ services:
     environment:
       <<: *worker-environment-vars
       ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
-      ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
-      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
       ELASTICSEARCH_ILM_MAX_AGE: {{elasticsearch_ilm_max_age}}
       ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
+      ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
+      ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
       RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}
