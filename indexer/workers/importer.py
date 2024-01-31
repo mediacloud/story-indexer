@@ -3,13 +3,10 @@ elasticsearch import pipeline worker
 """
 import argparse
 import logging
-import os
-import sys
-from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional, Union
+from datetime import datetime
+from typing import Any, Optional, Union
 
 from elastic_transport import ObjectApiResponse
-from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
 
@@ -21,80 +18,13 @@ from indexer.worker import QuarantineException
 
 logger = logging.getLogger(__name__)
 
-shards = int(os.environ.get("ELASTICSEARCH_SHARDS", 1))
-replicas = int(os.environ.get("ELASTICSEARCH_REPLICAS", 1))
-
-es_settings = {"number_of_shards": shards, "number_of_replicas": replicas}
-
-es_mappings = {
-    "properties": {
-        "original_url": {"type": "keyword"},
-        "url": {"type": "keyword"},
-        "normalized_url": {"type": "keyword"},
-        "canonical_domain": {"type": "keyword"},
-        "publication_date": {"type": "date", "ignore_malformed": True},
-        "language": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-        "full_language": {"type": "keyword"},
-        "text_extraction": {"type": "keyword"},
-        "article_title": {
-            "type": "text",
-            "fields": {"keyword": {"type": "keyword"}},
-        },
-        "normalized_article_title": {
-            "type": "text",
-            "fields": {"keyword": {"type": "keyword"}},
-        },
-        "text_content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-        "indexed_date": {"type": "date"},
-    }
-}
-
-
-class ElasticsearchConnector:
-    def __init__(
-        self,
-        client: Elasticsearch,
-        mappings: Mapping[str, Any],
-        settings: Mapping[str, Any],
-    ) -> None:
-        self.client = client
-        self.mappings = mappings
-        self.settings = settings
-
-    def create_index(self, index_name: str) -> None:
-        if not self.client.indices.exists(index=index_name):
-            if self.mappings and self.settings:
-                self.client.indices.create(
-                    index=index_name,
-                    mappings=self.mappings,
-                    settings=self.settings,
-                )
-            else:
-                self.client.indices.create(index=index_name)
-            logger.info("Index '%s' created successfully." % index_name)
-        else:
-            logger.debug("Index '%s' already exists. Skipping creation." % index_name)
-
-    def index(
-        self, id: str, index_name: str, document: Mapping[str, Any]
-    ) -> ObjectApiResponse[Any]:
-        self.create_index(index_name)
-        response: ObjectApiResponse[Any] = self.client.create(
-            index=index_name, id=id, document=document
-        )
-        return response
+# Index name alias defined in the index_template.json
+INDEX_NAME_ALIAS = "mc_search"
 
 
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
-        ap.add_argument(
-            "--index-name-prefix",
-            dest="index_name_prefix",
-            type=str,
-            default=os.environ.get("ELASTICSEARCH_INDEX_NAME_PREFIX"),
-            help="Elasticsearch index name prefix",
-        )
         ap.add_argument(
             "--no-output",
             action="store_false",
@@ -108,43 +38,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         assert self.args
         logger.info(self.args)
 
-        index_name_prefix = self.args.index_name_prefix
-        if index_name_prefix is None:
-            logger.fatal("need --index-name-prefix defined")
-            sys.exit(1)
-        self.index_name_prefix = index_name_prefix
-
-        self.connector = ElasticsearchConnector(
-            self.elasticsearch_client(),
-            mappings=es_mappings,
-            settings=es_settings,
-        )
-
         self.output_msgs = self.args.output_msgs
-
-    def index_routing(self, publication_date_str: Optional[str]) -> str:
-        """
-        determine the routing index bashed on publication year
-        """
-        year = -1
-        if publication_date_str:
-            try:
-                pub_date = datetime.strptime(publication_date_str, "%Y-%m-%d")
-                year = pub_date.year
-                # check for exceptions of future dates just in case gets past mcmetadata
-                if pub_date > datetime.now() + timedelta(days=90):
-                    year = -1
-            except ValueError as e:
-                logger.warning("Error parsing date: '%s" % str(e))
-        index_name_prefix = self.index_name_prefix
-        if year >= 2021:
-            routing_index = f"{index_name_prefix}_{year}"
-        elif 2008 <= year <= 2020:
-            routing_index = f"{index_name_prefix}_older"
-        else:
-            routing_index = f"{index_name_prefix}_other"
-
-        return routing_index
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -154,10 +48,10 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if content_metadata:
             for key, value in content_metadata.items():
                 if value is None or value == "":
-                    logger.error(f"Value for key '{key}' is not provided.")
+                    logger.warning("Value for key: %s is not provided.", key)
                     continue
 
-            keys_to_skip = ["is_homepage", "is_shortened"]
+            keys_to_skip = ["is_homepage", "is_shortened", "parsed_date"]
 
             data: dict[str, Optional[Union[str, bool]]] = {
                 k: v for k, v in content_metadata.items() if k not in keys_to_skip
@@ -179,6 +73,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
                 with story.content_metadata() as cmd:
                     cmd.publication_date = pub_date
 
+            # Use parsed_date (from parser or an archive file) as indexed_date,
+            # falling back to UTC now (for everything parsed/queued before
+            # update applied to parser). API users use indexed_date to poll for
+            # newly added stories, so a timestamp.  By default, ES stores times
+            # with millisecond granularity.
+            data["indexed_date"] = (
+                content_metadata.get("parsed_date") or datetime.utcnow().isoformat()
+            )
             response = self.import_story(data)
             if response and self.output_msgs:
                 # pass story along to archiver (unless disabled)
@@ -194,13 +96,13 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         response = None
         if data:
             url_hash = unique_url_hash(str(data.get("url")))
-            # XX This wont't be needed for Elasticsearch ILM -To remove
-            publication_date = data.get("publication_date")
             # To move to Story index metadata
             data["indexed_date"] = datetime.utcnow().isoformat()
-            target_index = self.index_routing(str(publication_date))
+            target_index = INDEX_NAME_ALIAS
             try:
-                response = self.connector.index(url_hash, target_index, data)
+                response = self.elasticsearch_client().index(
+                    id=url_hash, index=target_index, document=data
+                )
             except ConflictError:
                 self.incr("stories", labels=[("status", "dups")])
             except RequestError as e:

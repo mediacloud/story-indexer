@@ -35,6 +35,7 @@ RUN chmod +x ${APP_DOCKER}/bin/*
 
 
 COPY ../indexer ${APP_DOCKER}/indexer/
+COPY ../conf/elasticsearch/templates ${APP_DOCKER}/conf/elasticsearch/templates
 # pass the executable as ARG and use it in CMD
 ARG RUN
 ENV RUN=${RUN}
