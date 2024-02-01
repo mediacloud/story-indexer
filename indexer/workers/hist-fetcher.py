@@ -32,14 +32,15 @@ logger = logging.getLogger("hist-fetcher")
 # db-b/stories_2021_09_15.csv:
 # 2021-09-15 16:36:53.505277,2043951575,18710,3211617068,59843,https://www.businessinsider.com/eff-google-daily-stormer-2017-8#comments
 
-# DB  attrs from boto (not necessarily story downloads):
+# S3 attrs from boto (not necessarily story downloads):
+# ep. downloadid S3 VersionId                     S3siz S3 LastModified
 # B   3211617604 sbRmtvTcbmDH.dxWNcIBsmRz.ffbbosG 18620 2021-09-15T20:51:01
 # B   3211617605 dSQTc9dyyVj34GP7zMI0GfOFmEkaQE_K 13761 2021-09-15T20:50:59
-# D   3211617605 fKUnm9Sbr8Gt33FaY0gUoKxaq5J3kY1l 36 2021-12-27T05:11:47
+# D   3211617605 fKUnm9Sbr8Gt33FaY0gUoKxaq5J3kY1l 36    2021-12-27T05:11:47
 # ....
 # B   3257240456 N5Bn9xkkeGgXI1BSSzl71hRi9eiHCMo8 5499 2021-10-16T08:53:20
 # D   3257240456 Vp_Qfu7Yo1QkZqWA4RRYu83h0PFoFLOz 8853 2022-01-25T15:47:27
-# B   3257240457 N4tYO8GEnt6_px8SHE9VYc5B5N9Yp_hN 36 2021-10-16T08:53:19
+# B   3257240457 N4tYO8GEnt6_px8SHE9VYc5B5N9Yp_hN 36   2021-10-16T08:53:19
 
 OVERLAP_START = 3211617605  # lowest dl_id w/ multiple versions?
 OVERLAP_END = 3257240456  # highest dl_id w/ multiple versions?
@@ -73,27 +74,25 @@ class HistFetcher(StoryWorker):
         )
 
     def pick_version(
-        self, dlid: int, s3path: str, fetch_date: str
+        self, dlid: int, s3path: str, collect_date: str
     ) -> Optional[Dict[str, Any]]:
         """
         Determine if download id is in the range where multiple versions
-        of the S3 object (named by dlid) can exist, and if so, pick the right
-        version.
-
-        returns None or ExtraArgs dict w/ VersionId
+        of the S3 object (named by dlid) can exist, and if so,
+        return ExtraArgs dict w/ VersionId, else return None.
         """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
             return None
 
-        if fetch_date is None:
-            raise QuarantineException(f"{dlid}: no fetch_date")
+        if collect_date is None:
+            raise QuarantineException(f"{dlid}: no collect_date")
 
-        if DB_B_START < fetch_date < DB_B_END:
+        if DB_B_START < collect_date < DB_B_END:
             fetch_epoch = "B"
-        elif DB_D_START < fetch_date < DB_D_END:
+        elif DB_D_START < collect_date < DB_D_END:
             fetch_epoch = "D"
         else:
-            raise QuarantineException(f"{dlid}: unknown epoch for {fetch_date}")
+            raise QuarantineException(f"{dlid}: unknown epoch for {collect_date}")
 
         resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
         for version in resp.get("Versions", []):
@@ -105,7 +104,7 @@ class HistFetcher(StoryWorker):
 
             vid = version["VersionId"]
 
-            logger.debug("dlid %d fd %s lm %s v %s", dlid, fetch_date, lmdate, vid)
+            logger.debug("dlid %d fd %s lm %s v %s", dlid, collect_date, lmdate, vid)
 
             ret = {"VersionID": vid}
 

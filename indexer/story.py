@@ -111,6 +111,13 @@ class RSSEntry(StoryData):
     pub_date: Optional[str] = None
     fetch_date: Optional[str] = None  # date from input file name
 
+    # none of the following are imported/indexed as of 2/2024.
+    # they're being saved for internal tracing/debugging only.
+    source_url: Optional[str] = None  # source tag url property
+    source_feed_id: Optional[int] = None  # source tag mcFeedId property
+    source_source_id: Optional[int] = None  # source tag mcFeedId property
+    file_name: Optional[str] = None  # name or URL of source file
+
 
 RSS_ENTRY = class_to_member_name(RSSEntry)
 
