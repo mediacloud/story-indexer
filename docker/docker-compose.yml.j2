@@ -139,7 +139,7 @@ x-worker-service-settings: &worker-service-settings
 x-news-search-service-settings: &news-search-service-settings
   environment: &news-search-environment-vars
     <<: *base-environment-vars
-    INDEXES: mediacloud_search_text_older,mediacloud_search_text_other,mediacloud_search_text_2021,mediacloud_search_text_2022,mediacloud_search_text_2023,mediacloud_search_text_2024
+    # INDEXES is obsolete, no common vars right now
   image: {{news_search_image}}
   deploy: &news-search-deploy-settings
     placement:
