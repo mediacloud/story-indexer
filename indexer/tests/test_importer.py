@@ -173,9 +173,5 @@ class TestElasticsearchImporter:
 
     def test_import_story_success(self, importer: ElasticsearchImporter) -> None:
         test_import_data = {**test_data, "url": "http://example_import_story.com"}
-        response = importer.import_story(test_import_data)
-        if response is not None:
-            assert response.get("result") == "created"
-
-        second_response = importer.import_story(test_import_data)
-        assert second_response is None
+        assert importer.import_story(test_import_data)
+        assert not importer.import_story(test_import_data)
