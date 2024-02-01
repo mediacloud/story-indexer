@@ -124,7 +124,7 @@ ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers?
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
-ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.8.0"
+ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.12.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 
@@ -282,8 +282,7 @@ prod)
     ELASTICSEARCH_SHARD_REPLICAS=1
     ELASTICSEARCH_ILM_MAX_AGE="365d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
-    # XXX change to 9200 once reconfigured:
-    ELASTICSEARCH_HOSTS=http://ramos.angwin:9204,http://woodward.angwin:9200,http://bradley.angwin:9204
+    ELASTICSEARCH_HOSTS=http://ramos.angwin:9200,http://woodward.angwin:9200,http://bradley.angwin:9200
 
     # Disabled until tested in staging.
     # Questions:

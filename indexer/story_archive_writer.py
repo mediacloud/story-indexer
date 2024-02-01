@@ -190,7 +190,7 @@ class StoryArchiveWriter:
             "hostname": hostname,  # likely internal or Docker container
             # ip is almost CERTAINLY an RFC1918 private addr
             "software": "mediacloud story-indexer ArchiveWriter",
-            "format": "WARC file version " + WARC_VERSION.split("/")[-1]
+            "format": "WARC file version " + WARC_VERSION.split("/")[-1],
             # others:
             # description, isPartOf, operator
             # http-header-user-agent (use if passed by fetcher in http_metadata?)
