@@ -7,7 +7,7 @@ report Elastic Search stats to statsd
 
 from collections import Counter
 from logging import getLogger
-from typing import Dict, List, cast
+from typing import Any, Dict, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
 
@@ -19,42 +19,42 @@ logger = getLogger("elastic-stats")
 
 class ElasticStats(ElasticMixin, IntervalMixin, App):
     def main_loop(self) -> None:
-        # maybe:
-        # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
-        # to avoid log message for each GET?
-
-        es = self.elasticsearch_client()
-
         while True:
             try:
-                # limit to columns of interest?
-                indices = cast(
-                    List[Dict[str, str]],
-                    es.cat.indices(bytes="b", pri=True, format="json"),
-                )
+                es = self.elasticsearch_client()
+
+                # see https://github.com/mediacloud/story-indexer/issues/199
+                stats = cast(Dict[str, Any], es.indices.stats())
+                # top level keys: "_shards", "_all", "indices"
+                all = stats["_all"]
+
+                # just dump it all for now, rather than trying to figure out what's useful
+                pri = all["primaries"]  # vs "total"
+                for k1, v1 in pri.items():
+                    if isinstance(v1, (int, float)):
+                        path = f"all.primaries.{k1}"
+                        logger.debug(" %s %s", path, v1)
+                        self.gauge(path, v1)
+                    elif isinstance(v1, dict):
+                        for k2, v2 in v1.items():
+                            if isinstance(v2, (int, float)):
+                                # NOTE! bool is subclass of int!!!
+                                path = f"all.primaries.{k1}.{k2}"
+                                logger.debug(" %s %s", path, v2)
+                                self.gauge(path, v2)
+
+                # with ILM, no longer reporting individual index stats.
+                # tally of index health status across all indices
                 health: Counter[str] = Counter()
-                for index in indices:
-                    name = index["index"]
-                    logger.debug("index: %s", name)
 
-                    def by_index(input: str, out: str) -> None:
-                        val = int(index[input])
-                        logger.debug(" %s %s %d", input, out, val)
-                        self.gauge(
-                            f"indices.stats.{out}", val, labels=[("index", name)]
-                        )
-
-                    by_index("docs.count", "docs")
-                    by_index("docs.deleted", "deleted")
-                    by_index("pri.store.size", "pri-size")
-                    health[index["health"]] += 1
+                for name, values in stats["indices"].items():
+                    health[values["health"]] += 1
 
                 # report totals for each health state
                 for color in ("green", "red", "yellow"):
                     count = health[color]
                     logger.debug("%s %d", color, count)
                     self.gauge("indices.health", count, labels=[("color", color)])
-
             except (ConnectionError, ConnectionTimeout) as e:
                 logger.debug("indices: %r", e)
 
