@@ -32,6 +32,10 @@ class ElasticMixin(AppProtocol):
         )
 
     def elasticsearch_client(self) -> Elasticsearch:
+        # maybe take boolean arg or environment variable and call
+        # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+        # to avoid log message for each op?
+
         assert self.args
         hosts = self.args.elasticsearch_hosts
         if not hosts:
