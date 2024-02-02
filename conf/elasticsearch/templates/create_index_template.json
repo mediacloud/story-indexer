@@ -1,6 +1,6 @@
 {
     "name": "mediacloud_search_template",
-    "index_patterns": "mediacloud_search*",
+    "index_patterns": "mc_search-*",
     "template": {
       "settings": {
         "index.lifecycle.name": "mediacloud-lifecycle-policy",
