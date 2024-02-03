@@ -58,6 +58,19 @@ class AppProtocol(Protocol):
     def timer(self, name: str) -> "_TimingContext": ...
 
 
+# TEMP CROCK to speed up arch-queuer! Should replace SyslogHandler and
+# StatsdClient with versions that use a sendto replacement that caches
+# DNS lookups for a short period (a minute?)
+def _resolve(name: str) -> str:
+    # retry in case syslog container not yet available
+    for x in [0.125, 0.25, 0.5, 1, 2, 4, 8]:
+        try:
+            return socket.gethostbyname(name)
+        except socket.gaierror:
+            time.sleep(x)
+    return name
+
+
 class App(AppProtocol):
     """
     Base class for command line applications (ie; Worker)
@@ -171,7 +184,7 @@ class App(AppProtocol):
             # Could use a different LOCALn facility for different programs
             # (see note in syslog-sink.py about routing via facility).
             handler = SysLogHandler(
-                address=(syslog_host, int(syslog_port)),
+                address=(_resolve(syslog_host), int(syslog_port)),
                 facility=SysLogHandler.LOG_LOCAL0,
             )
 
@@ -232,7 +245,7 @@ class App(AppProtocol):
 
         prefix = f"mc.{realm}.story-indexer.{self.process_name}"
         logger.info(f"sending stats to {statsd_url} prefix {prefix}")
-        self._statsd = statsd.StatsdClient(host, port, prefix)
+        self._statsd = statsd.StatsdClient(_resolve(host), port, prefix)
 
     def _name(self, name: str, labels: Labels = []) -> str:
         """
