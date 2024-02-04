@@ -19,7 +19,12 @@ class RSSEntry(TypedDict):
     title: str
     domain: str
     pub_date: str
-    fetch_date: str
+    fetch_date: str  # from input file name
+    # New fields (2/2024) from <source> tag:
+    source_url: Optional[str]  # source tag url property
+    source_feed_id: Optional[int]  # source tag mcFeedId property
+    source_source_id: Optional[int]  # source tag mcSourceId property
+    file_name: str  # full input file name
 
 
 def fetch_daily_rss(
@@ -53,12 +58,33 @@ def fetch_daily_rss(
 
     found_items = []
     for item in all_items:
+        source_tag = item.find("source")
+
+        def src_attr(attr_name: str) -> Optional[str]:
+            """
+            return attribute (if set and non-empty) from <source> tag.
+            return None rather than empty value
+            """
+            if source_tag is None:
+                return None
+            return source_tag.get(attr_name) or None
+
+        def src_attr_int(attr_name: str) -> Optional[int]:
+            val = src_attr(attr_name)
+            if not val or not val.isdigit():
+                return None
+            return int(val)
+
         entry: RSSEntry = {
             "link": item.findtext("link"),
             "title": item.findtext("title"),
             "domain": item.findtext("domain"),
             "pub_date": item.findtext("pubDate"),
             "fetch_date": fetch_date,
+            "source_url": src_attr("url"),
+            "source_feed_id": src_attr_int("mcFeedId"),
+            "source_source_id": src_attr_int("mcSourceId"),
+            "file_name": url,  # source file
         }
         found_items.append(entry)
 

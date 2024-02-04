@@ -177,7 +177,10 @@ class FetchWorker(StoryProducer):
                 story_rss_entry.domain = rss_entry["domain"]
                 story_rss_entry.pub_date = rss_entry["pub_date"]
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
-
+                story_rss_entry.source_url = rss_entry["source_url"]
+                story_rss_entry.source_feed_id = rss_entry["source_feed_id"]
+                story_rss_entry.source_source_id = rss_entry["source_source_id"]
+                story_rss_entry.file_name = rss_entry["file_name"]
             self.stories_to_fetch.append(new_story)
 
         self.gauge(
