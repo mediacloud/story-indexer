@@ -15,21 +15,15 @@ NOTE! --yesterday only valid after 01:00 GMT
 """
 
 import argparse
-import gzip
 import html
-import io
 import logging
-import sys
 import time
 import xml.sax
-from typing import BinaryIO, Callable, List, Optional
+from typing import BinaryIO, List, Optional
 
-import requests
-
-from indexer.app import App, run
+from indexer.app import run
 from indexer.queuer import Queuer
-from indexer.story import BaseStory, StoryFactory
-from indexer.storyapp import StoryProducer, StorySender
+from indexer.story import StoryFactory
 
 S3_URL_BASE = "https://mediacloud-public.s3.amazonaws.com/backup-daily-rss"
 

@@ -34,7 +34,6 @@ import signal
 import time
 from types import FrameType
 from typing import NamedTuple, Optional
-from urllib.parse import SplitResult, urlsplit
 
 import requests
 from requests.exceptions import ConnectionError
@@ -47,12 +46,7 @@ from indexer.storyapp import (
     non_news_fqdn,
     url_fqdn,
 )
-from indexer.worker import (
-    CONSUMER_TIMEOUT_SECONDS,
-    DEFAULT_EXCHANGE,
-    QuarantineException,
-    RequeueException,
-)
+from indexer.worker import QuarantineException, RequeueException
 from indexer.workers.fetcher.sched import IssueStatus, ScoreBoard
 
 # internal scheduling:
