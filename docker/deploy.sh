@@ -139,7 +139,7 @@ IMPORTER_REPLICAS=1
 NEWS_SEARCH_API_PORT=8000	# native port
 NEWS_SEARCH_IMAGE_NAME=mcsystems/news-search-api
 NEWS_SEARCH_IMAGE_REGISTRY=docker.io/
-NEWS_SEARCH_IMAGE_TAG=v1.0.0
+NEWS_SEARCH_IMAGE_TAG=v1.2.0
 NEWS_SEARCH_UI_PORT=8501	# server's native port
 NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 
@@ -220,13 +220,7 @@ archive)
     ARCHIVER_REPLICAS=0		# no archivers
     IMPORTER_ARGS=--no-output	# no archives!!!
     if [ "x$DEPLOY_TYPE" = xprod ]; then
-	# After ES server downtime, ramos imported 60 stories/second,
-	# with one importer, and 120/sec with two.  Examination of the
-	# week 2023-11-13 thru 2023-11-19 averaged 427K stories/day.
-	# Four importers should be able to load 2023-11-12 thru
-	# 2024-01-26 (10 weeks) in under two days
-	# (approx 2 archive days per hour).
-	IMPORTER_REPLICAS=4
+	IMPORTER_REPLICAS=8
     fi
     PARSER_REPLICAS=0		# no parsing required!
     PIPE_TYPE_PFX='arch-'	# own stack name/queues
