@@ -19,7 +19,7 @@ class RSSEntry(TypedDict):
     title: str
     domain: str
     pub_date: str
-    fetch_date: str  # from input file name
+    fetch_date: Optional[str]  # from RSS remote file name
     # New fields (2/2024) from <source> tag:
     source_url: Optional[str]  # source tag url property
     source_feed_id: Optional[int]  # source tag mcFeedId property
@@ -28,19 +28,32 @@ class RSSEntry(TypedDict):
 
 
 def fetch_daily_rss(
-    fetch_date: str, sample_size: Optional[int] = None
+    fetch_date: Optional[str],
+    sample_size: Optional[int] = None,
+    rss_file: Optional[str] = None,
 ) -> List[RSSEntry]:
     """
     Fetch the content of the backup rss fetcher for a given day and return as a list of dicts.
     sample_size: 0 or
+    local rss_file for testing new formats of RSS file not yet in production.
     """
-    url = f"https://mediacloud-public.s3.amazonaws.com/backup-daily-rss/mc-{fetch_date}.rss.gz"
-    rss = requests.get(url, timeout=60)
-    if rss.status_code > 400:
-        raise RuntimeError(f"No mediacloud rss available for {fetch_date}")
+    if fetch_date:
+        url = f"https://mediacloud-public.s3.amazonaws.com/backup-daily-rss/mc-{fetch_date}.rss.gz"
+        rss = requests.get(url, timeout=60)
+        if rss.status_code > 400:
+            raise RuntimeError(f"No mediacloud rss available for {fetch_date}")
 
-    # The mediacloud record is XML, so we just read it in directly and parse out our urls.
-    data = gzip.decompress(rss.content)
+        # The mediacloud record is XML, so we just read it in directly and parse out our urls.
+        data = gzip.decompress(rss.content)
+    elif rss_file:
+        url = rss_file  # for RSSEntry
+        with open(rss_file, "rb") as f:
+            data = f.read()
+        if rss_file.endswith(".gz"):
+            data = gzip.decompress(data)
+    else:
+        raise RuntimeError("need fetch_date or rss_file")
+
     parser = etree.XMLParser(recover=True)
     root = etree.fromstring(data, parser=parser)
 
