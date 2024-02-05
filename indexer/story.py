@@ -116,7 +116,10 @@ class RSSEntry(StoryData):
     source_url: Optional[str] = None  # source tag url property
     source_feed_id: Optional[int] = None  # source tag mcFeedId property
     source_source_id: Optional[int] = None  # source tag mcFeedId property
-    file_name: Optional[str] = None  # name or URL of source file
+    # NOTE! If we ever move to rss-fetcher delivering stories by queue message,
+    # there won't be a "file".  "source_name" might be a better field name,
+    # but could easily be confused as comming from the RSS <source> tag. IDEAS???
+    file_name: Optional[str] = None  # full name or URL of source (RSS or CSV) file
 
 
 RSS_ENTRY = class_to_member_name(RSSEntry)
