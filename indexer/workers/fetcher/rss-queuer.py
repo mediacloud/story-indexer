@@ -34,29 +34,57 @@ Story = StoryFactory()
 logger = logging.getLogger("queue-rss")
 
 
+def optional_int(input: Optional[str]) -> Optional[int]:
+    if not input or not input.isdigit():
+        return None
+    return int(input)
+
+
 class RSSHandler(xml.sax.ContentHandler):
-    def __init__(self, app: "RSSQueuer"):
+    link: str  # required!
+    domain: Optional[str]
+    pub_date: Optional[str]
+    title: Optional[str]
+    source_url: Optional[str]
+    source_feed_id: Optional[int]
+    source_source_id: Optional[int]
+    content: List[str]
+
+    def __init__(self, app: "RSSQueuer", fname: str):
         self.app = app
-        self.parsed = 0
+        self.parsed = self.bad = 0
         self.in_item = False
+        self.file_name = fname
+        self.reset_item()
+        self.content = []
+
+    def reset_item(self) -> None:
         self.link = ""
         self.domain = ""
         self.pub_date = ""
         self.title = ""
+        self.source_url = None
+        self.source_feed_id = None
+        self.source_source_id = None
 
     def startElement(self, name: str, attrs: Attrs) -> None:
-        # error if in_item is True (missing end element?)
         if name == "item":
+            # error if in_item is True (missing end element?)
             self.in_item = True
-        self.content: List[str] = []
+        elif self.in_item:
+            if name == "source":
+                self.source_url = attrs.get("url")
+                self.source_feed_id = optional_int(attrs.get("mcFeedId"))
+                self.source_source_id = optional_int(attrs.get("mcSourceId"))
+        self.content = []  # DOES NOT WORK FOR NESTED TAGS!
 
     def characters(self, content: str) -> None:
         """
-        text content inside current tag
-        may come in multiple calls,
-        even if/when no intervening element
+        handle text content inside current tag;
+        may come in multiple calls!!
+        DOES NOT WORK FOR NESTED TAGS!!
+        (would need a stack pushed by startElement, popped by endElement)
         """
-        # save channel.lastBuildDate for fetch date?
         self.content.append(content)
 
     def endElement(self, name: str):  # type: ignore[no-untyped-def]
@@ -65,40 +93,43 @@ class RSSHandler(xml.sax.ContentHandler):
 
         # here at end of a tag inside an <item>
 
-        # join bits of tag content together:
+        # join bits of tag content together
+        # DOES NOT WORK FOR NESTED TAGS!!
         content = "".join(self.content)
 
         if name == "link":
             # undo HTML entity escapes:
             self.link = html.unescape(content).strip()
         elif name == "domain":
-            self.domain = content.strip()
+            self.domain = content.strip() or None
         elif name == "pubDate":
-            self.pub_date = content.strip()
+            self.pub_date = content.strip() or None
         elif name == "title":
-            self.title = content.strip()
+            self.title = content.strip() or None
         elif name == "item":
-            if self.link and self.domain:
+            # domain not required by queue-based fetcher
+            if self.link:
                 s = Story()
-                with s.rss_entry() as rss:
+                # mypy reval_type(rss) in "with s.rss_entry() as rss" gives Any!!
+                rss = s.rss_entry()
+                with rss:
                     rss.link = self.link
                     rss.domain = self.domain
                     rss.pub_date = self.pub_date
                     rss.title = self.title
-                    # also rss.fetch_date
-
+                    rss.file_name = self.file_name  # instead of fetch_date
+                    rss.source_url = self.source_url
+                    rss.source_feed_id = self.source_feed_id
+                    rss.source_source_id = self.source_source_id
                 self.app.send_story(s)
-
-                self.link = self.domain = self.pub_date = self.title = ""
+                self.reset_item()
                 self.parsed += 1
             else:
                 assert self.app.args
                 # don't muddy the water if just a dry-run:
                 if not self.app.args.dry_run:
                     self.app.incr_stories("bad", self.link)
-                logger.warning(
-                    "incomplete item: link: %s domain: %s", self.link, self.domain
-                )
+                    self.bad += 1
             self.in_item = False
 
 
@@ -184,7 +215,9 @@ class RSSQueuer(Queuer):
         implied by --fetch-date, --days and --yesterday
         with an uncompressed (binary) byte stream
         """
-        xml.sax.parse(fobj, RSSHandler(self))
+        handler = RSSHandler(self, fname)
+        xml.sax.parse(fobj, handler)
+        logger.info("processed %s: %d ok, %d bad", fname, handler.parsed, handler.bad)
 
 
 if __name__ == "__main__":
