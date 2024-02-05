@@ -54,6 +54,7 @@ def fetch_daily_rss(
     else:
         raise RuntimeError("need fetch_date or rss_file")
 
+    # The mediacloud record is XML, so we just read it in directly and parse out our urls.
     parser = etree.XMLParser(recover=True)
     root = etree.fromstring(data, parser=parser)
 
