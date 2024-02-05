@@ -54,6 +54,14 @@ DOWNLOADS_BUCKET = "mediacloud-downloads-backup"
 DOWNLOADS_PREFIX = "downloads/"
 
 
+def date2epoch(date: str) -> Optional[str]:
+    if DB_B_START < date < DB_B_END:
+        return "B"
+    if DB_D_START < date < DB_D_END:
+        return "D"
+    return None
+
+
 class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -87,11 +95,8 @@ class HistFetcher(StoryWorker):
         if collect_date is None:
             raise QuarantineException(f"{dlid}: no collect_date")
 
-        if DB_B_START < collect_date < DB_B_END:
-            fetch_epoch = "B"
-        elif DB_D_START < collect_date < DB_D_END:
-            fetch_epoch = "D"
-        else:
+        fetch_epoch = date2epoch(collect_date)
+        if not fetch_epoch:
             raise QuarantineException(f"{dlid}: unknown epoch for {collect_date}")
 
         resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
@@ -101,22 +106,28 @@ class HistFetcher(StoryWorker):
                 break
 
             lmdate = version["LastModified"].isoformat(sep=" ")
+            lm_epoch = date2epoch(lmdate)
+            if not lm_epoch:
+                logger.debug("lmdate %s not in either epoch", lmdate)
+                continue
 
             vid = version["VersionId"]
-
-            logger.debug("dlid %d fd %s lm %s v %s", dlid, collect_date, lmdate, vid)
-
-            ret = {"VersionID": vid}
+            logger.debug(
+                "dlid %d fd %s (%s) lm %s (%s) v %s",
+                dlid,
+                collect_date,
+                fetch_epoch,
+                lmdate,
+                lm_epoch,
+                vid,
+            )
 
             # declare victory if both from same epoch
             # NOT checking how close...
-            if fetch_epoch == "B" and DB_B_START < lmdate < DB_B_END:
-                return ret
+            if fetch_epoch == lm_epoch:
+                return {"VersionID": vid}
 
-            if fetch_epoch == "D" and DB_D_START < lmdate < DB_D_END:
-                return ret
-
-        raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no match?")
+        raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no matching S3 object")
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         rss = story.rss_entry()
