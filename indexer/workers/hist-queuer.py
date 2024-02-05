@@ -45,15 +45,12 @@ class HistQueuer(Queuer):
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
             logger.debug("%r", row)
 
-            url = row.get("url", "")
+            url = row.get("url", None)
             if not self.check_story_url(url):
                 continue  # logged and counted
 
             dlid = row.get("downloads_id", None)
-            if not dlid or not dlid.isdigit():
-                logger.error("bad downloads_id: %r", row)
-                self.incr_stories("bad-dlid", url)
-                continue
+            # let hist-fetcher quarantine if bad
 
             try:
                 feeds_id = int(row["feeds_id"])

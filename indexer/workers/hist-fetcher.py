@@ -123,12 +123,12 @@ class HistFetcher(StoryWorker):
         hmd = story.http_metadata()
 
         dlid_str = rss.link
-        if dlid_str is None:
-            self.incr_stories("bad-dlid", "")
-            return
+        if dlid_str is None or not dlid_str.isdigit():
+            self.incr_stories("bad-dlid", dlid_str or "EMPTY")
+            raise QuarantineException("bad-dlid")
 
         # download id as int for version picker
-        dlid = int(dlid_str)  # pre-validated by hist-queuer.py
+        dlid = int(dlid_str)  # validated above
 
         # format timestamp (CSV file collect_date) for version picker
         dldate = time.strftime("%Y-%m-%d", time.gmtime(hmd.fetch_timestamp))
