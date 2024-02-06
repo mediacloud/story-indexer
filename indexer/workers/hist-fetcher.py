@@ -170,6 +170,9 @@ class HistFetcher(StoryWorker):
         with story.raw_html() as raw:
             raw.html = html
 
+        with hmd:
+            hmd.response_code = 200
+
         sender.send_story(story)
         self.incr_stories("success", url)
 
