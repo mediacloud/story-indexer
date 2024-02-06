@@ -45,7 +45,7 @@ class HistQueuer(Queuer):
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
             logger.debug("%r", row)
 
-            url = row.get("url", None)
+            url = row.get("url")
             if not self.check_story_url(url):
                 continue  # logged and counted
 
