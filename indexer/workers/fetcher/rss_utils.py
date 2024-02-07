@@ -24,7 +24,7 @@ class RSSEntry(TypedDict):
     source_url: Optional[str]  # source tag url property
     source_feed_id: Optional[int]  # source tag mcFeedId property
     source_source_id: Optional[int]  # source tag mcSourceId property
-    file_name: str  # full input file name
+    via: str  # full input file name
 
 
 def fetch_daily_rss(
@@ -98,7 +98,7 @@ def fetch_daily_rss(
             "source_url": src_attr("url"),
             "source_feed_id": src_attr_int("mcFeedId"),
             "source_source_id": src_attr_int("mcSourceId"),
-            "file_name": url,  # source file
+            "via": url,  # source file
         }
         found_items.append(entry)
 

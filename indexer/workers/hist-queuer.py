@@ -46,18 +46,24 @@ class HistQueuer(Queuer):
             logger.debug("%r", row)
 
             url = row.get("url")
+            if not isinstance(url, str):
+                self.incr_stories("bad-url", repr(url))
+                continue
+
             if not self.check_story_url(url):
                 continue  # logged and counted
 
-            dlid = row.get("downloads_id", None)
+            dlid = row.get("downloads_id")
             # let hist-fetcher quarantine if bad
 
+            # convert to int: OK if missing or malformed
             try:
                 feeds_id = int(row["feeds_id"])
             except (KeyError, ValueError):
                 # XXX cannot count w/ incr_stories (only incremented once per story)
                 feeds_id = None
 
+            # convert to int: OK if missing or malformed
             try:
                 media_id = int(row["media_id"])
             except (KeyError, ValueError):
@@ -72,7 +78,7 @@ class HistQueuer(Queuer):
                 rss.fetch_date = fetch_date
                 rss.source_feed_id = feeds_id
                 rss.source_source_id = media_id  # media is legacy name
-                rss.file_name = fname
+                rss.via = fname
 
             collect_date = row.get("collect_date", None)
             with story.http_metadata() as hmd:
