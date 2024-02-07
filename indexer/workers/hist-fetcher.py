@@ -13,6 +13,7 @@ import gzip
 import io
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 
 import boto3
@@ -31,14 +32,15 @@ logger = logging.getLogger("hist-fetcher")
 # db-b/stories_2021_09_15.csv:
 # 2021-09-15 16:36:53.505277,2043951575,18710,3211617068,59843,https://www.businessinsider.com/eff-google-daily-stormer-2017-8#comments
 
-# DB  attrs from boto (not necessarily story downloads):
+# S3 attrs from boto (not necessarily story downloads):
+# ep. downloadid S3 VersionId                     S3siz S3 LastModified
 # B   3211617604 sbRmtvTcbmDH.dxWNcIBsmRz.ffbbosG 18620 2021-09-15T20:51:01
 # B   3211617605 dSQTc9dyyVj34GP7zMI0GfOFmEkaQE_K 13761 2021-09-15T20:50:59
-# D   3211617605 fKUnm9Sbr8Gt33FaY0gUoKxaq5J3kY1l 36 2021-12-27T05:11:47
+# D   3211617605 fKUnm9Sbr8Gt33FaY0gUoKxaq5J3kY1l 36    2021-12-27T05:11:47
 # ....
 # B   3257240456 N5Bn9xkkeGgXI1BSSzl71hRi9eiHCMo8 5499 2021-10-16T08:53:20
 # D   3257240456 Vp_Qfu7Yo1QkZqWA4RRYu83h0PFoFLOz 8853 2022-01-25T15:47:27
-# B   3257240457 N4tYO8GEnt6_px8SHE9VYc5B5N9Yp_hN 36 2021-10-16T08:53:19
+# B   3257240457 N4tYO8GEnt6_px8SHE9VYc5B5N9Yp_hN 36   2021-10-16T08:53:19
 
 OVERLAP_START = 3211617605  # lowest dl_id w/ multiple versions?
 OVERLAP_END = 3257240456  # highest dl_id w/ multiple versions?
@@ -52,11 +54,18 @@ DOWNLOADS_BUCKET = "mediacloud-downloads-backup"
 DOWNLOADS_PREFIX = "downloads/"
 
 
+def date2epoch(date: str) -> Optional[str]:
+    if DB_B_START < date < DB_B_END:
+        return "B"
+    if DB_D_START < date < DB_D_END:
+        return "D"
+    return None
+
+
 class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        # XXX use blobstore?!
         for app in ["HIST", "QUEUER"]:
             region = os.environ.get(f"{app}_S3_REGION")
             access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
@@ -73,27 +82,22 @@ class HistFetcher(StoryWorker):
         )
 
     def pick_version(
-        self, dlid: int, s3path: str, fetch_date: Optional[str]
+        self, dlid: int, s3path: str, collect_date: str
     ) -> Optional[Dict[str, Any]]:
         """
         Determine if download id is in the range where multiple versions
-        of the S3 object (named by dlid) can exist, and if so, pick the right
-        version.
-
-        returns None or ExtraArgs dict w/ VersionId
+        of the S3 object (named by dlid) can exist, and if so,
+        return ExtraArgs dict w/ VersionId, else return None.
         """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
             return None
 
-        if fetch_date is None:
-            raise QuarantineException(f"{dlid}: no fetch_date")
+        if collect_date is None:
+            raise QuarantineException(f"{dlid}: no collect_date")
 
-        if DB_B_START < fetch_date < DB_B_END:
-            fetch_epoch = "B"
-        elif DB_D_START < fetch_date < DB_D_END:
-            fetch_epoch = "D"
-        else:
-            raise QuarantineException(f"{dlid}: unknown epoch for {fetch_date}")
+        fetch_epoch = date2epoch(collect_date)
+        if not fetch_epoch:
+            raise QuarantineException(f"{dlid}: unknown epoch for {collect_date}")
 
         resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
         for version in resp.get("Versions", []):
@@ -102,38 +106,51 @@ class HistFetcher(StoryWorker):
                 break
 
             lmdate = version["LastModified"].isoformat(sep=" ")
+            lm_epoch = date2epoch(lmdate)
+            if not lm_epoch:
+                logger.debug("lmdate %s not in either epoch", lmdate)
+                continue
 
             vid = version["VersionId"]
-
-            logger.debug("dlid %d fd %s lm %s v %s", dlid, fetch_date, lmdate, vid)
-
-            ret = {"VersionID": vid}
+            logger.debug(
+                "dlid %d fd %s (%s) lm %s (%s) v %s",
+                dlid,
+                collect_date,
+                fetch_epoch,
+                lmdate,
+                lm_epoch,
+                vid,
+            )
 
             # declare victory if both from same epoch
             # NOT checking how close...
-            if fetch_epoch == "B" and DB_B_START < lmdate < DB_B_END:
-                return ret
+            if fetch_epoch == lm_epoch:
+                return {"VersionID": vid}
 
-            if fetch_epoch == "D" and DB_D_START < lmdate < DB_D_END:
-                return ret
-
-        raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no match?")
+        raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no matching S3 object")
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         rss = story.rss_entry()
+        hmd = story.http_metadata()
 
-        if rss.link:
-            # XXX inside try: Quarantine on error?
-            dlid = int(rss.link)
-        else:
-            # XXX count
-            return
+        dlid_str = rss.link
+        if dlid_str is None or not dlid_str.isdigit():
+            self.incr_stories("bad-dlid", dlid_str or "EMPTY")
+            raise QuarantineException("bad-dlid")
 
-        s3path = DOWNLOADS_PREFIX + str(dlid)
+        # download id as int for version picker
+        dlid = int(dlid_str)  # validated above
+
+        # format timestamp (CSV file collect_date) for version picker
+        dldate = time.strftime("%Y-%m-%d", time.gmtime(hmd.fetch_timestamp))
+
+        s3path = DOWNLOADS_PREFIX + dlid_str
+
+        # get ExtraArgs (w/ VersionId) if needed
+        extras = self.pick_version(dlid, s3path, dldate)
 
         # need to have whole story in memory (for Story object),
         # so download to a memory-based file object and decompress
-        extras = self.pick_version(dlid, s3path, rss.fetch_date)
         with io.BytesIO() as bio:
             # let any Exception cause retry/quarantine
             self.s3.download_fileobj(
@@ -143,7 +160,7 @@ class HistFetcher(StoryWorker):
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
-        # hist-queuer should have checked URL
+        # hist-queuer checked URL
         url = story.http_metadata().final_url or ""
 
         if not self.check_story_length(html, url):
@@ -152,6 +169,9 @@ class HistFetcher(StoryWorker):
         logger.info("%d %s: %d bytes", dlid, url, len(html))
         with story.raw_html() as raw:
             raw.html = html
+
+        with hmd:
+            hmd.response_code = 200
 
         sender.send_story(story)
         self.incr_stories("success", url)

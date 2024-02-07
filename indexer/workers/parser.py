@@ -88,9 +88,9 @@ class Parser(StoryWorker):
         html = ud.markup  # decoded HTML
         logger.info("parsing %s: %d characters", final_url, len(html))
         if not html:
-            # should NOT have happened!
+            # can get here from batch fetcher, or if body was just a BOM
             self.incr_stories("no-html", final_url)  # want level=NOTICE
-            raise QuarantineException("no html")
+            return
 
         with raw:
             # Scrapy removes BOM, so do it here too.

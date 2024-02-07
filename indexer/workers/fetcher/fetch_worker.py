@@ -31,7 +31,8 @@ MAX_FETCHER_MSG_SIZE: int = (
 class FetchWorker(StoryProducer):
     AUTO_CONNECT: bool = False
 
-    fetch_date: str
+    fetch_date: Optional[str]
+    rss_file: Optional[str]
     sample_size: Optional[int]
     num_batches: int
     batch_index: int
@@ -86,23 +87,26 @@ class FetchWorker(StoryProducer):
             help="Number of stories to batch. Default (None) is 'all of them'",
         )
 
+        ap.add_argument("--rss-file", help="name of local RSS file for testing")
+
     def process_args(self) -> None:
         super().process_args()
 
         assert self.args
         logger.info(self.args)
 
+        self.rss_file = self.fetch_date = None
         if self.args.yesterday:
             logger.info("Fetching for yesterday")
             yesterday = datetime.today() - timedelta(days=2)
-            fetch_date = yesterday.strftime("%Y-%m-%d")
+            self.fetch_date = yesterday.strftime("%Y-%m-%d")
+        elif self.args.fetch_date:
+            self.fetch_date = self.args.fetch_date
+        elif self.args.rss_file:
+            self.rss_file = self.args.rss_file
         else:
-            fetch_date = self.args.fetch_date
-            if not fetch_date:
-                logger.fatal("need fetch date")
-                sys.exit(1)
-
-        self.fetch_date = fetch_date
+            logger.fatal("need --fetch-date, --yesterday or --rss-file")
+            sys.exit(1)
 
         num_batches = self.args.num_batches
         if num_batches is None:
@@ -153,8 +157,12 @@ class FetchWorker(StoryProducer):
 
     def main_loop(self) -> None:
         # Fetch and batch rss
-        logger.info(f"Fetching rss batch {self.batch_index} for {self.fetch_date}")
-        all_rss_records = fetch_daily_rss(self.fetch_date, self.sample_size)
+        logger.info(
+            f"Fetching rss batch {self.batch_index} for {self.fetch_date or self.rss_file}"
+        )
+        all_rss_records = fetch_daily_rss(
+            self.fetch_date, self.sample_size, self.rss_file
+        )
         batches, batch_map = batch_rss(all_rss_records, num_batches=self.num_batches)
         self.rss_batch = batches[self.batch_index]
 
@@ -177,7 +185,10 @@ class FetchWorker(StoryProducer):
                 story_rss_entry.domain = rss_entry["domain"]
                 story_rss_entry.pub_date = rss_entry["pub_date"]
                 story_rss_entry.fetch_date = rss_entry["fetch_date"]
-
+                story_rss_entry.source_url = rss_entry["source_url"]
+                story_rss_entry.source_feed_id = rss_entry["source_feed_id"]
+                story_rss_entry.source_source_id = rss_entry["source_source_id"]
+                story_rss_entry.via = rss_entry["via"]
             self.stories_to_fetch.append(new_story)
 
         self.gauge(

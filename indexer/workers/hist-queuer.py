@@ -10,6 +10,7 @@ import csv
 import datetime as dt
 import io
 import logging
+import re
 from typing import BinaryIO
 
 from indexer.app import run
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 Story = StoryFactory()
 
+# regular expression to try to extract date from CSV file name:
+DATE_RE = re.compile(r"(\d\d\d\d)[_-](\d\d)[_-](\d\d)")
+
 
 class HistQueuer(Queuer):
     AWS_PREFIX = "HIST"  # S3 env var prefix
@@ -29,26 +33,52 @@ class HistQueuer(Queuer):
         """
         called for each input file with open binary/bytes I/O object
         """
+        # try extracting date from file name to create fetch_date for RSSEntry.
+        m = DATE_RE.match(fname)
+        if m:
+            fetch_date = "-".join(m.groups())
+        else:
+            fetch_date = None
+
         # typical columns:
         # collect_date,stories_id,media_id,downloads_id,feeds_id,[language,]url
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
             logger.debug("%r", row)
 
-            url = row.get("url", "")
+            url = row.get("url")
+            if not isinstance(url, str):
+                self.incr_stories("bad-url", repr(url))
+                continue
+
             if not self.check_story_url(url):
                 continue  # logged and counted
 
-            dlid = row.get("downloads_id", None)
-            if not dlid or not dlid.isdigit():
-                logger.error("bad downloads_id: %r", row)
-                self.incr_stories("bad-dlid", url)
-                continue
+            dlid = row.get("downloads_id")
+            # let hist-fetcher quarantine if bad
+
+            # convert to int: OK if missing or malformed
+            try:
+                feeds_id = int(row["feeds_id"])
+            except (KeyError, ValueError):
+                # XXX cannot count w/ incr_stories (only incremented once per story)
+                feeds_id = None
+
+            # convert to int: OK if missing or malformed
+            try:
+                media_id = int(row["media_id"])
+            except (KeyError, ValueError):
+                # XXX cannot count w/ incr_stories (only incremented once per story)
+                media_id = None
 
             story = Story()
             with story.rss_entry() as rss:
                 # store downloads_id (used to download HTML from S3)
                 # as the "original" location, for use by hist-fetcher.py
                 rss.link = dlid
+                rss.fetch_date = fetch_date
+                rss.source_feed_id = feeds_id
+                rss.source_source_id = media_id  # media is legacy name
+                rss.via = fname
 
             collect_date = row.get("collect_date", None)
             with story.http_metadata() as hmd:
@@ -70,6 +100,20 @@ class HistQueuer(Queuer):
                     )
                     hmd.fetch_timestamp = collect_dt.timestamp()
 
+            # NOTE! language was extracted from legacy database (where possible) due to
+            # Phil's mistaken assumption that language detection was CPU intensive, but
+            # that was due to py3lang/numpy/openblas dot operator defaulting to one
+            # worker thread per CPU core, and the worker threads all spinning for work,
+            # raising the load average.
+
+            # When parser.py is run with OPENBLAS_NUM_THREADS=1, the cpu use is
+            # negligable, and the work to extract the language, and to make it possible
+            # to pass "override" data in to mcmetadata.extract was for naught.  And it's
+            # better to assume that current tools are better than the old ones.
+
+            # Nonetheless, since the data is available, put it in the Story.  It will
+            # either be overwritten, or be available if the Story ends up being
+            # quarantined by the parser.
             lang = row.get("language", None)
             if lang:
                 with story.content_metadata() as cmd:
@@ -79,7 +123,7 @@ class HistQueuer(Queuer):
             # put in the actual parse time as usual:
             # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
 
-            self.send_story(story)  # increments counter
+            self.send_story(story)  # calls incr_story: to increment and log
 
 
 if __name__ == "__main__":

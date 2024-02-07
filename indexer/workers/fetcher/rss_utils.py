@@ -19,23 +19,42 @@ class RSSEntry(TypedDict):
     title: str
     domain: str
     pub_date: str
-    fetch_date: str
+    fetch_date: Optional[str]  # from RSS remote file name
+    # New fields (2/2024) from <source> tag:
+    source_url: Optional[str]  # source tag url property
+    source_feed_id: Optional[int]  # source tag mcFeedId property
+    source_source_id: Optional[int]  # source tag mcSourceId property
+    via: str  # full input file name
 
 
 def fetch_daily_rss(
-    fetch_date: str, sample_size: Optional[int] = None
+    fetch_date: Optional[str],
+    sample_size: Optional[int] = None,
+    rss_file: Optional[str] = None,
 ) -> List[RSSEntry]:
     """
     Fetch the content of the backup rss fetcher for a given day and return as a list of dicts.
     sample_size: 0 or
+    local rss_file for testing new formats of RSS file not yet in production.
     """
-    url = f"https://mediacloud-public.s3.amazonaws.com/backup-daily-rss/mc-{fetch_date}.rss.gz"
-    rss = requests.get(url, timeout=60)
-    if rss.status_code > 400:
-        raise RuntimeError(f"No mediacloud rss available for {fetch_date}")
+    if fetch_date:
+        url = f"https://mediacloud-public.s3.amazonaws.com/backup-daily-rss/mc-{fetch_date}.rss.gz"
+        rss = requests.get(url, timeout=60)
+        if rss.status_code > 400:
+            raise RuntimeError(f"No mediacloud rss available for {fetch_date}")
+
+        # The mediacloud record is XML, so we just read it in directly and parse out our urls.
+        data = gzip.decompress(rss.content)
+    elif rss_file:
+        url = rss_file  # for RSSEntry
+        with open(rss_file, "rb") as f:
+            data = f.read()
+        if rss_file.endswith(".gz"):
+            data = gzip.decompress(data)
+    else:
+        raise RuntimeError("need fetch_date or rss_file")
 
     # The mediacloud record is XML, so we just read it in directly and parse out our urls.
-    data = gzip.decompress(rss.content)
     parser = etree.XMLParser(recover=True)
     root = etree.fromstring(data, parser=parser)
 
@@ -53,12 +72,33 @@ def fetch_daily_rss(
 
     found_items = []
     for item in all_items:
+        source_tag = item.find("source")
+
+        def src_attr(attr_name: str) -> Optional[str]:
+            """
+            return attribute (if set and non-empty) from <source> tag.
+            return None rather than empty value
+            """
+            if source_tag is None:
+                return None
+            return source_tag.get(attr_name) or None
+
+        def src_attr_int(attr_name: str) -> Optional[int]:
+            val = src_attr(attr_name)
+            if not val or not val.isdigit():
+                return None
+            return int(val)
+
         entry: RSSEntry = {
             "link": item.findtext("link"),
             "title": item.findtext("title"),
             "domain": item.findtext("domain"),
             "pub_date": item.findtext("pubDate"),
             "fetch_date": fetch_date,
+            "source_url": src_attr("url"),
+            "source_feed_id": src_attr_int("mcFeedId"),
+            "source_source_id": src_attr_int("mcSourceId"),
+            "via": url,  # source file
         }
         found_items.append(entry)
 
