@@ -41,14 +41,14 @@ def truncate_str(
     returns a utf-8 prefix of src guaranteed to fit within max_length when
     encoded as utf-8.
     """
-    if not src or len(src) <= max_length:
+    if src:
+        src_bytes = src.encode(encoding="utf-8", errors="ignore")
+    if not src or len(src_bytes) <= max_length:
         return src
-
-    n_src = src
     if normalize:
-        n_src = unicodedata.normalize("NFC", n_src)
-    n_src_bytes = n_src.encode(encoding="utf-8", errors="ignore")[:max_length]
-    return n_src_bytes.decode(encoding="utf-8", errors="ignore")
+        n_src = unicodedata.normalize("NFC", src)
+        src_bytes = n_src.encode(encoding="utf-8", errors="ignore")
+    return src_bytes[:max_length].decode(encoding="utf-8", errors="ignore")
 
 
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
