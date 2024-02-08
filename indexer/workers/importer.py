@@ -4,6 +4,7 @@ elasticsearch import pipeline worker
 
 import argparse
 import logging
+import unicodedata
 from datetime import datetime
 from typing import Optional, Union
 
@@ -20,6 +21,34 @@ logger = logging.getLogger("importer")
 
 # Index name alias defined in the index_template.json
 INDEX_NAME_ALIAS = "mc_search"
+
+# Lucene has a term byte-length limit of 32766
+MAX_TEXT_CONTENT_LENGTH = 32766
+
+
+def truncate_str(
+    src: str | None,
+    max_length: int = MAX_TEXT_CONTENT_LENGTH,
+    normalize: bool = True,
+) -> str | None:
+    """
+    Truncate a unicode string to fit within max_length when encoded in utf-8.
+
+    src: str to truncate.
+    max_length: maximum length of the truncated str. Must be non-negative integer.
+    mormalize: whether src should be normalized to NFC before truncation.
+
+    returns a utf-8 prefix of src guaranteed to fit within max_length when
+    encoded as utf-8.
+    """
+    if not src or len(src) <= max_length:
+        return src
+
+    n_src = src
+    if normalize:
+        n_src = unicodedata.normalize("NFC", n_src)
+    n_src_bytes = n_src.encode(encoding="utf-8", errors="ignore")[:max_length]
+    return n_src_bytes.decode(encoding="utf-8", errors="ignore")
 
 
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
@@ -110,6 +139,12 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         data["indexed_date"] = (
             content_metadata.parsed_date or datetime.utcnow().isoformat()
         )
+
+        # We need to unsure text_content does not exceed the underlying
+        # Lucene’s term byte-length limit
+        text_content = str(data["text_content"])
+        data["text_content"] = truncate_str(text_content)
+
         if self.import_story(data) and self.output_msgs:
             # pass story along to archiver, unless disabled or duplicate
             sender.send_story(story)
