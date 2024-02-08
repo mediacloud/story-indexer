@@ -140,7 +140,7 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             content_metadata.parsed_date or datetime.utcnow().isoformat()
         )
 
-        # We need to unsure text_content does not exceed the underlying
+        # We need to ensure that text_content does not exceed the underlying
         # Lucene’s term byte-length limit
         text_content = str(data["text_content"])
         data["text_content"] = truncate_str(text_content)
