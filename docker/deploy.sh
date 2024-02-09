@@ -268,7 +268,7 @@ prod)
     # refusing to deploy if tag already exists.
     TAG=$DATE_TIME-${PIPE_TYPE_PFX}prod
 
-    MULTI_NODE_DEPLOYMENT=1
+    MULTI_NODE_DEPLOYMENT=
 
     ELASTICSEARCH_CONTAINERS=0
     # ES index settings are static, prod settings should not change
@@ -307,7 +307,7 @@ staging)
     FETCHER_OPTIONS="$FETCHER_OPTIONS --sample-size=$STORY_LIMIT"
     FETCHER_NUM_BATCHES=10	# betch fetcher
 
-    MULTI_NODE_DEPLOYMENT=1
+    MULTI_NODE_DEPLOYMENT=
     NEWS_SEARCH_UI_TITLE="Staging $NEWS_SEARCH_UI_TITLE"
     QUEUER_CRONJOB_ENABLE=false
     QUEUER_CRONJOB_REPLICAS=0
