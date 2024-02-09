@@ -42,13 +42,13 @@ def truncate_str(
     encoded as utf-8.
     """
     if src:
-        src_bytes = src.encode(encoding="utf-8", errors="ignore")
+        src_bytes = src.encode(encoding="utf-8", errors="replace")
     if not src or len(src_bytes) <= max_length:
         return src
     if normalize:
         n_src = unicodedata.normalize("NFC", src)
-        src_bytes = n_src.encode(encoding="utf-8", errors="ignore")
-    return src_bytes[:max_length].decode(encoding="utf-8", errors="ignore")
+        src_bytes = n_src.encode(encoding="utf-8", errors="replace")
+    return src_bytes[:max_length].decode(encoding="utf-8", errors="replace")
 
 
 class ElasticsearchImporter(ElasticMixin, StoryWorker):
