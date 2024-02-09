@@ -140,9 +140,9 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
             content_metadata.parsed_date or datetime.utcnow().isoformat()
         )
 
-        # We need to ensure that text_content does not exceed the underlying
-        # Lucene’s term byte-length limit
-        url = data.get("url")  # for testing, hashing, logging
+        # We need to ensure that text_content exists and it does not exceed the
+        # underlying Lucene’s term byte-length limit
+        url = data.get("url")  # for logging
         if not isinstance(url, str) or url == "":
             # exceedingly unlikely, but must check to keep
             # mypy quiet, so might as well do something rather
