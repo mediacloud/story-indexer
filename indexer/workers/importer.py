@@ -6,7 +6,7 @@ import argparse
 import logging
 import unicodedata
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
@@ -142,7 +142,18 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
         # We need to ensure that text_content does not exceed the underlying
         # Lucene’s term byte-length limit
-        text_content = str(data["text_content"])
+        url = data.get("url")  # for testing, hashing, logging
+        if not isinstance(url, str) or url == "":
+            # exceedingly unlikely, but must check to keep
+            # mypy quiet, so might as well do something rather
+            # than pass an empty string, or turn None into "None"
+            self.incr_stories("no-url", "none")
+            raise QuarantineException("no-url")
+        text_content = data.get("text_content")
+        if not isinstance(text_content, str) or text_content == "":
+            self.incr_stories("no-text", url)
+            raise QuarantineException("no-text")
+
         data["text_content"] = truncate_str(text_content)
 
         if self.import_story(data) and self.output_msgs:
@@ -158,19 +169,13 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         False if a duplicate,
         else raises an exception.
         """
-        # data can never be empty (has been checked, AND "indexed_data" will always be
-        # set, so no check here.
+        # data can never be empty (has been checked in process_story, AND
+        # "indexed_date", "url" & "text_content" will always be set, so no check here).
 
-        url = data.get("url")  # for testing, hashing, logging
-        if not isinstance(url, str) or url == "":
-            # exceedingly unlikely, but must check to keep
-            # mypy quiet, so might as well do something rather
-            # than pass an empty string, or turn None into "None"
-            self.incr_stories("no-url", "none")
-            raise QuarantineException("no-url")
+        # url is for hashing, logging, and testing
+        url: str = cast(str, data["url"])  # switch to typing.assert_type in py3.11
         url_hash = unique_url_hash(url)
 
-        # NOTE: indexed_date passed in by process_story
         try:
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
