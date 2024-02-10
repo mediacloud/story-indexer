@@ -6,7 +6,7 @@ from typing import Any, Mapping, Optional, Union
 import pytest
 from elasticsearch import ConflictError, Elasticsearch
 
-from indexer.workers.importer import ElasticsearchImporter
+from indexer.workers.importer import ElasticsearchImporter, truncate_str
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -96,6 +96,16 @@ test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "text_content": "Lorem ipsum dolor sit amet",
     "indexed_date": datetime.now().isoformat(),
 }
+
+
+def test_truncate_str() -> None:
+    s = "e\u0301"  # é
+    assert truncate_str(s, 0) == ""
+    assert truncate_str(s, 1) == ""
+    assert truncate_str(s, 2) == "é"
+    # Without normalizing to "NFC", e and \u0301 are kept separate
+    assert truncate_str(s, 1, normalize=False) == "e"
+    assert truncate_str(s, 2, normalize=False) == "é"
 
 
 class TestElasticsearchConf:
