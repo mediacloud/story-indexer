@@ -42,7 +42,7 @@ else:
 from indexer.app import AppException
 from indexer.story import BaseStory
 from indexer.storyapp import StoryProducer, StorySender
-from indexer.tracker import TrackerException, get_tracker
+from indexer.tracker import TrackerStatus, get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,6 @@ class Queuer(StoryProducer):
             metavar="PERCENT",
             help="Percentage of stories to queue for testing (default: all)",
         )
-
         # _could_ be mutually exclusive with --max-count and --random-sample
         # instead, warnings output below
         ap.add_argument(
@@ -120,6 +119,12 @@ class Queuer(StoryProducer):
             action="store_true",
             default=False,
             help="Enumerate, but do not process files for testing",
+        )
+        ap.add_argument(
+            "--cleanup",
+            action="store_true",
+            default=False,
+            help="clean up old, incompletely processed files",
         )
 
         self.input_group = ap.add_argument_group()
@@ -317,6 +322,7 @@ class Queuer(StoryProducer):
 
     def maybe_process_files(self, fname: str) -> None:
         """
+        called from main:
         supports simple prefix matching for s3 URLs, local directories
         """
         if os.path.isdir(fname):  # local directory
@@ -361,6 +367,10 @@ class Queuer(StoryProducer):
                 break
 
     def maybe_process_file(self, fname: str) -> None:
+        """
+        here with a single file (not a directory or prefix).
+        checks if queue needs refilling, file already processed.
+        """
         args = self.args
         assert args
 
@@ -381,22 +391,23 @@ class Queuer(StoryProducer):
             or args.random_sample is not None
             or args.test
         )
+        logger.info("checking file %s (testing %r)", fname, testing)  # TEMP
         try:
-            tracker = get_tracker(self.process_name, fname, testing)
+            tracker = get_tracker(self.process_name, fname, testing, args.cleanup)
             try:
                 with tracker:
                     f = self.open_file(fname)
                     logger.info("process_file %s", fname)
-                    with self.timer("process_file"):
+                    with self.timer("process_file"):  # report elapsed time
                         self.process_file(fname, f)
                 incr_files("success")
             except Exception as e:  # YIKES (reraised)
                 logger.error("%s failed: %r", fname, e)
                 incr_files("failed")
                 raise
-        except TrackerException as exc:
+        except TrackerStatus as exc:
             # here if file state other than "NOT_STARTED"
-            logger.info("%s: %r", fname, exc)
+            logger.info("%s: %s", fname, exc)
             return
 
     def main_loop(self) -> None:
