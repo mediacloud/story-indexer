@@ -8,11 +8,11 @@
 #Cron schedule 0 0 1 * * /docker/prune.sh
 
 #add log file, this will b e running using cron
-log_file="/var/log/docker-cleanup.log"
+LOG_FILE="/var/log/docker-cleanup.log"
 
 # Set the retention period in hours (default is 30 days)
-retention_period_in_hours=720
-retention_period_in_days=$(( $retention_period_in_hours / 24 ))
+RETENTION_PERIOD_HOURS=720
+RETENTION_PERIOD_DAYS=$(( $RETENTION_PERION_HOURS / 24 ))
 
 if [ "$EUID" -ne 0 ]; then
   echo "This script must be run as root"
@@ -20,18 +20,17 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 log() {
-    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" >> "$log_file"
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
 cleanup() {
-    log "Removing all stopped containers older than $retention_period_in_days days"
-    docker container prune -f --filter "until=${retention_period_in_hours}h"
+    log "Removing all stopped containers older than $RETENTION_PERIOD_DAYS days"
+    docker container prune -f --filter "until=${RETENTION_PERIOD_HOURS}h"
 
-    log "Removing all unused images older than $retention_period_in_days days"
-    docker image prune -a -f --filter "until=${retention_period_in_hours}h"
+    log "Removing all unused images older than $RETENTION_PERIOD_DAYS days"
+    docker image prune -a -f --filter "until=${RETENTION_PERIOD_HOURS}h"
 
     log "Docker cleanup done"
 }
 
 exit 0
-
