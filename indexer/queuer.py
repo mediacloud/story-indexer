@@ -42,7 +42,7 @@ else:
 from indexer.app import AppException
 from indexer.story import BaseStory
 from indexer.storyapp import StoryProducer, StorySender
-from indexer.tracker import TrackerStatus, get_tracker
+from indexer.tracker import TrackerException, get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -405,10 +405,10 @@ class Queuer(StoryProducer):
                 logger.error("%s failed: %r", fname, e)
                 incr_files("failed")
                 raise
-        except TrackerStatus as exc:
-            # here if file state other than "NOT_STARTED"
-            logger.info("%s: %s", fname, exc)
-            return
+        except TrackerException as exc:
+            # here if file not startable
+            # or could not write to tracker database
+            logger.info("%s: %r", fname, exc)
 
     def main_loop(self) -> None:
         assert self.args

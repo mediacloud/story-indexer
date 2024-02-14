@@ -24,22 +24,24 @@ OLD_SECONDS = 24 * 60 * 60  # age before eligible for cleanup
 logger = logging.getLogger(__name__)
 
 
-class _TrackerException(AppException):
+class TrackerException(AppException):
     """
     base class for FileTracker exceptions
     """
 
 
-class TrackerStatus(_TrackerException):
+class TrackerNotStartable(TrackerException):
     """
     thrown when file is in some state other than NOT_STARTED
     """
 
 
-class _TrackerRetry(_TrackerException):
+class TrackerLocked(TrackerException):
     """
-    INTERNAL: thrown when a (local file based) tracker is locked
-    and should be retried
+    raised internally when a (local file based) tracker is locked
+    and should be retried in response to _open_and_lock.
+
+    After retries, may be raised by (with) context entry.
     """
 
 
@@ -90,7 +92,7 @@ class FileTracker:
     def __enter__(self) -> "FileTracker":
         """
         atomically check if NOT_STARTED, and if so, mark STARTED.
-        subclasses should raise TrackerStatus(status.name)
+        subclasses should raise TrackerNotStartable(status.name)
         if status != NOT_STARTED
         """
         self._start_if_available()
@@ -153,7 +155,7 @@ class LocalFileTracker(FileTracker):
             ):
                 self._set_status(FileStatus.STARTED)
             else:
-                raise TrackerStatus(status)
+                raise TrackerNotStartable(status)
         finally:
             self._db_close()
 
@@ -167,18 +169,26 @@ class LocalFileTracker(FileTracker):
 
     def _retry_open_and_lock(self) -> None:
         """
-        GDBM and SQLite3 can both raise exceptions when DB locked
+        GDBM and SQLite3 can both raise exceptions when DB locked.
+        Will re-raise TrackerLocked when tired of retrying.
         """
-        for sec in (0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0):
+        sec = 1 / 16
+        while True:
             try:
                 self._db_open_and_lock()
                 return
-            except _TrackerRetry:
+            except TrackerLocked:
+                sec *= 2
+                if sec > 60:
+                    raise
                 logger.debug("_retry_open_and_lock sleeping %g", sec)
                 time.sleep(sec)
-        raise TrackerStatus("locked")
 
     def _db_open_and_lock(self) -> None:
+        """
+        Either returns with DB open and locked, or raises TrackerLocked.
+        May be called with database already open/locked.
+        """
         raise NotImplementedError("_db_open_and_lock")
 
     def _db_get_status_time(self) -> Tuple[str, int]:
@@ -216,7 +226,7 @@ if False:
                 self._dbm = dbm.gnu.open(self._db_path, "c")
             except OSError as e:
                 if e.errno == errno.EAGAIN:
-                    raise _TrackerRetry()
+                    raise TrackerLocked(self._db_path)
                 raise
 
         def _db_get_status_time(self) -> Tuple[str, int]:
@@ -266,7 +276,7 @@ class SQLite3FileTracker(LocalFileTracker):
         try:
             self._conn.execute("BEGIN IMMEDIATE")
         except sqlite3.OperationalError:
-            raise _TrackerRetry()
+            raise TrackerLocked(self._db_path)
 
     def _db_set_status_time(self, status: FileStatus, ts: float) -> None:
         assert self._conn
