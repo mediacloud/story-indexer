@@ -88,6 +88,9 @@ class HistQueuer(Queuer):
                     # timestamp of the time the HTML was fetched,
                     # to preserve this otherwise unused bit of information.
 
+                    if len(collect_date) < 20:
+                        collect_date += ".0"  # ensure fraction present
+
                     # fromisoformat wants EXACTLY six digits of fractional
                     # seconds, but the CSV files omit trailing zeroes, so
                     # use strptime.  Append UTC timezone offset to prevent

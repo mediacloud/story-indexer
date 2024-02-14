@@ -210,6 +210,10 @@ historical)
     # unless archives disabled, prefix will end with:
     ARCH_SUFFIX=hist$HIST_YEAR
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
+    if [ "x$DEPLOY_TYPE" = xprod ]; then
+	HIST_FETCHER_REPLICAS=8
+	PARSER_REPLICAS=16
+    fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
     # maybe require command line option to select file(s)?
