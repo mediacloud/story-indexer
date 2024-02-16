@@ -204,7 +204,7 @@ requests-file==2.0.0
     # via tldextract
 s3transfer==0.7.0
     # via boto3
-scrapy==2.10.1
+scrapy==2.11.1
     # via story-indexer (pyproject.toml)
 sentry-sdk==1.34.0
     # via story-indexer (pyproject.toml)
