@@ -211,7 +211,9 @@ historical)
     ARCH_SUFFIX=hist$HIST_YEAR
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
     if [ "x$DEPLOY_TYPE" = xprod ]; then
-	HIST_FETCHER_REPLICAS=8
+	# 2024-02-15: saw average of 72 stories/sec with 8 fetchers (133 proc-min/hist-day).
+	#  Aiming at 120 proc-min/hist-day (12 hist-days/proc-day), so upped to 10.
+	HIST_FETCHER_REPLICAS=10
 	PARSER_REPLICAS=16
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
