@@ -20,9 +20,6 @@ from indexer import sentry
 
 Labels = List[Tuple[str, Any]]  # optional labels/values for a statistic report
 
-# format for stderr:
-FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-
 LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
 LOGGER_LEVEL_SEP = ":"
@@ -39,8 +36,8 @@ class AppException(RuntimeError):
 
 class AppProtocol(Protocol):
     """
-    class for "self" in App mixins that declare & access command line args,
-    or want access to stats
+    base class for App mixins that declare & access command line args,
+    or want to report stats
     """
 
     args: Optional[argparse.Namespace]
@@ -56,6 +53,26 @@ class AppProtocol(Protocol):
     def timing(self, name: str, ms: float, labels: Labels = []) -> None: ...
 
     def timer(self, name: str) -> "_TimingContext": ...
+
+
+# Dicts of log formats, indexed by App.LOG_FORMAT
+
+# see https://docs.python.org/3/library/logging.html#logrecord-attributes
+# for options in log formats.
+
+# formats for stderr
+STDERR_FORMATS = {
+    "normal": "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    "thread": "%(asctime)s | %(levelname)s | %(name)s | %(threadName)s | %(message)s",
+}
+
+# look like syslog messages (except date format),
+# adds levelname; does NOT include logger name, or pid:
+SYSLOG_FORMATS = {
+    "normal": "%(asctime)s %(hostname)s %(app)s %(levelname)s: %(message)s",
+    # include thread, formatted as if syslog pid
+    "thread": "%(asctime)s %(hostname)s %(app)s[%(threadName)s] %(levelname)s: %(message)s",
+}
 
 
 # TEMP CROCK to speed up arch-queuer! Should replace SyslogHandler and
@@ -75,6 +92,8 @@ class App(AppProtocol):
     """
     Base class for command line applications (ie; Worker)
     """
+
+    LOG_FORMAT = "normal"
 
     def __init__(self, process_name: str, descr: str):
         # override of process_name allow alternate versions of pipeline
@@ -166,7 +185,7 @@ class App(AppProtocol):
         # both stderr handler created by basicConfig.
         # _COULD_ apply to just stderr *handler* and
         # send everything to syslog handler.
-        logging.basicConfig(format=FORMAT, level=level)
+        logging.basicConfig(format=STDERR_FORMATS[self.LOG_FORMAT], level=level)
 
         if self.args.logger_level:
             for ll in self.args.logger_level:
@@ -193,9 +212,7 @@ class App(AppProtocol):
                 "hostname": socket.gethostname(),  # without domain
                 "app": self.process_name,
             }
-            # look like syslog messages (except date format),
-            # adds levelname; does NOT include logger name, or pid:
-            fmt = "%(asctime)s %(hostname)s %(app)s %(levelname)s: %(message)s"
+            fmt = SYSLOG_FORMATS[self.LOG_FORMAT]
 
             # Might like default datefmt includes milliseconds
             # (which aren't otherwise available)
