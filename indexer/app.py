@@ -112,7 +112,6 @@ class SendtoSocketWrapper:
             # IPv4 only, returns single addr (round robin):
             self.last_addr = socket.gethostbyname(to_host)
             self.last_lookup = now
-            print(self.last_addr)
 
         return self.actual_socket.sendto(data, (self.last_addr, to[1]))
 
