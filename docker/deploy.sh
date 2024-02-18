@@ -211,14 +211,15 @@ historical)
     ARCH_SUFFIX=hist$HIST_YEAR
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
     if [ "x$DEPLOY_TYPE" = xprod ]; then
-	# 2024-02-15: saw average of 72 stories/sec with 8 fetchers (133 proc-min/hist-day).
-	#  Aiming at 120 proc-min/hist-day (12 hist-days/proc-day), so upped to 10.
-	HIST_FETCHER_REPLICAS=10
-	PARSER_REPLICAS=16
+	# In Feb 2024, on bernstein (Xeon Gold 6134@3.2GHz, 32 cores, 6400 bogomips)
+	# Able to process ~110 stories/second w/ load avg 24
+	HIST_FETCHER_REPLICAS=12
+	PARSER_REPLICAS=18
+	# (mean fetch: 109ms, parse: 150ms, import: 11ms)
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
-    # maybe require command line option to select file(s)?
+
     QUEUER_FILES=s3://mediacloud-database-files/$HIST_YEAR$HIST_FILE_PREFIX
     QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
@@ -226,6 +227,8 @@ archive)
     ARCHIVER_REPLICAS=0		# no archivers
     IMPORTER_ARGS=--no-output	# no archives!!!
     if [ "x$DEPLOY_TYPE" = xprod ]; then
+	# In Feb 2024, on ramos (Xeon Gold 6246R@3.4GHz 6800 bogomips)
+	# 8 importers could write output of one arch-queuer (>500 stories/sec):
 	IMPORTER_REPLICAS=8
     fi
     PARSER_REPLICAS=0		# no parsing required!
