@@ -215,6 +215,7 @@ historical)
 	# Able to process ~110 stories/second w/ load avg 24
 	HIST_FETCHER_REPLICAS=12
 	PARSER_REPLICAS=18
+	IMPORTER_REPLICAS=2
 	# (mean fetch: 109ms, parse: 150ms, import: 11ms)
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
