@@ -119,7 +119,7 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
-ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers?
+ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers
 
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
@@ -218,6 +218,7 @@ historical)
 	HIST_FETCHER_REPLICAS=14
 	PARSER_REPLICAS=21
 	IMPORTER_REPLICAS=2
+	ARCHIVER_REPLICAS=2
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
