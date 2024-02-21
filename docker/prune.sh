@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#Script to cleanup docker images & containers > 30 days
-# We can Optionally, remove all unused volumes and networks older than 30 days
+#Script to cleanup docker images & containers > 7 days
+# We can Optionally, remove all unused volumes and networks older than 7 days
 # docker volume prune -f --filter "until=720h"
 # docker network prune -f --filter "until=720h"
 
@@ -10,11 +10,10 @@
 #add log file, this will b e running using cron
 LOG_FILE="/var/log/docker-cleanup.log"
 
-# Set the retention period in hours (default is 30 days)
-RETENTION_PERIOD_HOURS=720
-RETENTION_PERIOD_DAYS=$(( $RETENTION_PERION_HOURS / 24 ))
+# Set the retention period in hours (default is 7 days)
+RETENTION_PERIOD_HOURS=168
 
-if [ "$EUID" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
   echo "This script must be run as root"
   exit 1
 fi
@@ -24,10 +23,10 @@ log() {
 }
 
 cleanup() {
-    log "Removing all stopped containers older than $RETENTION_PERIOD_DAYS days"
+    log "Removing all stopped containers older than 7 days"
     docker container prune -f --filter "until=${RETENTION_PERIOD_HOURS}h"
 
-    log "Removing all unused images older than $RETENTION_PERIOD_DAYS days"
+    log "Removing all unused images older than 7 days"
     docker image prune -a -f --filter "until=${RETENTION_PERIOD_HOURS}h"
 
     log "Docker cleanup done"
