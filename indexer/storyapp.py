@@ -13,14 +13,16 @@ import logging
 import os
 import queue
 import sys
+import threading
 import time
 from typing import Dict, List, Optional
 from urllib.parse import urlsplit
 
 from mcmetadata.urls import NON_NEWS_DOMAINS
+from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.app import AppProtocol
+from indexer.app import AppProtocol, IntervalMixin
 from indexer.story import BaseStory
 from indexer.worker import (
     CONSUMER_TIMEOUT_SECONDS,
@@ -34,6 +36,19 @@ from indexer.worker import (
 MAX_HTML_BYTES = int(os.environ.get("MAX_HTML_BYTES", 10000000))
 
 logger = logging.getLogger(__name__)
+
+
+def url_fqdn(url: str) -> str:
+    """
+    extract fully qualified domain name from url
+    """
+    # using urlsplit/SplitResult: parseurl calls spliturl and only
+    # adds ";params" handling and this code only cares about netinfo
+    surl = urlsplit(url, allow_fragments=False)
+    hn = surl.hostname
+    if not hn:
+        raise ValueError("bad hostname")
+    return hn.lower()
 
 
 def non_news_fqdn(fqdn: str) -> bool:
@@ -147,8 +162,15 @@ class StorySender:
         story: BaseStory,
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
+        expiration_ms: Optional[int] = None,
     ) -> None:
-        self.app._send_message(self._channel, story.dump(), exchange, routing_key)
+        if expiration_ms is not None:
+            props = BasicProperties(expiration=str(expiration_ms))
+        else:
+            props = None
+        self.app._send_message(
+            self._channel, story.dump(), exchange, routing_key, props
+        )
 
 
 class StoryProducer(StoryMixin, QApp):
@@ -271,8 +293,11 @@ class BatchStoryWorker(StoryWorker):
         while self._running:
             while msg_number <= batch_size:  # msg_number is one-based
                 if msg_number == 1:
-                    logger.info("waiting for first batch message")  # move to debug?
+                    logger.debug("waiting for first batch message")
                     im = self._message_queue.get()  # blocking
+                    if im is None:
+                        logger.info("_process_messages returning 1")
+                        return
                     batch_start_time = time.monotonic()  # for logging
 
                     # base on when recieved from channel by Pika thread!!
@@ -288,6 +313,9 @@ class BatchStoryWorker(StoryWorker):
                             msg_number,
                         )
                         im = self._message_queue.get(timeout=timeout)
+                        if im is None:
+                            logger.info("_process_messages returning 2")
+                            return
                     except queue.Empty:
                         # exhausted the clock
                         break  # break batch loop
@@ -330,3 +358,105 @@ class BatchStoryWorker(StoryWorker):
 
     def end_of_batch(self) -> None:
         raise NotImplementedError("BatchStoryWorker.end_of_batch not overridden")
+
+
+# A StoryWorker that runs multiple threads processing Stories.  The
+# subclass MUST use threading.Lock to ensure shared state is accessed
+# atomically!  Would have liked this to have been a mixin, independent
+# of Story object, but was too messy (hit on mypy MRO issue)
+
+
+class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
+    # include thread name in log message format
+    LOG_FORMAT = "thread"
+
+    # subclass must set value!
+    # (else will see AttributeError)
+    WORKER_THREADS_DEFAULT: int
+
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+
+        self.workers = self.WORKER_THREADS_DEFAULT
+        self.threads: Dict[int, threading.Thread] = {}  # for debug
+        # self.tls = threading.local()  # thread local storage object
+
+        threading.main_thread().name = "Main"  # shorten name for logging
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--worker-threads",
+            "-W",
+            type=int,
+            default=self.workers,
+            help=f"total active workers (default: {self.workers})",
+        )
+
+    def process_args(self) -> None:
+        super().process_args()
+
+        assert self.args
+        self.workers = self.args.worker_threads
+        assert self.workers > 0
+
+    def _qos(self, chan: BlockingChannel) -> None:
+        """
+        set "prefetch" limit: distributes messages among workers
+        processes, limits the number of unacked messages put into
+        _message_queue
+        """
+        # buffer one for each worker thread, and one to spare:
+        chan.basic_qos(prefetch_count=int(self.workers + 1))
+
+    def _worker_thread(self) -> None:
+        """
+        body for worker threads
+        """
+        self._process_messages()
+        if self._running:
+            logger.error("_process_messages returned")
+            self._running = False
+
+    def _start_worker_threads(self) -> None:
+        for i in range(0, self.workers):
+            t = threading.Thread(
+                daemon=True,
+                name=f"W{i:03d}",  # Wnnn same length as Pika/Main
+                target=self._worker_thread,
+            )
+            t.start()
+            self.threads[i] = t
+
+    def _queue_kisses_of_death(self) -> None:
+        """
+        queue a "None" for each worker thread,
+        ensuring everyone wakes up and knows the end is near.
+
+        Called from main thread when _running has been set to False.
+        """
+        logger.info("queue_kisses_of_death")
+        self._running = False
+
+        # wake up workers (in _process_messages)
+        for i in range(0, self.workers):
+            self._message_queue.put(None)
+        # XXX join worker threads?
+
+    def periodic(self) -> None:
+        """
+        main thread loops in calling periodic at an interval
+        """
+        logger.debug("periodic wakeup")
+
+    def main_loop(self) -> None:
+        try:
+            self._start_worker_threads()
+            while self._running:
+                self.periodic()
+                self.interval_sleep()
+        finally:
+            self._queue_kisses_of_death()
+            # loop joining workers???
+        # return to main, which
+        # calls cleanup for pika_thread.

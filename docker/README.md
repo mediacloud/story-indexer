@@ -2,29 +2,29 @@
 
 ### Prerequisites
 
-Before you begin, ensure you have the following prerequisites in place:
-
-1. Docker: Docker must be installed on the host where you plan to set up the Swarm. You can download and install Docker from Docker's [official website](https://docs.docker.com/engine/install/ubuntu/#install-from-a-package).
-
-2. Docker Compose: Make sure you have Docker Compose installed, as it's essential for managing multi-container applications. You can install Docker Compose by following the instructions in the official [documentation](https://docs.docker.com/compose/install/).
-
 Currently runs w/ Docker v24.0, docker-compose-plugin v21.0 under Ubuntu 22.04 LTS.
 
-### Swarm setup
+To install Docker and Docker Compose from docker.com, and create a swarm, run:
 
-To create a swarm
+    ./docker/docker-init.sh init
 
-    docker swarm init
+To  install Docker and Docker Compose from docker.com, and join an existing swarm
+(Note: we do not currently deploy containers across more than one node):
 
-To deploy in multiple workers/nodes. Join the swarm using the command
+    ./docker/docker-init.sh join TOKEN ADDR:PORT
 
-    docker swarm join \ --token <swarm token>
+Where TOKEN and ADDR:PORT come from:
+
+    docker swarm join-token manager
+
+Or:
+
+    docker swarm join-token worker
+
 
 ## Deploying code
 
 ### Development
-
-A single node swarm is sufficient.
 
 With any branch OTHER than staging or prod checked out, run (as root)
 
@@ -78,6 +78,19 @@ To scale or stop a single service:
 To remove your stack:
 
     docker stack rm <STACK>
+
+Stack volumes will be created in /var/lib/docker/volumes and will include:
+    <STACK>_elasticsearch_data_01
+    <STACK>_rabbitmq_data
+    <STACK>_worker_data
+
+To reset any volume:
+
+    docker volume rm <VOLUMENAME>
+
+A composite log file (rotated hourly) can be found in:
+/var/lib/docker/volumes/<STACK>_worker_data/_data/logs/messages.log
+and can be followed with "tail -F"
 
 ### Staging
 
@@ -145,12 +158,13 @@ options:
   -d      enable debug output (for template parameters)
   -h      output this help and exit
   -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)
+  -T TYPE select pipeline type: batch-fetcher, historical, archive, queue-fetcher
   -u      allow running as non-root user
 ```
 
 ## docker-compose.yml.j2 template
 
-docker-compose.yml is generated from the Jinja2 template
+docker-compose.yml is generated each time from the Jinja2 template
 docker-compose.yml.j2
 
 Read the comments at the top of the template before opening a PR

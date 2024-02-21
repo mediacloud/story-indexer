@@ -74,6 +74,15 @@ class QuarantineException(AppException):
     """
 
 
+class RequeueException(AppException):
+    """
+    Exception for Worker code to requeue message (preserving headers)
+    for QUICK reprocessing.
+
+    Requires ...-fast queue to exist
+    """
+
+
 class InputMessage(NamedTuple):
     """
     would prefer _channel, but not allowed for NamedTuple,
@@ -200,10 +209,14 @@ class QApp(App):
         self._pika_thread: Optional[threading.Thread] = None
         self._running = True
 
+        # debugging aid to use with --from-quarantine:
+        self._crash_on_exception = os.environ.get("WORKER_EXCEPTION_CRASH", "") != ""
+
         # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
         self.output_exchange_name = output_exchange_name(self.process_name)
         self.delay_queue_name = delay_queue_name(self.process_name)
+        self.fast_queue_name = fast_queue_name(self.process_name)
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -467,7 +480,7 @@ class QApp(App):
         properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def sender() -> None:
-            logger.debug(
+            msglogger.debug(
                 "send exch '%s' key '%s' %d bytes", exchange, routing_key, len(data)
             )
             chan.basic_publish(exchange, routing_key, data, properties)
@@ -513,7 +526,7 @@ class Worker(QApp):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self._message_queue: queue.Queue[InputMessage] = queue.Queue()
+        self._message_queue: queue.Queue[Optional[InputMessage]] = queue.Queue()
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -535,7 +548,6 @@ class Worker(QApp):
         basic main_loop for a consumer.
         override for a producer!
         """
-
         self._process_messages()
         sys.exit(1)
 
@@ -589,6 +601,8 @@ class Worker(QApp):
 
         while self._running:
             im = self._message_queue.get()  # blocking
+            if im is None:  # kiss of death?
+                break
             self._process_one_message(im)
             self._ack_and_commit(im)
         logger.info("_process_messages returning")
@@ -609,7 +623,12 @@ class Worker(QApp):
         except QuarantineException as e:
             status = "error"
             self._quarantine(im, e)
+        except RequeueException as e:
+            status = "requeue"
+            self._requeue(im, e)
         except Exception as e:
+            if self._crash_on_exception:
+                raise  # for debug
             if self._retry(im, e):
                 status = "retry"
             else:
@@ -751,6 +770,32 @@ class Worker(QApp):
             props,
         )
         return True  # queued for retry
+
+    def set_requeue_delay_ms(self, ms: int) -> None:
+        self.requeue_delay_str = str(int(ms))
+
+    def _requeue(self, im: InputMessage, e: Exception) -> bool:
+        """
+        Requeue message to -fast queue, which has no consumers, with
+        an expiration/TTL; when messages expire, they are routed
+        back to the -in queue via dead-letter-{exchange,routing-key}.
+
+        NOTE! requires -fast queue to be created (fast=True in pipeline.py)
+        preserves all headers (does not zero retry count).
+
+        Does NOT count number of times requeued!
+        """
+        props = BasicProperties(
+            headers=im.properties.headers, expiration=self.requeue_delay_str
+        )
+        self._send_message(
+            im.channel,
+            im.body,
+            DEFAULT_EXCHANGE,
+            self.fast_queue_name,
+            props,
+        )
+        return True  # requeued
 
     def process_message(self, im: InputMessage) -> None:
         raise NotImplementedError("Worker.process_message not overridden")

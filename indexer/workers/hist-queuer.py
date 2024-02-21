@@ -11,7 +11,7 @@ import datetime as dt
 import io
 import logging
 import re
-from typing import BinaryIO
+from typing import BinaryIO, Set
 
 from indexer.app import run
 from indexer.queuer import Queuer
@@ -40,14 +40,27 @@ class HistQueuer(Queuer):
         else:
             fetch_date = None
 
+        # The legacy system downloaded multiple copies of a story (if
+        # seen in different RSS feeds in different sources?).  Looking
+        # at 2023-11-04/05 CSV files, 49% of URLs in the file appear
+        # more than once.  Since the new system files stories by final
+        # URL, downloading multiple copies is a waste (subsequent
+        # copies rejected as dups), so try to filter them out WITHIN a
+        # single CSV file.
+        urls_seen: Set[str] = set()
+
         # typical columns:
         # collect_date,stories_id,media_id,downloads_id,feeds_id,[language,]url
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
             logger.debug("%r", row)
 
             url = row.get("url")
-            if not isinstance(url, str):
+            if not isinstance(url, str) or not url:
                 self.incr_stories("bad-url", repr(url))
+                continue
+
+            if url in urls_seen:
+                self.incr_stories("dups", url)
                 continue
 
             if not self.check_story_url(url):
@@ -88,6 +101,9 @@ class HistQueuer(Queuer):
                     # timestamp of the time the HTML was fetched,
                     # to preserve this otherwise unused bit of information.
 
+                    if len(collect_date) < 20:
+                        collect_date += ".0"  # ensure fraction present
+
                     # fromisoformat wants EXACTLY six digits of fractional
                     # seconds, but the CSV files omit trailing zeroes, so
                     # use strptime.  Append UTC timezone offset to prevent
@@ -124,6 +140,7 @@ class HistQueuer(Queuer):
             # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
 
             self.send_story(story)  # calls incr_story: to increment and log
+            urls_seen.add(url)  # mark URL as seen
 
 
 if __name__ == "__main__":
