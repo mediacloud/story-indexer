@@ -119,7 +119,7 @@ fi
 # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
 # (in alphabetical order):
 
-ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers?
+ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers
 
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
@@ -210,9 +210,19 @@ historical)
     # unless archives disabled, prefix will end with:
     ARCH_SUFFIX=hist$HIST_YEAR
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
+    if [ "x$DEPLOY_TYPE" = xprod ]; then
+	# In Feb 2024, on bernstein (Xeon Gold 6134@3.2GHz, 32 cores, 6400 bogomips):
+	# 12 fetchers, 18 parsers, 2 importers: ~110 stories/second w/ load avg 24
+	# 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
+	# (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
+	HIST_FETCHER_REPLICAS=14
+	PARSER_REPLICAS=21
+	IMPORTER_REPLICAS=2
+	ARCHIVER_REPLICAS=2
+    fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
-    # maybe require command line option to select file(s)?
+
     QUEUER_FILES=s3://mediacloud-database-files/$HIST_YEAR$HIST_FILE_PREFIX
     QUEUER_TYPE='hist-queuer'	# name of run- script
     ;;
@@ -220,6 +230,8 @@ archive)
     ARCHIVER_REPLICAS=0		# no archivers
     IMPORTER_ARGS=--no-output	# no archives!!!
     if [ "x$DEPLOY_TYPE" = xprod ]; then
+	# In Feb 2024, on ramos (Xeon Gold 6246R@3.4GHz 6800 bogomips)
+	# 8 importers could write output of one arch-queuer (>500 stories/sec):
 	IMPORTER_REPLICAS=8
     fi
     PARSER_REPLICAS=0		# no parsing required!
@@ -233,7 +245,15 @@ archive)
 queue-fetcher)
     PIPE_TYPE_PFX=''
     PIPE_TYPE_PORT_BIAS=0	# native ports
-    QUEUER_FILES='--days 7'	# check last seven days
+    # NOTE! If/when queue-fetcher is first used, --yesterdays (--days 1) will
+    # almost certainly queue the day AFTER the day processed by the most recent
+    # batch fetcher (which runs at midnight, before the rss-fetcher has written
+    # the day that just ended, so it always fetches the date for 48 hours ago).
+    # Using --days 2 will fetch both days (the older day first).  After N days,
+    # this can be switched to "--days N" so that if a day (or more) has been
+    # missed due to downtime, any holes will be filled on restart.  The code
+    # that remembers what has been queued is indexer.tracker.
+    QUEUER_FILES='--days 2'	# check last two days
     QUEUER_TYPE='rss-queuer'	# name of run- script
     ;;
 *)

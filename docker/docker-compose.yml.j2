@@ -255,6 +255,9 @@ services:
 
 {% if queuer_type != '' %}
   # hist-queuer, arch-queuer, rss-queuer
+  # started every 5 minutes to check for low output queue (<100K stories)
+  # NOTE: skip-running: "true" means won't interrupt a running process
+  # (important for arch-queuer, which can't build a backlog)
   {{queuer_type}}:
     <<: *worker-service-settings
     deploy:
