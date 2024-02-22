@@ -115,6 +115,12 @@ class SendtoSocketWrapper:
 
         return self.actual_socket.sendto(data, (self.last_addr, to[1]))
 
+    def close(self) -> None:
+        """
+        called on app shutdown?
+        """
+        self.actual_socket.close()
+
 
 class App(AppProtocol):
     """
