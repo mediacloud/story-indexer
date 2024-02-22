@@ -390,9 +390,9 @@ class Queuer(StoryProducer):
 
             queued = self.queued_stories - queued_before
             if exc is None:
-                logger.info("%s %s; queued %d stories", fname, status, queued)
+                logger.info("%s %s; %d stories", fname, status, queued)
             else:
-                logger.info("%s %s: %r (queued %d stories)", fname, status, exc, queued)
+                logger.info("%s %s: %r (%d stories)", fname, status, exc, queued)
 
         # no tracking if ignoring tracker or sampling/testing
         testing = (
@@ -427,7 +427,7 @@ class Queuer(StoryProducer):
         # command line items may include S3 wildcards, local directories
         for item in self.args.input_files:
             self.maybe_process_files(item)
-        logger.info("end of input files: queued %d stories", self.queued_stories)
+        logger.info("end of input files: %d stories", self.queued_stories)
 
 
 if __name__ == "__main__":
