@@ -75,17 +75,45 @@ SYSLOG_FORMATS = {
 }
 
 
-# TEMP CROCK to speed up arch-queuer! Should replace SyslogHandler and
-# StatsdClient with versions that use a sendto replacement that caches
-# DNS lookups for a short period (a minute?)
-def _resolve(name: str) -> str:
-    # retry in case syslog container not yet available
-    for x in [0.125, 0.25, 0.5, 1, 2, 4, 8]:
-        try:
-            return socket.gethostbyname(name)
-        except socket.gaierror:
-            time.sleep(x)
-    return name
+class SendtoSocketWrapper:
+    """
+    Wrapper for UDP sockets used in logging.handlers.SysLogHandler and
+    statsd.StatsdClient, so that socket.sendto doesn't do a DNS lookup
+    on EVERY call (OR use the address resolved at startup forever,
+    since it might be a container, and could be replaced at any time).
+    """
+
+    def __init__(self, actual_socket: socket.socket, cache_sec: int = 60):
+        """
+        defaults to caching for 60 seconds, so if address changes,
+        will lose at most one minute of traffic
+        """
+        assert actual_socket.family == socket.AF_INET
+        assert actual_socket.type == socket.SOCK_DGRAM
+        self.actual_socket = actual_socket
+        self.last_host = ""
+        self.last_addr = ""
+        self.last_lookup = 0.0
+        self.cache_sec = cache_sec
+
+    def sendto(self, data: bytes, to: Tuple[str, int]) -> int:
+        """
+        both SysLogHandler and Statsd only call with two args
+        """
+        # uses VDSO (no context switch) on x86-64 systems (at least)
+        # if it's a problem, only check every N calls
+        now = time.monotonic()
+        if now - self.last_lookup > self.cache_sec:
+            self.last_addr = ""  # invalidate cache
+
+        to_host = to[0]
+        if to_host != self.last_host or not self.last_addr:
+            self.last_host = to_host
+            # IPv4 only, returns single addr (round robin):
+            self.last_addr = socket.gethostbyname(to_host)
+            self.last_lookup = now
+
+        return self.actual_socket.sendto(data, (self.last_addr, to[1]))
 
 
 class App(AppProtocol):
@@ -203,9 +231,10 @@ class App(AppProtocol):
             # Could use a different LOCALn facility for different programs
             # (see note in syslog-sink.py about routing via facility).
             handler = SysLogHandler(
-                address=(_resolve(syslog_host), int(syslog_port)),
+                address=(syslog_host, int(syslog_port)),
                 facility=SysLogHandler.LOG_LOCAL0,
             )
+            handler.socket = SendtoSocketWrapper(handler.socket)  # type: ignore[attr-defined]
 
             # additional items available to format string:
             defaults = {
@@ -262,7 +291,8 @@ class App(AppProtocol):
 
         prefix = f"mc.{realm}.story-indexer.{self.process_name}"
         logger.info(f"sending stats to {statsd_url} prefix {prefix}")
-        self._statsd = statsd.StatsdClient(_resolve(host), port, prefix)
+        self._statsd = statsd.StatsdClient(host, port, prefix)
+        self._statsd._socket = SendtoSocketWrapper(self._statsd._socket)  # type: ignore[attr-defined]
 
     def _name(self, name: str, labels: Labels = []) -> str:
         """

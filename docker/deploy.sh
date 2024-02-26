@@ -212,12 +212,13 @@ historical)
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
     if [ "x$DEPLOY_TYPE" = xprod ]; then
 	# In Feb 2024, on bernstein (Xeon Gold 6134@3.2GHz, 32 cores, 6400 bogomips):
-	# 12 fetchers, 18 parsers, 2 importers: ~110 stories/second w/ load avg 24
+	# 12 fetchers, 18 parsers, 2 importers: ~100 stories/second w/ load avg 24
 	# 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
+	# 12 fetchers, 21 parsers, 4 importers: ~100 stories/second w/ load avg 22
 	# (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
-	HIST_FETCHER_REPLICAS=14
+	HIST_FETCHER_REPLICAS=12
 	PARSER_REPLICAS=21
-	IMPORTER_REPLICAS=2
+	IMPORTER_REPLICAS=4
 	ARCHIVER_REPLICAS=2
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
