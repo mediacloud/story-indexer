@@ -245,7 +245,9 @@ class Queuer(StoryProducer):
                 logger.debug("sleeping until output queue(s) shorter")
                 time.sleep(60)
             else:
-                logger.info("queue(s) full enough: quitting")
+                logger.info(
+                    "queue(s) full enough: queued %d stories", self.queued_stories
+                )
                 sys.exit(0)
 
     def s3_client(self) -> S3Client:
@@ -378,11 +380,19 @@ class Queuer(StoryProducer):
             logger.info("maybe_process_file %s", fname)
             return
 
-        # wait until queue(s) low enough, or quit:
+        # wait until queue(s) low enough (if looping), or quit if full enough
         self.check_output_queues()
 
-        def incr_files(status: str) -> None:
+        queued_before = self.queued_stories
+
+        def incr_files(status: str, exc: Optional[Exception] = None) -> None:
             self.incr("files", labels=[("status", status)])
+
+            queued = self.queued_stories - queued_before
+            if exc is None:
+                logger.info("%s %s; %d stories", fname, status, queued)
+            else:
+                logger.info("%s %s: %r (%d stories)", fname, status, exc, queued)
 
         # no tracking if ignoring tracker or sampling/testing
         testing = (
@@ -391,24 +401,21 @@ class Queuer(StoryProducer):
             or args.random_sample is not None
             or args.test
         )
-        logger.info("checking file %s (testing %r)", fname, testing)  # TEMP
         try:
             tracker = get_tracker(self.process_name, fname, testing, args.cleanup)
-            try:
-                with tracker:
-                    f = self.open_file(fname)
-                    logger.info("process_file %s", fname)
-                    with self.timer("process_file"):  # report elapsed time
-                        self.process_file(fname, f)
+            with tracker:
+                f = self.open_file(fname)
+                logger.info("process_file %s", fname)
+                with self.timer("process_file"):  # report elapsed time
+                    self.process_file(fname, f)
                 incr_files("success")
-            except Exception as e:  # YIKES (reraised)
-                logger.error("%s failed: %r", fname, e)
-                incr_files("failed")
-                raise
         except TrackerException as exc:
             # here if file not startable
             # or could not write to tracker database
-            logger.info("%s: %r", fname, exc)
+            incr_files("skipped", exc)
+        except Exception as exc:  # YIKES (reraised)
+            incr_files("failed", exc)
+            raise
 
     def main_loop(self) -> None:
         assert self.args
@@ -420,7 +427,7 @@ class Queuer(StoryProducer):
         # command line items may include S3 wildcards, local directories
         for item in self.args.input_files:
             self.maybe_process_files(item)
-        logger.info("end of input files: queued %d stories", self.queued_stories)
+        logger.info("end of input files: %d stories", self.queued_stories)
 
 
 if __name__ == "__main__":
