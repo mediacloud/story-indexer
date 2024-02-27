@@ -49,22 +49,12 @@ test_index_template: Any = {
                     "type": "text",
                     "fields": {"keyword": {"type": "keyword"}},
                 },
-                "normalized_article_title": {
-                    "type": "text",
-                    "fields": {"keyword": {"type": "keyword"}},
-                },
-                "normalized_url": {"type": "keyword"},
                 "original_url": {"type": "keyword"},
                 "publication_date": {"type": "date", "ignore_malformed": True},
                 "text_content": {
                     "type": "text",
                     "fields": {"keyword": {"type": "keyword"}},
                     "fielddata": True,
-                },
-                "text_extraction": {"type": "keyword"},
-                "text_extraction_method": {
-                    "type": "text",
-                    "fields": {"keyword": {"type": "keyword", "ignore_above": 256}},
                 },
                 "url": {"type": "keyword"},
             }
@@ -84,15 +74,12 @@ test_initial_index: Any = {
 
 test_data: Mapping[str, Optional[Union[str, bool]]] = {
     "original_url": "http://example.com",
-    "normalized_url": "http://example.com",
     "url": "http://example.com",
     "canonical_domain": "example.com",
     "publication_date": "2023-06-27",
     "language": "en",
     "full_language": "English",
-    "text_extraction": "Lorem ipsum",
     "article_title": "Example Article",
-    "normalized_article_title": "example article",
     "text_content": "Lorem ipsum dolor sit amet",
     "indexed_date": datetime.now().isoformat(),
 }
