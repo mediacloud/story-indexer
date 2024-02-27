@@ -77,7 +77,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
     # create once, read-only (tuple)
     # could extract valid keys from index template (schema)??
-    KEYS_TO_SKIP = ("is_homepage", "is_shortened", "parsed_date")
+    KEYS_TO_SKIP = (
+        "is_homepage",
+        "is_shortened",
+        "parsed_date",
+        "normalized_article_title",
+        "normalized_url",
+        "text_extraction_method",
+    )
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
