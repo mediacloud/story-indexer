@@ -77,13 +77,15 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
     # create once, read-only (tuple)
     # could extract valid keys from index template (schema)??
-    KEYS_TO_SKIP = (
-        "is_homepage",
-        "is_shortened",
-        "parsed_date",
-        "normalized_article_title",
-        "normalized_url",
-        "text_extraction_method",
+
+    KEYS_TO_COPY = (
+        "article_title",
+        "canonical_domain",
+        "full_language",
+        "language",
+        "original_url",
+        "text_content",
+        "url",
     )
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
@@ -95,19 +97,18 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
         self.incr("field_check.stories")  # total number of stories checked
         for key, value in content_metadata.as_dict().items():
-            if key in self.KEYS_TO_SKIP:
-                continue
-            if value is None or value == "":
-                # missing values are not uncommon (publication_date, and sometimes
-                # article_title) so lowering back to info, and counting instead.  NOTE!
-                # NOT using tags, because more than one field may be counted per story,
-                # and a sum of all "missing" fields isn't a count of the number stories
-                # with with a missing field.
-                self.incr(f"field_check.missing.{key}")
-                logger.info("Value for key: %s is not provided.", key)
-                continue
-            assert isinstance(value, (str, bool))  # currently only strs
-            data[key] = value
+            if key in self.KEYS_TO_COPY:
+                if value is None or value == "":
+                    # missing values are not uncommon (publication_date, and sometimes
+                    # article_title) so lowering back to info, and counting instead.  NOTE!
+                    # NOT using tags, because more than one field may be counted per story,
+                    # and a sum of all "missing" fields isn't a count of the number stories
+                    # with with a missing field.
+                    self.incr(f"field_check.missing.{key}")
+                    logger.info("Value for key: %s is not provided.", key)
+                    continue
+                assert isinstance(value, (str, bool))  # currently only strs
+                data[key] = value
 
         # check if empty now, before any tampering (pub_date or indexed_date)
         if not data:
