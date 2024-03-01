@@ -154,10 +154,11 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         if not isinstance(text_content, str) or text_content == "":
             self.incr_stories("no-text", url)
             raise QuarantineException("no-text")
-
         data["text_content"] = truncate_str(text_content)
+        status = "intact"
         if len(data["text_content"]) < len(text_content):
-            self.incr_stories("truncated", url)
+            status = "trunc"
+        self.incr("story_len", labels=[("status", status)])
 
         if self.import_story(data) and self.output_msgs:
             # pass story along to archiver, unless disabled or duplicate
