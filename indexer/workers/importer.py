@@ -177,6 +177,18 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         url_hash = unique_url_hash(url)
 
         try:
+            # Check if the document already exists by ID in the alias.
+            # We want to avoid indexing duplicates on ILM index rollover
+            search_response = self.elasticsearch_client().search(
+                index=INDEX_NAME_ALIAS,
+                body={
+                    "query": {"bool": {"filter": {"term": {"_id": url_hash}}}},
+                    "size": 0,
+                },
+            )
+            if search_response["hits"]["total"]["value"] > 0:
+                self.incr_stories("dups", url)
+                return False
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
             response = self.elasticsearch_client().create(
