@@ -5,9 +5,11 @@ Elastic Search App Mixin
 # from indexer.workers.importer
 
 import argparse
+import json
 import os
 import sys
 from logging import getLogger
+from typing import Any, Union
 
 from elasticsearch import Elasticsearch
 
@@ -30,6 +32,12 @@ class ElasticMixin(AppProtocol):
             default=os.environ.get("ELASTICSEARCH_HOSTS") or "",
             help="comma separated list of ES server URLs",
         )
+        ap.add_argument(
+            "--elasticsearch-config-dir",
+            dest="elasticsearch_config_dir",
+            default=os.environ.get("ELASTICSEARCH_CONFIG_DIR") or "",
+            help="ES config files dir",
+        )
 
     def elasticsearch_client(self) -> Elasticsearch:
         # maybe take boolean arg or environment variable and call
@@ -44,3 +52,23 @@ class ElasticMixin(AppProtocol):
 
         # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
+
+    def read_file(self, template_name: str) -> Union[dict, Any]:
+        assert self.args
+        elasticsearch_config_dir = self.args.elasticsearch_config_dir
+        file_path = os.path.join(elasticsearch_config_dir, template_name)
+        with open(file_path, "r") as file:
+            data = file.read()
+        return json.loads(data)
+
+    def index_template_data(self) -> Any:
+        json_data = self.read_file(template_name="create_index_template.json")
+        return json_data
+
+    def ilm_policy_data(self) -> Any:
+        json_data = self.read_file(template_name="create_ilm_policy.json")
+        return json_data
+
+    def initial_index_data(self) -> Any:
+        json_data = self.read_file(template_name="create_initial_index.json")
+        return json_data

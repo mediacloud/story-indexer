@@ -121,6 +121,7 @@ x-worker-service-settings: &worker-service-settings
     <<: *base-environment-vars
     DEPLOYMENT_ID: {{deployment_id}}
     ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
+    ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
     LOG_LEVEL: "info"
     RABBITMQ_URL: {{rabbitmq_url}}
     SENTRY_DSN: {{sentry_dsn}}
@@ -438,7 +439,6 @@ services:
     <<: *worker-service-settings
     environment:
       <<: *worker-environment-vars
-      ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
       ELASTICSEARCH_ILM_MAX_AGE: {{elasticsearch_ilm_max_age}}
       ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
       ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}

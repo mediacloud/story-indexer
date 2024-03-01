@@ -75,29 +75,20 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         self.incr("pub_date", labels=[("status", status)])
 
-    # create once, read-only (tuple)
-    # could extract valid keys from index template (schema)??
-
-    KEYS_TO_COPY = (
-        "article_title",
-        "canonical_domain",
-        "full_language",
-        "language",
-        "original_url",
-        "text_content",
-        "url",
-    )
-
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
         Import story into Elasticsearch
         """
         content_metadata = story.content_metadata()
         data: dict[str, Optional[Union[str, bool]]] = {}
-
+        # extract valid keys from index template (schema)
+        index_template_data = self.index_template_data()
+        index_template_keys = index_template_data["template"]["mappings"][
+            "properties"
+        ].keys()
         self.incr("field_check.stories")  # total number of stories checked
         for key, value in content_metadata.as_dict().items():
-            if key in self.KEYS_TO_COPY:
+            if key in index_template_keys:
                 if value is None or value == "":
                     # missing values are not uncommon (publication_date, and sometimes
                     # article_title) so lowering back to info, and counting instead.  NOTE!
