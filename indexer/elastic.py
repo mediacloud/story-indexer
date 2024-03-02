@@ -53,10 +53,8 @@ class ElasticMixin(AppProtocol):
         # Connects immediately, performs failover and retries
         return Elasticsearch(hosts.split(","))
 
-    def read_file(self, template_name: str) -> Union[dict, Any]:
-        assert self.args
-        elasticsearch_config_dir = self.args.elasticsearch_config_dir
-        file_path = os.path.join(elasticsearch_config_dir, template_name)
+    def _load_template(self, name: str) -> dict | Any:
+        file_path = os.path.join(self.elasticsearch_config_dir, name)
         with open(file_path, "r") as file:
             data = file.read()
         return json.loads(data)
