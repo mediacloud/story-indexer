@@ -4,6 +4,7 @@ elasticsearch import pipeline worker
 
 import argparse
 import logging
+import sys
 import unicodedata
 from datetime import datetime
 from typing import Optional, Union, cast
@@ -69,6 +70,14 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
         self.output_msgs = self.args.output_msgs
 
+        index_template = self.load_index_template()
+        if not index_template:
+            logger.error("Elasticsearch Index template not loaded")
+            sys.exit(1)
+        self.elasticsearch_fields = index_template["template"]["mappings"][
+            "properties"
+        ].keys()
+
     def incr_pub_date(self, status: str) -> None:
         """
         helper for reporting pub_date stats
@@ -82,13 +91,10 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         content_metadata = story.content_metadata()
         data: dict[str, Optional[Union[str, bool]]] = {}
         # extract valid keys from index template (schema)
-        index_template_data = self.index_template_data()
-        index_template_keys = index_template_data["template"]["mappings"][
-            "properties"
-        ].keys()
+
         self.incr("field_check.stories")  # total number of stories checked
         for key, value in content_metadata.as_dict().items():
-            if key in index_template_keys:
+            if key in self.elasticsearch_fields:
                 if value is None or value == "":
                     # missing values are not uncommon (publication_date, and sometimes
                     # article_title) so lowering back to info, and counting instead.  NOTE!

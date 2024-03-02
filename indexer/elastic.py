@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from logging import getLogger
-from typing import Any, Union
+from typing import Any
 
 from elasticsearch import Elasticsearch
 
@@ -39,21 +39,27 @@ class ElasticMixin(AppProtocol):
             help="ES config files dir",
         )
 
+    def process_args(self) -> None:
+        super().process_args()
+        assert self.args
+        self.elasticsearch_hosts = self.args.elasticsearch_hosts
+        self.elasticsearch_config_dir = self.args.elasticsearch_config_dir
+
     def elasticsearch_client(self) -> Elasticsearch:
         # maybe take boolean arg or environment variable and call
         # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
         # to avoid log message for each op?
-
-        assert self.args
-        hosts = self.args.elasticsearch_hosts
-        if not hosts:
+        if not self.elasticsearch_hosts:
             logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
             sys.exit(1)
 
         # Connects immediately, performs failover and retries
-        return Elasticsearch(hosts.split(","))
+        return Elasticsearch(self.elasticsearch_hosts.split(","))
 
     def _load_template(self, name: str) -> dict | Any:
+        if not self.elasticsearch_config_dir:
+            logger.fatal("need --elasticsearch_config_dir or ELASTICSEARCH_CONFIG_DIR")
+            sys.exit(1)
         file_path = os.path.join(self.elasticsearch_config_dir, name)
         with open(file_path, "r") as file:
             data = file.read()
@@ -62,10 +68,8 @@ class ElasticMixin(AppProtocol):
     def load_index_template(self) -> Any:
         return self._load_template("create_index_template.json")
 
-    def ilm_policy_data(self) -> Any:
-        json_data = self.read_file(template_name="create_ilm_policy.json")
-        return json_data
+    def load_ilm_policy_template(self) -> Any:
+        return self._load_template("create_ilm_policy.json")
 
-    def initial_index_data(self) -> Any:
-        json_data = self.read_file(template_name="create_initial_index.json")
-        return json_data
+    def load_initial_index_template(self) -> Any:
+        return self._load_template("create_initial_index.json")

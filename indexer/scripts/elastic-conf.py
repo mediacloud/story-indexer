@@ -82,7 +82,7 @@ class ElasticConf(ElasticMixin, App):
             return
 
     def create_index_template(self, es: Elasticsearch) -> Any:
-        json_data = self.index_template_data()
+        json_data = self.load_index_template()
         json_data["template"]["settings"]["number_of_shards"] = self.shards
         json_data["template"]["settings"]["number_of_replicas"] = self.replicas
         name = json_data["name"]
@@ -101,7 +101,7 @@ class ElasticConf(ElasticMixin, App):
         return acknowledged
 
     def create_ilm_policy(self, es: Elasticsearch) -> Any:
-        json_data = self.ilm_policy_data()
+        json_data = self.load_ilm_policy_template()
         rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
         rollover["max_age"] = self.ilm_max_age
         rollover["max_primary_shard_size"] = self.ilm_max_shard_size
@@ -116,7 +116,7 @@ class ElasticConf(ElasticMixin, App):
         return acknowledged
 
     def create_initial_index(self, es: Elasticsearch) -> Any:
-        json_data = self.initial_index_data()
+        json_data = self.load_initial_index_template()
         index = json_data["name"]
         aliases = json_data["aliases"]
         if es.indices.exists(index=index):
