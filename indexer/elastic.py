@@ -59,9 +59,8 @@ class ElasticMixin(AppProtocol):
             data = file.read()
         return json.loads(data)
 
-    def index_template_data(self) -> Any:
-        json_data = self.read_file(template_name="create_index_template.json")
-        return json_data
+    def load_index_template(self) -> Any:
+        return self._load_template("create_index_template.json")
 
     def ilm_policy_data(self) -> Any:
         json_data = self.read_file(template_name="create_ilm_policy.json")
