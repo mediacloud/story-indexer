@@ -190,7 +190,8 @@ class TestElasticsearchImporter:
                 "query": {"bool": {"filter": {"term": {"_id": id}}}},
             },
         )
-        assert search_response
+        assert search_response["hits"]["hits"], "No document in search response"
+
         search_response_keys = search_response["hits"]["hits"][0]["_source"]
         additional_keys = {
             key: test_import_data[key]
