@@ -13,12 +13,12 @@ from typing import Any
 from elasticsearch import Elasticsearch
 
 from indexer.app import App, run
-from indexer.elastic import ElasticMixin
+from indexer.elastic import ElasticConfMixin
 
 logger = getLogger("elastic-conf")
 
 
-class ElasticConf(ElasticMixin, App):
+class ElasticConf(ElasticConfMixin, App):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         # Index template args
@@ -83,6 +83,11 @@ class ElasticConf(ElasticMixin, App):
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
+        if not json_data:
+            logger.error(
+                "Elasticsearch create index template: error template not loaded"
+            )
+            sys.exit(1)
         json_data["template"]["settings"]["number_of_shards"] = self.shards
         json_data["template"]["settings"]["number_of_replicas"] = self.replicas
         name = json_data["name"]
@@ -102,6 +107,9 @@ class ElasticConf(ElasticMixin, App):
 
     def create_ilm_policy(self, es: Elasticsearch) -> Any:
         json_data = self.load_ilm_policy_template()
+        if not json_data:
+            logger.error("Elasticsearch create ILM policy: error template not loaded")
+            sys.exit(1)
         rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
         rollover["max_age"] = self.ilm_max_age
         rollover["max_primary_shard_size"] = self.ilm_max_shard_size
@@ -117,6 +125,11 @@ class ElasticConf(ElasticMixin, App):
 
     def create_initial_index(self, es: Elasticsearch) -> Any:
         json_data = self.load_initial_index_template()
+        if not json_data:
+            logger.error(
+                "Elasticsearch create initial index: error template not loaded"
+            )
+            sys.exit(1)
         index = json_data["name"]
         aliases = json_data["aliases"]
         if es.indices.exists(index=index):

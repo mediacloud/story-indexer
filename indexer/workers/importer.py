@@ -13,7 +13,7 @@ from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
 
 from indexer.app import run
-from indexer.elastic import ElasticMixin
+from indexer.elastic import ElasticConfMixin
 from indexer.story import BaseStory
 from indexer.storyapp import StorySender, StoryWorker
 from indexer.worker import QuarantineException
@@ -52,7 +52,7 @@ def truncate_str(
     return src_bytes[:max_length].decode(encoding="utf-8", errors="replace")
 
 
-class ElasticsearchImporter(ElasticMixin, StoryWorker):
+class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
