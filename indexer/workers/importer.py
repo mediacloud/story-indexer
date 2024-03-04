@@ -9,6 +9,7 @@ import unicodedata
 from datetime import datetime
 from typing import Optional, Union, cast
 
+from elastic_transport import ObjectApiResponse
 from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
 
@@ -168,7 +169,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def import_story(
         self,
         data: dict[str, Optional[Union[str, bool]]],
-    ) -> bool:
+    ) -> ObjectApiResponse | None:
         """
         True if story imported to ES, and should be archived,
         False if a duplicate,
@@ -193,7 +194,8 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             )
             if search_response["hits"]["total"]["value"] > 0:
                 self.incr_stories("dups", url)
-                return False
+                # return False
+                return None
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
             response = self.elasticsearch_client().create(
@@ -214,10 +216,12 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # (that should never be seen) should be returned as False (do not archive).
             result = response.get("result", "noresult") or "emptyres"
             self.incr_stories(result, url)  # count, logs result, URL
-            return True
+            return response
+            # return True
         except ConflictError:
             self.incr_stories("dups", url)
-            return False
+            return None
+        # return False
         except RequestError as e:
             # here with over-length content!
             self.incr_stories("reqerr", url)

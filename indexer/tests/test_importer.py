@@ -166,19 +166,48 @@ class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
         importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
+        importer.elasticsearch_hosts = os.environ.get("ELASTICSEARCH_HOSTS")
         return importer
 
     def test_import_story_success(self, importer: ElasticsearchImporter) -> None:
         test_import_data = {**test_data, "url": "http://example_import_story.com"}
         assert importer.import_story(test_import_data)
 
-    def test_import_story_duplicate(
-        self, importer: ElasticsearchImporter, elasticsearch_client: Any
-    ) -> None:
-        test_import_data = {**test_data, "url": "https://www.bernerzeitung.ch/"}
+    def test_import_story_extra_fields(self, importer: ElasticsearchImporter) -> None:
+        test_import_data = {
+            **test_data,
+            "url": "https://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
+            "normalized_article_title": "the basic principles of would or could",
+            "normalized_url": "http://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
+            "text_extraction_method": "trafilatura",
+        }
+        response = importer.import_story(test_import_data)
+        assert response
+        id = response.get("_id")
+        search_response = importer.elasticsearch_client().search(
+            index="test_mc_search",
+            body={
+                "query": {"bool": {"filter": {"term": {"_id": id}}}},
+            },
+        )
+        assert search_response
+        print(search_response["hits"]["hits"])
+        search_response_keys = search_response["hits"]["hits"][0]["_source"]
+        additional_keys = {
+            key: test_import_data[key]
+            for key in test_import_data
+            if key not in test_data
+        }
+        for key in additional_keys:
+            assert (
+                key not in search_response_keys.keys()
+            ), f"Unexpected field '{key}' found in response."
+
+    def test_import_story_duplicate(self, importer: ElasticsearchImporter) -> None:
+        test_import_data = {**test_data, "url": "https://www.edbernerzeitung.ch12/"}
         url = test_import_data["url"]
         assert isinstance(url, str), "url must be a string"
-        search_response = elasticsearch_client.search(
+        search_response = importer.elasticsearch_client().search(
             index="test_mc_search",
             body={
                 "query": {"bool": {"filter": {"term": {"_id": unique_url_hash(url)}}}},
