@@ -191,7 +191,6 @@ class TestElasticsearchImporter:
             },
         )
         assert search_response
-        print(search_response["hits"]["hits"])
         search_response_keys = search_response["hits"]["hits"][0]["_source"]
         additional_keys = {
             key: test_import_data[key]
