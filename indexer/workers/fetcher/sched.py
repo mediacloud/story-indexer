@@ -9,7 +9,6 @@ hides details of data structures and locking.
 
 import logging
 import math
-import random
 import threading
 import time
 from enum import Enum
@@ -18,14 +17,11 @@ from typing import Any, Callable, Dict, List, NamedTuple, NoReturn, Optional, Ty
 from indexer.app import App
 
 # try issue twice, with small, random sleep in between
-SECOND_TRY = False
+SECOND_TRY = True
 
-# EXPERIMENT: try Scrapy latency test (keep max_per_slot requests
-# active).  This uses max_per_slot divided by average_request_time as
-# the issue interval, and (except when starting up) ignores
-# max_per_slot as hard limit, and always ignores min_seconds.
-# Primary advantage is for busy feeds with low latency.
-SCRAPY_LATENCY = True
+# number of seconds after start of last request to keep slot around
+# (maintains request RTT)
+SLOT_RECENT_MINUTES = 5
 
 # exponential moving average coefficient for avg_seconds.
 # (typ. used by TCP for RTT est)
@@ -37,15 +33,18 @@ logger = logging.getLogger(__name__)
 
 
 # _could_ try and map Slots by IP address(es), since THAT gets us closer
-# to the point (of not hammering a particular server),
+# to the point (of not hammering a particular server);
 #
 #   BUT: Would have to deal with:
 #   1. A particular FQDN may map to multiple IP addrs
-#   2. The order of the IP addreses might well change between queries
+#   2. The order of the IP addreses often changes between queries
+#       (so doing a lookup first, then connecting by name
+#        will likely give different first answers)
 #   3. The ENTIRE SET might change if a CDN is involved!
 #   4. Whether or not we're using IPv6 (if not, can ignore IPv6)
 #   5. IP addresses can serve multiple domains
-#   6. But domains in #5 might have disjoint IP addr sets.
+#   6. But domains served by shared servers (see #5)
+#       might have disjoint IP addr sets.
 
 
 class LockError(RuntimeError):
@@ -147,9 +146,15 @@ class Timer:
         self.last = time.monotonic()
 
     def expired(self) -> bool:
+        """
+        return True if duration set, and time duration has passed
+        """
         return self.duration is not None and self.elapsed() >= self.duration
 
     def __str__(self) -> str:
+        """
+        used in log messages!
+        """
         if self.last == _NEVER:
             return "not set"
         if self.expired():
@@ -177,14 +182,14 @@ class Slot:
         self.sb = sb
 
         self.active_count = 0
-        self.active_threads: List[str] = []
-        self.last_issue = Timer(sb.min_seconds)
+        self.last_issue = Timer(SLOT_RECENT_MINUTES * 60)
         # time since last error at this workplace
         self.last_conn_error = Timer(sb.conn_retry_seconds)
         self.avg_seconds = 0.0  # smoothed average
 
-        # XXX *COULD* keep list of active threads
-        # (instead of active count)
+        # O(n) removal, only used for debug_info
+        # unclear if using a Set would be better or not...
+        self.active_threads: List[str] = []
 
     def _issue(self) -> IssueStatus:
         """
@@ -192,24 +197,19 @@ class Slot:
         return False if cannot be issued now
         """
         self.sb.big_lock.assert_held()
-        if SCRAPY_LATENCY:
-            # scrapy issue interval is avg_latency / concurrency
-            # goal is to keep "concurrency" requests active
-            if self.avg_seconds == 0:
-                if self.active_count >= self.sb.max_per_slot:
-                    return IssueStatus.BUSY
-            else:  # have avg_seconds:
-                elapsed = self.last_issue.elapsed()
-                goal = self.avg_seconds / self.sb.max_per_slot
-                logger.debug("%s: elapsed %.3f goal %.3f", self.slot_id, elapsed, goal)
-                if elapsed < goal:
-                    return IssueStatus.BUSY
-        else:
+        # scrapy issue interval is avg_latency / concurrency
+        # goal is to keep "concurrency" requests active
+        if self.avg_seconds == 0:
+            # no running average yet.
+            # issue up to concurrency limit requests:
             if self.active_count >= self.sb.max_per_slot:
                 return IssueStatus.BUSY
-
-            if not self.last_issue.expired():
-                # issued recently
+        else:
+            # have running average of request times.
+            elapsed = self.last_issue.elapsed()
+            goal = self.avg_seconds / self.sb.max_per_slot
+            logger.debug("%s: elapsed %.3f goal %.3f", self.slot_id, elapsed, goal)
+            if elapsed < goal:
                 return IssueStatus.BUSY
 
         # see if connection to domain failed "recently".
@@ -233,7 +233,8 @@ class Slot:
         with self.sb.big_lock:
             assert self.active_count > 0
             self.active_count -= 1
-            self.active_threads.remove(threading.current_thread().name)  # O(n)
+            # remove on list is O(n), but n is small (concurrency limit)
+            self.active_threads.remove(threading.current_thread().name)
             if not got_connection:
                 self.last_conn_error.reset()
             else:
@@ -290,7 +291,6 @@ class ScoreBoard:
         app: App,  # for stats
         max_active: int,  # total concurrent active limit
         max_per_slot: int,  # max active with same id (domain)
-        min_seconds: float,  # seconds between issues for slot
         conn_retry_seconds: float,  # seconds before connect retry
     ):
         self.app = app
@@ -303,7 +303,6 @@ class ScoreBoard:
         )  # covers ALL variables!
         self.max_active = max_active
         self.max_per_slot = max_per_slot
-        self.min_seconds = min_seconds
         self.conn_retry_seconds = conn_retry_seconds
         self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
         self.active_fetches = 0
@@ -325,7 +324,7 @@ class ScoreBoard:
     def _remove_slot(self, slot_id: str) -> None:
         del self.slots[slot_id]
 
-    def _issue(self, slot_id: str, note: str) -> IssueReturn:
+    def issue(self, slot_id: str, note: str) -> IssueReturn:
         with self.big_lock:
             if self.active_fetches < self.max_active:
                 slot = self._get_slot(slot_id)
@@ -340,17 +339,6 @@ class ScoreBoard:
             else:
                 status = IssueStatus.BUSY
         return IssueReturn(status, None)
-
-    def issue(self, slot_id: str, note: str) -> IssueReturn:
-        ir = self._issue(slot_id, note)
-        if ir.status == IssueStatus.BUSY and SECOND_TRY:
-            # experiment: wait a few seconds and try again,
-            # both to increase liklihood of issue,
-            # and to de-clump the queue:
-            # can't have different intervals in delay queue, so do it here:
-            time.sleep(5.0 * random.random() + 1)
-            ir = self._issue(slot_id, note)
-        return ir
 
     def _slot_retired(self, idle: bool) -> None:
         """

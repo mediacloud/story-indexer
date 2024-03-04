@@ -9,34 +9,32 @@ that threads don't give greater concurrency than async/coroutines
 progress to eliminate the GIL, over time, enabling the code to run on
 multiple cores.
 
+Regardless, most of the time of an active fetch request is likely to
+be waiting for I/O (due to network/server latency), or CPU bound in
+SSL processing, neither of which requires holding the GIL.
+
 When a Story can't be fetched because of connect rate or concurrency
-limits, the Story is queued to a "fast delay" queue to avoid book keeping
-complexity (and having an API that allows not ACKing a message immediately).
+limits, the Story is queued to a "fast delay" queue to avoid
+bookkeeping complexity (and having an API that allows not ACKing a
+message immediately).
 
-In theory we have thirty minutes to ACK a message
-before RabbitMQ has a fit (closes connection), so
-holding on to Stories that can't be processed
-immediately is POSSIBLE, *BUT* the current API acks
-the message on return from process_message.
-
-To delay ACK would need:
-1. A way to disable automatic ACK (ie; return False)
-2. Passing the delivery tag (or whole InputMessage - bleh) to process_story
-3. An "ack" method on the StorySender object.
-
-Handling retries (on connection errors) would either require
-re-pickling the Story, or the InputMessage
+In theory we have thirty minutes to ACK a message before RabbitMQ has
+a fit (closes connection), so holding on to Stories that can't be
+processed immediately is POSSIBLE, *BUT* the existing framework acks
+the story after process_message/story (in _process_messages) and
+handles exceptions for retry and quarantine.
 """
 
 import argparse
 import logging
+import random
 import signal
 import time
 from types import FrameType
 from typing import NamedTuple, Optional
 
 import requests
-from requests.exceptions import ConnectionError
+from requests.exceptions import RequestException
 
 from indexer.app import run
 from indexer.story import BaseStory
@@ -47,11 +45,20 @@ from indexer.storyapp import (
     url_fqdn,
 )
 from indexer.worker import QuarantineException, RequeueException
-from indexer.workers.fetcher.sched import IssueStatus, ScoreBoard
+from indexer.workers.fetcher.sched import IssueReturn, IssueStatus, ScoreBoard
 
 # internal scheduling:
-SLOT_REQUESTS = 2  # concurrent connections per domain
-DOMAIN_ISSUE_SECONDS = 5.0  # interval between issues for a domain (5s = 12/min)
+SLOT_REQUESTS = 4  # concurrent connections per domain
+
+# Unless the input RSS entries are well mixed (and this would not be
+# the case if the rss-fetcher queued RSS entries to us directly), RSS
+# entries for the same domain will travel in packs/clumps/trains.  If
+# the "fast" delay is too long, that allows only one URL to be issued
+# each time the train passes.  So set the "fast" delay JUST long
+# enough so they come back when intra-request issue interval has
+# passed.  Note: the intra-request interval is based on response time
+# divided by SLOT_REQUESTS, so is not a constant.
+BUSY_DELAY_SECONDS = 2.0
 
 # time cache server as bad after a connection failure
 CONN_RETRY_MINUTES = 10
@@ -95,6 +102,7 @@ logger = logging.getLogger("fetcher")  # avoid __main__
 class Retry(Exception):
     """
     Exception to throw for explicit retries
+    (included in NO_QUARANTINE, so never quarantined)
     """
 
 
@@ -109,10 +117,9 @@ class FetchReturn(NamedTuple):
 class Fetcher(MultiThreadStoryWorker):
     WORKER_THREADS_DEFAULT = 200  # equiv to 20 fetchers, with 10 active fetches
 
-    # Just discard stories after connection errors:
-    # NOTE: other requests.exceptions may be needed
-    # but entire RequestException hierarchy includes bad URLs
-    NO_QUARANTINE = (Retry, ConnectionError)
+    # Exceptions to discard instead of quarantine after repeated retries:
+    # RequestException hierarchy includes bad URLs
+    NO_QUARANTINE = (Retry, RequestException)
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -123,18 +130,26 @@ class Fetcher(MultiThreadStoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--issue-interval",
-            "-I",
-            type=int,
-            default=DOMAIN_ISSUE_SECONDS,
-            help=f"domain request interval (default: {DOMAIN_ISSUE_SECONDS})",
+            "--busy-delay-seconds",
+            "-B",
+            type=float,
+            default=BUSY_DELAY_SECONDS,
+            help=f"busy (fast) queue delay in seconds (default: {BUSY_DELAY_SECONDS})",
         )
+
         ap.add_argument(
-            "--slot-requests",
-            "-S",
+            "--requests-per-domain",
+            "-R",
             type=int,
             default=SLOT_REQUESTS,
-            help=f"requests/domain (default: {SLOT_REQUESTS})",
+            help=f"requests/domain goal (default: {SLOT_REQUESTS})",
+        )
+
+        ap.add_argument(
+            "--no-second-try",
+            default=False,
+            action="store_true",
+            help="don't try sleep/retry after busy",
         )
 
     def process_args(self) -> None:
@@ -148,26 +163,21 @@ class Fetcher(MultiThreadStoryWorker):
         self.scoreboard = ScoreBoard(
             self,
             self.workers,
-            self.args.slot_requests,
-            self.args.issue_interval,
+            self.args.requests_per_domain,
             CONN_RETRY_MINUTES * 60,
         )
 
-        # Unless the input RSS entries are well mixed (and this would
-        # not be the case if the rss-fetcher queued RSS entries to us
-        # directly), RSS entries for the same domain will travel in
-        # packs/clumps/trains.  If the "fast" delay is too long, that
-        # allows only one URL to be issued each time the train passes.
-        # So set the "fast" delay JUST long enough so they come back
-        # when intra-request issue interval has passed.
-        self.set_requeue_delay_ms(1000 * self.args.issue_interval)
+        self.busy_delay_seconds = self.args.busy_delay_seconds
+        self.second_try = not self.args.no_second_try
 
-        # enable debug dump on SIGQUIT (CTRL-\)
-        def quit_handler(sig: int, frame: Optional[FrameType]) -> None:
+        self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
+
+        # enable debug dump on SIGUSR1
+        def usr1_handler(sig: int, frame: Optional[FrameType]) -> None:
             if self.scoreboard:
                 self.scoreboard.debug_info_nolock()
 
-        signal.signal(signal.SIGQUIT, quit_handler)
+        signal.signal(signal.SIGUSR1, usr1_handler)
 
     def periodic(self) -> None:
         """
@@ -181,37 +191,30 @@ class Fetcher(MultiThreadStoryWorker):
         """
         perform HTTP get, tracking redirects looking for non-news domains
 
+        Raises RequestException on connection and HTTP errors.
         Returns FetchReturn NamedTuple for uniform handling of counts.
         """
         redirects = 0
 
-        # loop following redirects
-
         # prepare initial request:
         request = requests.Request("GET", url, headers=HEADERS)
         prepreq = sess.prepare_request(request)
-        while True:
+        while True:  # loop processing redirects
             with self.timer("get"):  # time each HTTP get
-                try:
-                    resp = sess.send(
-                        prepreq,
-                        allow_redirects=False,
-                        timeout=(CONNECT_SECONDS, READ_SECONDS),
-                        verify=False,  # raises connection rate
-                    )
-                except (
-                    requests.exceptions.InvalidSchema,
-                    requests.exceptions.MissingSchema,
-                    requests.exceptions.InvalidURL,
-                ):
-                    # all other exceptions trigger retries in indexer.Worker
-                    return FetchReturn(None, "badurl2", False)
+                # NOTE! maybe catch/retry malformed URLs from redirects??
+                resp = sess.send(
+                    prepreq,
+                    allow_redirects=False,
+                    timeout=(CONNECT_SECONDS, READ_SECONDS),
+                    verify=False,  # raises connection rate
+                )
 
             if not resp.is_redirect:
                 # here with a non-redirect HTTP response:
                 # it could be an HTTP error!
 
-                # XXX report redirect count as a timing?
+                # XXX report redirect count as a statsd "timing"? histogram??
+                # with resp non-null, other args should be ignored
                 return FetchReturn(resp, "SNH", False)
 
             # here with redirect:
@@ -238,9 +241,16 @@ class Fetcher(MultiThreadStoryWorker):
 
             logger.info("redirect (%d) => %s", resp.status_code, url)
             if non_news_fqdn(fqdn):
-                return FetchReturn(None, "non-news2", False)
+                return FetchReturn(None, "non-news2", False)  # in redirect
 
         # end infinite redirect loop
+
+    def try_issue(self, id: str, url: str) -> IssueReturn:
+        # report time to issue: if this jumps up, it's
+        # likely due to lock contention!
+        assert self.scoreboard
+        with self.timer("issue"):
+            return self.scoreboard.issue(id, url)
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -256,7 +266,25 @@ class Fetcher(MultiThreadStoryWorker):
         assert isinstance(url, str)
         assert self.scoreboard is not None
 
-        # XXX handle missing URL schema??
+        # XXX handle missing URL schema (default to http)??
+
+        # NOTE!! fqdn isn't QUITE right: it means every
+        # foobar.blogspot.com is treated as a separate server.
+        # Really want to use IP address (see sched.py for more
+        # gory details), but that would require resolving the
+        # FQDN, and *THEN* using that address to make the HTTP
+        # connection *AND* subsequent redirect fetches (if the
+        # FQDN stays the same).
+
+        # NOT using "domain" from RSS file because I originally
+        # was planning to move the "issue" call inside the
+        # redirect loop (getting clearance for each FQDN along the
+        # chain), but if we ended up with a "busy", we'd have to
+        # retry and start ALL over, or add a field to the Story
+        # indicating the "next URL" to attempt to fetch, along
+        # with a count of followed redirects.  AND, using
+        # "canonical" domain means EVERYTHING inside a domain
+        # looks to be one server (when that may not be the case).
 
         # BEFORE issue (discard without any delay)
         try:
@@ -265,26 +293,16 @@ class Fetcher(MultiThreadStoryWorker):
             return self.incr_stories("badurl1", url)
 
         if non_news_fqdn(fqdn):
+            # unlikely, if queuer does their job!
             return self.incr_stories("non-news", url)
 
-        # report time to issue: if this jumps up, it's
-        # likely due to lock contention!
-        with self.timer("issue"):
-            # XXX fqdn isn't QUITE right: it means every
-            # foobar.blogspot.com is treated as a separate server.
-            # Really want to use IP address (see sched.py), but that
-            # would require resolving the FQDN, and *THEN* using that
-            # address to make the HTTP connection *AND* subsequent
-            # redirect fetches (if the FQDN stays the same).
-
-            # NOT using "domain" from RSS file because I originally
-            # was planning to move the "issue" call inside the
-            # redirect loop (getting clearance for each FQDN along the
-            # chain), but if we ended up with a "busy", we'd have to
-            # retry and start ALL over, or add a field to the Story
-            # indicating the "next URL" to attempt to fetch, along
-            # with a count of followed redirects.
-            ir = self.scoreboard.issue(fqdn, url)
+        ir = self.try_issue(fqdn, url)
+        if ir.status == IssueStatus.BUSY and self.second_try:
+            # Not inside "issue" to avoid messing up timing stats!
+            # All messages in the fast queue get the same delay,
+            # so introduce some randomness here.
+            time.sleep(self.busy_delay_seconds * random.random())
+            ir = self.try_issue(fqdn, url)
 
         if ir.slot is None:  # could not be issued
             if ir.status == IssueStatus.SKIPPED:
@@ -314,9 +332,19 @@ class Fetcher(MultiThreadStoryWorker):
             try:  # call retire on exit
                 fret = self.fetch(sess, fqdn, url)
                 got_connection = True
+            except (
+                requests.exceptions.InvalidSchema,
+                requests.exceptions.MissingSchema,
+                requests.exceptions.InvalidURL,
+            ) as exc:
+                logger.info("%s: %r", url, exc)
+                self.incr_stories("badurl2", url)
+                # bad URL, did not attempt connection, so don't mark domain as down!
+                got_connection = True  # checked in finally
+                return  # discard: do not pass go, do not collect $200!
             except Exception:
                 self.incr_stories("noconn", url)
-                got_connection = False
+                got_connection = False  # checked in finally
                 raise  # re-raised for retry counting
             finally:
                 # decrement slot active_count!
