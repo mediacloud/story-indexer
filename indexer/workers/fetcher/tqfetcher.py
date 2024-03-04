@@ -34,6 +34,7 @@ from types import FrameType
 from typing import NamedTuple, Optional
 
 import requests
+from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from requests.exceptions import RequestException
 
 from indexer.app import run
@@ -70,11 +71,8 @@ READ_SECONDS = 30.0  # for each read?
 # HTTP parameters:
 MAX_REDIRECTS = 30
 
-# get from common place (also used by rss-fetcher)
-USER_AGENT = "mediacloud bot for open academic research (+https://mediacloud.org)"
-
 # scrapy default headers include: "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-HEADERS = {"User-Agent": USER_AGENT}
+HEADERS = {"User-Agent": MEDIA_CLOUD_USER_AGENT}
 
 # HHTP response codes to retry
 # (all others cause URL to be discarded)
