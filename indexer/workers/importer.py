@@ -194,8 +194,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             )
             if search_response["hits"]["total"]["value"] > 0:
                 self.incr_stories("dups", url)
-                # return False
-                return None
+                return None  # mypy explicit return
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
             response = self.elasticsearch_client().create(
@@ -217,7 +216,6 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             result = response.get("result", "noresult") or "emptyres"
             self.incr_stories(result, url)  # count, logs result, URL
             return response
-            # return True
         except ConflictError:
             self.incr_stories("dups", url)
             return None
