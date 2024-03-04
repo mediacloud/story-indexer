@@ -36,17 +36,6 @@
                     }
                 }
             },
-            "normalized_article_title": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                }
-            },
-            "normalized_url": {
-                "type": "keyword"
-            },
             "original_url": {
                 "type": "keyword"
             },
@@ -62,18 +51,6 @@
                     }
                 },
                 "fielddata": true
-            },
-            "text_extraction": {
-                "type": "keyword"
-            },
-            "text_extraction_method": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword",
-                        "ignore_above": 256
-                    }
-                }
             },
             "url": {
                 "type": "keyword"

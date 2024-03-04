@@ -4,6 +4,7 @@ elasticsearch import pipeline worker
 
 import argparse
 import logging
+import sys
 import unicodedata
 from datetime import datetime
 from typing import Optional, Union, cast
@@ -12,7 +13,7 @@ from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
 
 from indexer.app import run
-from indexer.elastic import ElasticMixin
+from indexer.elastic import ElasticConfMixin
 from indexer.story import BaseStory
 from indexer.storyapp import StorySender, StoryWorker
 from indexer.worker import QuarantineException
@@ -51,7 +52,7 @@ def truncate_str(
     return src_bytes[:max_length].decode(encoding="utf-8", errors="replace")
 
 
-class ElasticsearchImporter(ElasticMixin, StoryWorker):
+class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
@@ -69,15 +70,19 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
 
         self.output_msgs = self.args.output_msgs
 
+        index_template = self.load_index_template()
+        if not index_template:
+            logger.error("Elasticsearch Index template not loaded")
+            sys.exit(1)
+        self.elasticsearch_fields = index_template["template"]["mappings"][
+            "properties"
+        ].keys()
+
     def incr_pub_date(self, status: str) -> None:
         """
         helper for reporting pub_date stats
         """
         self.incr("pub_date", labels=[("status", status)])
-
-    # create once, read-only (tuple)
-    # could extract valid keys from index template (schema)??
-    KEYS_TO_SKIP = ("is_homepage", "is_shortened", "parsed_date")
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -85,22 +90,22 @@ class ElasticsearchImporter(ElasticMixin, StoryWorker):
         """
         content_metadata = story.content_metadata()
         data: dict[str, Optional[Union[str, bool]]] = {}
+        # extract valid keys from index template (schema)
 
         self.incr("field_check.stories")  # total number of stories checked
         for key, value in content_metadata.as_dict().items():
-            if key in self.KEYS_TO_SKIP:
-                continue
-            if value is None or value == "":
-                # missing values are not uncommon (publication_date, and sometimes
-                # article_title) so lowering back to info, and counting instead.  NOTE!
-                # NOT using tags, because more than one field may be counted per story,
-                # and a sum of all "missing" fields isn't a count of the number stories
-                # with with a missing field.
-                self.incr(f"field_check.missing.{key}")
-                logger.info("Value for key: %s is not provided.", key)
-                continue
-            assert isinstance(value, (str, bool))  # currently only strs
-            data[key] = value
+            if key in self.elasticsearch_fields:
+                if value is None or value == "":
+                    # missing values are not uncommon (publication_date, and sometimes
+                    # article_title) so lowering back to info, and counting instead.  NOTE!
+                    # NOT using tags, because more than one field may be counted per story,
+                    # and a sum of all "missing" fields isn't a count of the number stories
+                    # with with a missing field.
+                    self.incr(f"field_check.missing.{key}")
+                    logger.info("Value for key: %s is not provided.", key)
+                    continue
+                assert isinstance(value, (str, bool))  # currently only strs
+                data[key] = value
 
         # check if empty now, before any tampering (pub_date or indexed_date)
         if not data:
