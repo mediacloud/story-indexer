@@ -174,12 +174,15 @@ class TestElasticsearchImporter:
         assert importer.import_story(test_import_data)
 
     def test_import_story_extra_fields(self, importer: ElasticsearchImporter) -> None:
-        test_import_data = {
-            **test_data,
-            "url": "https://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
+        test_extra_data = {
             "normalized_article_title": "the basic principles of would or could",
             "normalized_url": "http://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
             "text_extraction_method": "trafilatura",
+        }
+        test_import_data = {
+            **test_data,
+            **test_extra_data,
+            "url": "https://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
         }
         response = importer.import_story(test_import_data)
         assert response
