@@ -16,10 +16,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, NoReturn, Optional, Ty
 
 from indexer.app import App
 
-# try issue twice, with small, random sleep in between
-SECOND_TRY = True
-
-# number of seconds after start of last request to keep slot around
+# number of seconds after start of last request to keep idle slot around
 # (maintains request RTT)
 SLOT_RECENT_MINUTES = 5
 
