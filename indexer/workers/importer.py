@@ -9,7 +9,6 @@ import unicodedata
 from datetime import datetime
 from typing import Optional, Union, cast
 
-from elastic_transport import ObjectApiResponse
 from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
 
@@ -215,7 +214,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # (that should never be seen) should be returned as False (do not archive).
             result = response.get("result", "noresult") or "emptyres"
             self.incr_stories(result, url)  # count, logs result, URL
-            return url_hash # i.e. response.get("_id")
+            return url_hash  # i.e. response.get("_id")
         except ConflictError:
             self.incr_stories("dups", url)
             return None
