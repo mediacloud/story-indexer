@@ -21,6 +21,18 @@ a fit (closes connection), so holding on to Stories that can't be
 processed immediately is POSSIBLE, *BUT* the existing framework acks
 the story after process_message/story (in _process_messages) and
 handles exceptions for retry and quarantine.
+
+Some thoughts on holding messages (2023-02-05):
+* keep absolute "next_issue_time" in Slot
+* assign incomming stories an absolute issue time based on next_issue_time
+* if next_issue_time too far in the future (over 20 minutes), requeue.
+* else call pika_connection.call_later w/ the entire InputMessage & callback
+* increment Slot.next_issue_time by Slot.issue_interval
+* callback queues InputMessage to work queue
+* how to prevent starvation/stalling (hitting prefetch limit) caused by big sources/long delays?
+  + limit held stories per slot (calculate via (next_issue - now)/issue_interval???)?
+  + calculate limit as fraction of worker pool/prefetch size???
+* All scheduling done in Pika thread, as messages delivered by Pika
 """
 
 import argparse
