@@ -169,7 +169,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def import_story(
         self,
         data: dict[str, Optional[Union[str, bool]]],
-    ) -> ObjectApiResponse | None:
+    ) -> str | None:
         """
         True if story imported to ES, and should be archived,
         False if a duplicate,
