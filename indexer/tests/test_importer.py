@@ -196,12 +196,7 @@ class TestElasticsearchImporter:
         assert search_response["hits"]["hits"], "No document in search response"
 
         search_response_keys = search_response["hits"]["hits"][0]["_source"]
-        additional_keys = {
-            key: test_import_data[key]
-            for key in test_import_data
-            if key not in test_data
-        }
-        for key in additional_keys:
+        for key in test_extra_data:
             assert (
                 key not in search_response_keys.keys()
             ), f"Unexpected field '{key}' found in response."
