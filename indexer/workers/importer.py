@@ -219,7 +219,6 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         except ConflictError:
             self.incr_stories("dups", url)
             return None
-        # return False
         except RequestError as e:
             # here with over-length content!
             self.incr_stories("reqerr", url)
