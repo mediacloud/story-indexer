@@ -184,9 +184,8 @@ class TestElasticsearchImporter:
             **test_extra_data,
             "url": "https://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
         }
-        response = importer.import_story(test_import_data)
-        assert response
-        id = response.get("_id")
+        id = importer.import_story(test_import_data)
+        assert id
         search_response = importer.elasticsearch_client().search(
             index="test_mc_search",
             body={
