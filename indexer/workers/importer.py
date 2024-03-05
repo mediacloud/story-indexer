@@ -215,7 +215,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # (that should never be seen) should be returned as False (do not archive).
             result = response.get("result", "noresult") or "emptyres"
             self.incr_stories(result, url)  # count, logs result, URL
-            return response
+            return url_hash # i.e. response.get("_id")
         except ConflictError:
             self.incr_stories("dups", url)
             return None
