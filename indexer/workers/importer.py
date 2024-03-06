@@ -168,11 +168,18 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def import_story(
         self,
         data: dict[str, Optional[Union[str, bool]]],
-    ) -> str | None:
+    ) -> Optional[str]:
         """
-        True if story imported to ES, and should be archived,
-        False if a duplicate,
-        else raises an exception.
+        Imports story to Elasticsearch
+
+        Args:
+            data (dict[str, Optional[Union[str, bool]]]): The story data to be imported,
+            containing keys such as 'url' and 'text_content'.
+
+        Returns:
+            Optional[str]: The Elasticsearch document ID (url_hash) if the story is imported,
+            None if it is a duplicate.
+            else raises an exception.
         """
         # data can never be empty (has been checked in process_story, AND
         # "indexed_date", "url" & "text_content" will always be set, so no check here).
@@ -192,7 +199,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
                 },
             )
             if search_response["hits"]["total"]["value"] > 0:
-                self.incr_stories("dups", url)
+                self.incr_stories("ilm-dups", url)
                 return None  # mypy explicit return
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
