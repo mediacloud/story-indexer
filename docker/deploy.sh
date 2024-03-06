@@ -295,7 +295,7 @@ prod)
     # ES index settings are static, prod settings should not change
     ELASTICSEARCH_SHARD_COUNT=30
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_ILM_MAX_AGE="365d"
+    ELASTICSEARCH_ILM_MAX_AGE="90d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9200,http://woodward.angwin:9200,http://bradley.angwin:9200
 
