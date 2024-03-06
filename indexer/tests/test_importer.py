@@ -1,10 +1,10 @@
-import hashlib
 import os
 from datetime import datetime
 from typing import Any, Mapping, Optional, Union
 
 import pytest
 from elasticsearch import ConflictError, Elasticsearch
+from mcmetadata.urls import unique_url_hash
 
 from indexer.workers.importer import ElasticsearchImporter, truncate_str
 
@@ -124,7 +124,7 @@ class TestElasticsearchConf:
 class TestElasticsearchConnection:
     def test_index_document(self, elasticsearch_client: Any) -> None:
         index_name_alias = "test_mc_search"
-        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
+        test_id = unique_url_hash(str(test_data.get("url")))
         response = elasticsearch_client.create(
             index=index_name_alias, id=test_id, document=test_data
         )
@@ -145,7 +145,7 @@ class TestElasticsearchConnection:
             "id": "adrferdiyhyu9",
             "publication_date": None,
         }
-        test_id = hashlib.sha256(str(test_data.get("url")).encode("utf-8")).hexdigest()
+        test_id = unique_url_hash(str(test_data.get("url")))
         response = elasticsearch_client.create(
             index=index_name_alias,
             id=test_data_with_none_date["id"],
@@ -166,9 +166,51 @@ class TestElasticsearchImporter:
     @pytest.fixture
     def importer(self) -> ElasticsearchImporter:
         importer = ElasticsearchImporter("test_importer", "elasticsearch import worker")
+        importer.elasticsearch_hosts = os.environ.get("ELASTICSEARCH_HOSTS")
         return importer
 
     def test_import_story_success(self, importer: ElasticsearchImporter) -> None:
         test_import_data = {**test_data, "url": "http://example_import_story.com"}
+        assert importer.import_story(test_import_data)
+
+    def test_import_story_extra_fields(self, importer: ElasticsearchImporter) -> None:
+        test_extra_data = {
+            "normalized_article_title": "the basic principles of would or could",
+            "normalized_url": "http://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
+            "text_extraction_method": "trafilatura",
+        }
+        test_import_data = {
+            **test_data,
+            **test_extra_data,
+            "url": "https://damienafsoe.ttblogs.com/4775282/the-basic-principles-of-would-or-could",
+        }
+        id = importer.import_story(test_import_data)
+        assert id
+        search_response = importer.elasticsearch_client().search(
+            index="test_mc_search",
+            body={
+                "query": {"bool": {"filter": {"term": {"_id": id}}}},
+            },
+        )
+        assert search_response["hits"]["hits"], "No document in search response"
+
+        search_response_keys = search_response["hits"]["hits"][0]["_source"]
+        for key in test_extra_data:
+            assert (
+                key not in search_response_keys.keys()
+            ), f"Unexpected field '{key}' found in response."
+
+    def test_import_story_duplicate(self, importer: ElasticsearchImporter) -> None:
+        test_import_data = {**test_data, "url": "https://www.edbernerzeitung.ch12/"}
+        url = test_import_data["url"]
+        assert isinstance(url, str), "url must be a string"
+        search_response = importer.elasticsearch_client().search(
+            index="test_mc_search",
+            body={
+                "query": {"bool": {"filter": {"term": {"_id": unique_url_hash(url)}}}},
+                "size": 0,
+            },
+        )
+        assert search_response["hits"]["total"]["value"] == 0, "Document already exists"
         assert importer.import_story(test_import_data)
         assert not importer.import_story(test_import_data)

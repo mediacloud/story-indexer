@@ -172,11 +172,18 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
     def import_story(
         self,
         data: dict[str, Optional[Union[str, bool]]],
-    ) -> bool:
+    ) -> Optional[str]:
         """
-        True if story imported to ES, and should be archived,
-        False if a duplicate,
-        else raises an exception.
+        Imports story to Elasticsearch
+
+        Args:
+            data (dict[str, Optional[Union[str, bool]]]): The story data to be imported,
+            containing keys such as 'url' and 'text_content'.
+
+        Returns:
+            Optional[str]: The Elasticsearch document ID (url_hash) if the story is imported,
+            None if it is a duplicate.
+            else raises an exception.
         """
         # data can never be empty (has been checked in process_story, AND
         # "indexed_date", "url" & "text_content" will always be set, so no check here).
@@ -186,6 +193,18 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         url_hash = unique_url_hash(url)
 
         try:
+            # Check if the document already exists by ID in the alias.
+            # We want to avoid indexing duplicates on ILM index rollover
+            search_response = self.elasticsearch_client().search(
+                index=INDEX_NAME_ALIAS,
+                body={
+                    "query": {"bool": {"filter": {"term": {"_id": url_hash}}}},
+                    "size": 0,
+                },
+            )
+            if search_response["hits"]["total"]["value"] > 0:
+                self.incr_stories("ilm-dups", url)
+                return None  # mypy explicit return
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
             response = self.elasticsearch_client().create(
@@ -206,10 +225,10 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # (that should never be seen) should be returned as False (do not archive).
             result = response.get("result", "noresult") or "emptyres"
             self.incr_stories(result, url)  # count, logs result, URL
-            return True
+            return url_hash  # i.e. response.get("_id")
         except ConflictError:
             self.incr_stories("dups", url)
-            return False
+            return None
         except RequestError as e:
             # here with over-length content!
             self.incr_stories("reqerr", url)
