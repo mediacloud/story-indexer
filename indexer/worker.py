@@ -801,4 +801,4 @@ class Worker(QApp):
         raise NotImplementedError("Worker.process_message not overridden")
 
 
-# story-related classes etc moved to storyworker.py
+# story-related classes etc moved to storyapp.py

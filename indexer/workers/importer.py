@@ -49,7 +49,8 @@ def truncate_str(
     if normalize:
         n_src = unicodedata.normalize("NFC", src)
         src_bytes = n_src.encode(encoding="utf-8", errors="replace")
-    return src_bytes[:max_length].decode(encoding="utf-8", errors="replace")
+    # any errors on decode are due to the truncation and should ignored
+    return src_bytes[:max_length].decode(encoding="utf-8", errors="ignore")
 
 
 class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
@@ -158,8 +159,11 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         if not isinstance(text_content, str) or text_content == "":
             self.incr_stories("no-text", url)
             raise QuarantineException("no-text")
-
         data["text_content"] = truncate_str(text_content)
+        status = "intact"
+        if len(data["text_content"]) < len(text_content):
+            status = "trunc"
+        self.incr("story_len", labels=[("status", status)])
 
         if self.import_story(data) and self.output_msgs:
             # pass story along to archiver, unless disabled or duplicate
