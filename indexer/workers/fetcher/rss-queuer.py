@@ -117,10 +117,10 @@ class RSSHandler(xml.sax.ContentHandler):
                     rss.domain = self.domain
                     rss.pub_date = self.pub_date
                     rss.title = self.title
-                    rss.file_name = self.file_name  # instead of fetch_date
                     rss.source_url = self.source_url
                     rss.source_feed_id = self.source_feed_id
                     rss.source_source_id = self.source_source_id
+                    rss.via = self.file_name  # instead of fetch_date
                 self.app.send_story(s)
                 self.reset_item()
                 self.parsed += 1

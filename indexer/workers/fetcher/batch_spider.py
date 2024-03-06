@@ -3,6 +3,7 @@ import logging
 from typing import Any, Callable, Dict, Generator, List
 
 import scrapy
+from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from scrapy.spidermiddlewares.httperror import HttpError
 
 from indexer.story import BaseStory
@@ -33,7 +34,7 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
         "AUTOTHROTTLE_TARGET_CONCURRENCY": 10,
         # donut bother with retrying on 500s
         "RETRY_HTTP_CODES": [502, 503, 504, 522, 524, 408, 429],
-        "USER_AGENT": "mediacloud bot for open academic research (+https://mediacloud.org)",
+        "USER_AGENT": MEDIA_CLOUD_USER_AGENT,
         "DOWNLOAD_TIMEOUT": 60,  # reduce load from long wait times.
         "DOWNLOADER_MIDDLEWARES": DOWNLOADER_MIDDLEWARES,
     }

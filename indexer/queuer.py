@@ -182,9 +182,6 @@ class Queuer(StoryProducer):
             self.sender.send_story(story)
             status = "queued"
 
-        # TEMP! arch-queuer not running fast enough!
-        # each logging & stats UDP sendtos require DNS lookup
-        level = logging.DEBUG
         self.incr_stories(status, url, log_level=level)
 
         if not count:
