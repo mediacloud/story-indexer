@@ -255,10 +255,29 @@ services:
       ARGS: "--type {{pipeline_type}} configure_and_loop"
 
 {% if queuer_type != '' %}
-  # hist-queuer, arch-queuer, rss-queuer
-  # started every 5 minutes to check for low output queue (<100K stories)
-  # NOTE: skip-running: "true" means won't interrupt a running process
-  # (important for arch-queuer, which can't build a backlog)
+{# hist-queuer, arch-queuer, rss-queuer
+ # started every 5 minutes to check for low output queue (<100K stories)
+ # If queue is consumed faster than 333 stories/second, queue can run dry.
+
+ # NOTE: skip-running: "true" means won't interrupt a running
+ # process.  Necessary because a single arch-queuer couldn't build a
+ # backlog, and runs continuously. For hist-queuer on bernstein for
+ # 2023, average queue rate was about 630 stories/second, logging and
+ # counting every story so a 400K to 600K story one-day CSV file took
+ # over 10 minutes.
+
+ # The Queuer base class used by {arch,hist,rss}-queuer scripts has a
+ # --loop option to run continuously (sleeping one minute between
+ # checks), which would work for arch- and hist- queuers (since the
+ # list of input files is static), but not for rss-queuer, which
+ # needs to check for newly written files.  BUT it was too much
+ # bother to have different policies/options for the different
+ # queuers, AND my hope is to replace rss-queuer with a process that
+ # polls the rss-fetcher via its' API for batches of N (1000?)
+ # stories, queuing them and then saving a bookmark for the next
+ # query.
+ #}
+
   {{queuer_type}}:
     <<: *worker-service-settings
     deploy:
