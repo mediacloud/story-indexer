@@ -7,7 +7,7 @@ import logging
 import sys
 import unicodedata
 from datetime import datetime
-from typing import Optional, Union, cast
+from typing import Literal, Optional, Union, cast
 
 from elasticsearch.exceptions import ConflictError, RequestError
 from mcmetadata.urls import unique_url_hash
@@ -25,6 +25,13 @@ INDEX_NAME_ALIAS = "mc_search"
 
 # Lucene has a term byte-length limit of 32766
 MAX_TEXT_CONTENT_LENGTH = 32766
+
+# story fields that should be truncated if longer than MAX_TEXT_CONTENT_LENGTH
+TruncField = Literal["article_title", "text_content"]
+TRUNC_FIELD_COUNTERS = {
+    "article_title": "title_len",
+    "text_content": "story_len",
+}
 
 
 def truncate_str(
@@ -84,6 +91,27 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         helper for reporting pub_date stats
         """
         self.incr("pub_date", labels=[("status", status)])
+
+    def incr_trunc(
+        self, field: TruncField, is_trunc: bool = False, status: Optional[str] = None
+    ) -> None:
+        """
+        Increment the counter of one of the truncate-able story fields.
+        """
+        name = TRUNC_FIELD_COUNTERS[field]
+        default_status = "intact"
+        if is_trunc:
+            default_status = "trunc"
+        self.incr(name, labels=[("status", status or default_status)])
+
+    def truncate_field(self, field: TruncField, value: str) -> str:
+        """
+        Truncates value if needed.
+        """
+        value_trunc = cast(str, truncate_str(value))  # mypy need cast for len
+        is_trunc = len(value_trunc) < len(value)
+        self.incr_trunc(field, is_trunc)
+        return value_trunc
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -146,8 +174,8 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             content_metadata.parsed_date or datetime.utcnow().isoformat()
         )
 
-        # We need to ensure that text_content exists and it does not exceed the
-        # underlying Lucene’s term byte-length limit
+        # Ensure that text_content (required) and article_title (optional)
+        # do not exceed the underlying Lucene’s term byte-length limit
         url = data.get("url")  # for logging
         if not isinstance(url, str) or url == "":
             # exceedingly unlikely, but must check to keep
@@ -155,15 +183,21 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # than pass an empty string, or turn None into "None"
             self.incr_stories("no-url", "none")
             raise QuarantineException("no-url")
+
         text_content = data.get("text_content")
         if not isinstance(text_content, str) or text_content == "":
             self.incr_stories("no-text", url)
             raise QuarantineException("no-text")
-        data["text_content"] = truncate_str(text_content)
-        status = "intact"
-        if len(data["text_content"]) < len(text_content):
-            status = "trunc"
-        self.incr("story_len", labels=[("status", status)])
+
+        data["text_content"] = self.truncate_field("text_content", text_content)
+
+        article_title = data.get("article_title")
+        if not isinstance(article_title, str) or article_title == "":
+            # no need to reject a story without article_title; it has content
+            logger.warn("missing article_title: %s", url)
+            self.incr_trunc("article_title", status="empty")
+        else:
+            data["article_title"] = self.truncate_field("article_title", article_title)
 
         if self.import_story(data) and self.output_msgs:
             # pass story along to archiver, unless disabled or duplicate
