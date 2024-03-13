@@ -11,33 +11,29 @@ Regardless, most of the time of an active fetch request is likely to
 be waiting for I/O (due to network/server latency), or CPU bound in
 SSL processing, neither of which requires holding the GIL.
 
-When a Story can't be fetched because of connect rate or concurrency
-limits, the Story is queued to a "fast delay" queue to avoid
-bookkeeping complexity (and having an API that allows not ACKing a
-message immediately).
+We have thirty minutes to ACK a message before RabbitMQ has a fit
+(closes connection), so:
 
-In theory we have thirty minutes to ACK a message before RabbitMQ has
-a fit (closes connection), so holding on to Stories that can't be
-processed immediately is POSSIBLE, *BUT* the existing framework acks
-the story after process_message/story (in _process_messages) and
-handles exceptions for retry and quarantine.
-
-Some thoughts on holding messages (2023-02-05):
-* keep absolute "next_issue_time" in Slot
-* assign incomming stories an absolute issue time based on next_issue_time
-* if next_issue_time too far in the future (over 20 minutes), requeue.
-* else call pika_connection.call_later w/ the entire InputMessage & callback
-* increment Slot.next_issue_time by Slot.issue_interval
-* callback queues InputMessage to work queue
-* how to prevent starvation/stalling (hitting prefetch limit) caused by big sources/long delays?
-  + limit held stories per slot (calculate via (next_issue - now)/issue_interval???)?
-  + calculate limit as fraction of worker pool/prefetch size???
 * All scheduling done in Pika thread, as messages delivered by Pika
+  * As messages come to _on_input_message, the next time a fetch could
+    be issued is assigned by calling scoreboard.get_delay
+  * If the delay would mean the fetch would start more than BUSY_DELAY_MINUTES
+    in the future, the message is requeued to the "-fast" delay queue
+    (and will return in BUSY_DELAY_MINUTES).
+  * If connections to the server have failed "recently", behave as if
+    this connection failed, and requeue the story for retry.
+  * Else call pika_connection.call_later w/ the entire InputMessage and
+    a callback to queue the InputMessage to the work queue (_message_queue)
+    and the InputMessage will be picked up by a worker thread and passed
+    to process_story()
 """
+
+# To find all stories_incr label names:
+# egrep 'FetchReturn\(|GetIdReturn\(|incr_stor' tqfetcher.py
 
 import argparse
 import logging
-import random
+import os
 import signal
 import sys
 import time
@@ -46,6 +42,7 @@ from typing import NamedTuple, Optional
 
 import requests
 from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
+from pika.adapters.blocking_connection import BlockingChannel
 from requests.exceptions import RequestException
 
 from indexer.app import run
@@ -56,27 +53,31 @@ from indexer.storyapp import (
     non_news_fqdn,
     url_fqdn,
 )
-from indexer.worker import QuarantineException, RequeueException
+from indexer.worker import (
+    CONSUMER_TIMEOUT_SECONDS,
+    InputMessage,
+    QuarantineException,
+    RequeueException,
+)
 from indexer.workers.fetcher.sched import (
+    DELAY_LONG,
+    DELAY_SKIP,
     ConnStatus,
-    IssueReturn,
-    IssueStatus,
     ScoreBoard,
+    StartStatus,
 )
 
 TARGET_CONCURRENCY = 10  # scrapy fetcher AUTOTHROTTLE_TARGET_CONCURRENCY
 
-# Unless the input RSS entries are well mixed (and this would not be
-# the case if the rss-fetcher queued RSS entries to us directly), RSS
-# entries for the same domain will travel in packs/clumps/trains.  If
-# the "fast" delay is too long, that allows only one URL to be issued
-# each time the train passes.  So set the "fast" delay JUST long
-# enough so they come back when intra-request issue interval has
-# passed.  Note: the intra-request interval is based on response time
-# divided by SLOT_REQUESTS, so is not a constant.
-BUSY_DELAY_SECONDS = 30.0
+# minimum interval between initiation of requests to a site
+# lower values increase chance of concurrent connections to
+# sites that respond quickly.
+MIN_INTERVAL_SECONDS = 0.5
 
-# time cache server as bad after a connection failure
+# default delay time for "fast" queue, and max time to delay stories w/ call_later
+BUSY_DELAY_MINUTES = 10
+
+# time to cache server as down after a connection failure
 CONN_RETRY_MINUTES = 10
 
 # requests timeouts:
@@ -127,9 +128,13 @@ class FetchReturn(NamedTuple):
     quarantine: bool
 
 
-class Fetcher(MultiThreadStoryWorker):
-    WORKER_THREADS_DEFAULT = 200  # equiv to 20 fetchers, with 10 active fetches
+class GetIdReturn(NamedTuple):
+    status: str  # counter name if != "ok"
+    url: str
+    id: str
 
+
+class Fetcher(MultiThreadStoryWorker):
     # Exceptions to discard instead of quarantine after repeated retries:
     # RequestException hierarchy includes bad URLs
     NO_QUARANTINE = (Retry, RequestException)
@@ -138,15 +143,15 @@ class Fetcher(MultiThreadStoryWorker):
         super().__init__(process_name, descr)
 
         self.scoreboard: Optional[ScoreBoard] = None
-        self.previous_fragment = ""
+        self.prefetch = 0
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--busy-delay-seconds",
+            "--busy-delay-minutes",
             type=float,
-            default=BUSY_DELAY_SECONDS,
-            help=f"busy (fast) queue delay in seconds (default: {BUSY_DELAY_SECONDS})",
+            default=BUSY_DELAY_MINUTES,
+            help=f"busy (fast) queue delay in minutes (default: {BUSY_DELAY_MINUTES})",
         )
 
         ap.add_argument(
@@ -157,17 +162,17 @@ class Fetcher(MultiThreadStoryWorker):
         )
 
         ap.add_argument(
+            "--min-interval-seconds",
+            type=float,
+            default=MIN_INTERVAL_SECONDS,
+            help=f"minimum connection interval in seconds (default: {MIN_INTERVAL_SECONDS})",
+        )
+
+        ap.add_argument(
             "--target-concurrency",
             type=int,
             default=TARGET_CONCURRENCY,
             help=f"goal for concurrent requests/fqdn (default: {TARGET_CONCURRENCY})",
-        )
-
-        ap.add_argument(
-            "--no-second-try",
-            default=False,
-            action="store_true",
-            help="don't try sleep/retry after busy",
         )
 
         ap.add_argument(
@@ -188,15 +193,14 @@ class Fetcher(MultiThreadStoryWorker):
             )
             sys.exit(1)
 
-        self.scoreboard = ScoreBoard(
-            self,
-            self.workers,
-            self.args.target_concurrency,
-            self.args.conn_retry_minutes * 60,
-        )
+        self.busy_delay_seconds = self.args.busy_delay_minutes * 60
 
-        self.busy_delay_seconds = self.args.busy_delay_seconds
-        self.second_try = not self.args.no_second_try
+        self.scoreboard = ScoreBoard(
+            target_concurrency=self.args.target_concurrency,
+            max_delay_seconds=self.busy_delay_seconds,
+            conn_retry_seconds=self.args.conn_retry_minutes * 60,
+            min_interval_seconds=MIN_INTERVAL_SECONDS,
+        )
 
         self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
 
@@ -207,6 +211,38 @@ class Fetcher(MultiThreadStoryWorker):
 
         signal.signal(signal.SIGUSR1, usr1_handler)
 
+    def _qos(self, chan: BlockingChannel) -> None:
+        """
+        set "prefetch" limit, the number of unacked messages
+        RabbitMQ will send us at any time.
+
+        Active requests, ready messages waiting in _message_queue,
+        and delayed (call_later) should total to the prefetch limit.
+
+        NOTE!!! Failure to send an ACK to RabbitMQ for
+        CONSUMER_TIMEOUT_SECONDS for ANY message will cause
+        RabbitMQ to close the connection!!!  So the estimate
+        MUST be prssimistic!!
+        """
+        # time available to handle a request (in a worker thread)
+        # after maximum call_later delay
+        work_time = CONSUMER_TIMEOUT_SECONDS - self.busy_delay_seconds
+
+        # Maximum time handling a request.  This is both low (read
+        # timeout applies to EACH network read) but also possibly
+        # high. Would have to have working DNS but no TCP connectivity
+        # to have ALL requests fail (UNLESS Internet unreachable!!!).
+        max_request_seconds = CONNECT_SECONDS + READ_SECONDS
+
+        # only hand us as many as we KNOW it's possible to handle
+        # given multiple worker threads:
+        prefetch = int(self.workers * work_time / max_request_seconds)
+        if prefetch > 65535:  # 16-bit field
+            prefetch = 65535
+        logger.info("prefetch %d", prefetch)
+        chan.basic_qos(prefetch_count=prefetch)
+        self.prefetch = prefetch
+
     def periodic(self) -> None:
         """
         called from main_loop
@@ -215,9 +251,43 @@ class Fetcher(MultiThreadStoryWorker):
         assert self.args
 
         with self.timer("status"):
-            self.scoreboard.periodic(self.args.dump_slots)
+            stats = self.scoreboard.periodic(self.args.dump_slots)
 
-    def fetch(self, sess: requests.Session, fqdn: str, url: str) -> FetchReturn:
+        ready = self.message_queue_len()  # ready for workers
+        # delayed counts not adjusted until "start" called,
+        # so subtract messages in message_queue:
+        delayed = stats.delayed - ready
+
+        load_avgs = os.getloadavg()
+
+        # when input queue non-empty, first three should total to self.prefetch
+        logger.info(
+            "%d active, %d ready, %d delayed, for %d sites, %d recent; lavg %.2f",
+            stats.active_fetches,
+            ready,
+            delayed,
+            stats.active_slots,
+            stats.slots,
+            load_avgs[0],
+        )
+
+        def requests(label: str, count: int) -> None:
+            self.gauge("requests", count, labels=[("status", label)])
+
+        requests("active", stats.active_fetches)
+        requests("ready", ready)
+        requests("delayed", delayed)
+
+        # above three should total to prefetch:
+        self.gauge("prefetch", self.prefetch)
+
+        def slots(label: str, count: int) -> None:
+            self.gauge("slots", count, labels=[("status", label)])
+
+        slots("recent", stats.slots)
+        slots("active", stats.active_slots)
+
+    def fetch(self, sess: requests.Session, url: str) -> FetchReturn:
         """
         perform HTTP get, tracking redirects looking for non-news domains
 
@@ -275,88 +345,132 @@ class Fetcher(MultiThreadStoryWorker):
 
         # end infinite redirect loop
 
-    def try_issue(self, id: str, url: str) -> IssueReturn:
-        # report time to issue: if this jumps up, it's
-        # likely due to lock contention!
-        assert self.scoreboard
-        with self.timer("issue"):
-            return self.scoreboard.issue(id, url)
-
-    # OOF! flake8 complains "C901 'Fetcher.process_story' is too complex (19)"
-    # flake8: noqa: C901
-    def process_story(self, sender: StorySender, story: BaseStory) -> None:
+    def get_id(self, story: BaseStory) -> GetIdReturn:
         """
-        called from multiple worker threads!!
+        This function determines what stories are treated as from
+        the same "server".
 
-        This routine should call incr_stories EXACTLY once!
+        NOT using "domain" from RSS file because I originally
+        was planning to move the "issue" call inside the
+        redirect loop (getting clearance for each FQDN along the
+        chain), but if we ended up with a "busy", we'd have to
+        retry and start ALL over, or add a field to the Story
+        indicating the "next URL" to attempt to fetch, along
+        with a count of followed redirects.  AND, using
+        "canonical" domain means EVERYTHING inside a domain
+        looks to be one server (when that may not be the case).
+
+        *COULD* look up addresses, sort them, and pick the lowest or
+        highest?!  this would avoid hitting single servers that handle
+        many thing.dom.ain names hard, but incurrs overhead (and
+        unless the id is stashed in the story object would require
+        multiple DNS lookups: initial Pika thread dispatch, in worker
+        thread for "start" call, and again for actual connection.
+        Hopefully the result is cached nearby, but it would still incurr
+        latency for due to system calls, network delay etc.
         """
         rss = story.rss_entry()
 
         url = rss.link
         if not url:
-            return self.incr_stories("no-url", repr(url))
+            return GetIdReturn("no-url", repr(url), "bad")
+
         assert isinstance(url, str)
-        assert self.scoreboard is not None
-
-        # NOTE!! fqdn isn't QUITE right: it means every
-        # foobar.blogspot.com is treated as a separate server.
-        # Really want to use IP address (see sched.py for more
-        # gory details), but that would require resolving the
-        # FQDN, and *THEN* using that address to make the HTTP
-        # connection *AND* subsequent redirect fetches (if the
-        # FQDN stays the same).
-
-        # NOT using "domain" from RSS file because I originally
-        # was planning to move the "issue" call inside the
-        # redirect loop (getting clearance for each FQDN along the
-        # chain), but if we ended up with a "busy", we'd have to
-        # retry and start ALL over, or add a field to the Story
-        # indicating the "next URL" to attempt to fetch, along
-        # with a count of followed redirects.  AND, using
-        # "canonical" domain means EVERYTHING inside a domain
-        # looks to be one server (when that may not be the case).
 
         # BEFORE issue (discard without locking/delay)
         try:
             fqdn = url_fqdn(url)
         except (TypeError, ValueError):
-            return self.incr_stories("badurl1", url)
+            return GetIdReturn("badurl1", url, fqdn)
 
         if non_news_fqdn(fqdn):
             # unlikely, if queuer does their job!
-            return self.incr_stories("non-news", url)
+            return GetIdReturn("non-news", url, fqdn)
 
-        ir = self.try_issue(fqdn, url)
-        if ir.status == IssueStatus.BUSY and self.second_try:
-            # Not inside "issue" to avoid messing up timing stats.
-            # All messages in the fast queue get the same delay, so
-            # introduce some randomness here, AND check a second time
-            # (improves output rate).  With low RTT and high
-            # target_concurreny, most slots have an issue_interval
-            # under a second.
-            time.sleep(random.random())
-            ir = self.try_issue(fqdn, url)
+        return GetIdReturn("ok", url, fqdn)
 
-        if ir.slot is None:  # could not be issued
-            if ir.status == IssueStatus.SKIPPED:
-                # Skipped due to recent connection error: Treat as if
-                # we saw an error as well (incrementing retry count on
-                # the Story) rather than possibly waiting 30 seconds
-                # for connection to time out again.  After a failure
-                # the scheduler remembers the slot as failing for
-                # conn_retry_minutes
-                self.incr_stories("skipped", url)
+    def _on_input_message(self, im: InputMessage) -> None:
+        """
+        YIKES!! override a basic Worker method!!!
+        Performs an additional decode of serialized Story!
+        NOTE! Not covered by exception catching for retry!!!
+        MUST ack and commit before returning!!!
+
+        pre-processes incomming stories, delaying them
+        (using the Pika "channel.call_later" method)
+        so that they're queued to the worker pool
+        with suitable inter-request delays for each server.
+
+        DOES NOT INCREMENT STORY COUNTER!!!
+        (perhaps have a different counter??)
+        """
+        assert self.scoreboard is not None
+        assert self.connection is not None
+
+        try:
+            story = self.decode_story(im)
+
+            status, url, id = self.get_id(story)
+            if status != "ok":
+                self.incr_stories(status, url)
+                self._pika_ack_and_commit(im)  # drop (ack without requeuing)
+                return
+
+            with self.timer("get_delay"):
+                delay = self.scoreboard.get_delay(id)
+
+            logger.info("%s: delay %.3f", url, delay)
+            if delay >= 0:
+                # NOTE! Using pika connection.call_later because it's available.
+                # "put" does not need to be run in the Pika thread, and the
+                # delay _could_ be managed in another thread.
+                def put() -> None:
+                    # _put_message queue is the normal "_on_input_message" handler
+                    logger.debug("put #%s", im.method.delivery_tag)
+                    self._put_message_queue(im)
+
+                # holding message, will be acked when processed
+                if delay == 0:
+                    put()
+                else:
+                    logger.debug("delay #%s", im.method.delivery_tag)
+                    self.connection.call_later(delay, put)
+                return
+            elif delay == DELAY_SKIP:
                 raise Retry("skipped due to recent connection failure")
+            elif delay == DELAY_LONG:
+                self._requeue(im)
             else:
-                # here when "busy", due to one of (in order of likelihood):
-                # 1. per-fqdn connect interval not reached
-                # 2. per-fqdn currency limit reached
-                # 3. total concurrecy limit reached.
-                # requeue in short-delay queue, without counting as retry.
-                self.incr_stories("busy", url, log_level=logging.DEBUG)
-                raise RequeueException("busy")  # does not increment retry count
+                raise Retry(f"unknown delay {delay}")
+        except Exception as exc:
+            self._retry(im, exc)
+        self._pika_ack_and_commit(im)
 
-        # ***NOTE*** here with slot marked active *MUST* call ir.slot.retire!!!!
+    def process_story(self, sender: StorySender, story: BaseStory) -> None:
+        """
+        called in a worker thread
+        retry/quarantine exceptions handled normally
+        """
+        istatus, url, id = self.get_id(story)
+        if istatus != "ok":
+            logger.warning("get_id returned ('%s', '%s')", istatus, id)
+            self.incr_stories(istatus, id)
+            return
+
+        assert self.scoreboard is not None
+        start_status, slot = self.scoreboard.start(id, url)
+        if start_status == StartStatus.SKIP:
+            self.incr_stories("skipped2", url)
+            raise Retry("skipped due to recent connection failure")
+        elif start_status == StartStatus.BUSY:
+            self.incr_stories("busy", url)
+            raise RequeueException("busy")
+        elif start_status != StartStatus.OK:
+            logger.warning("start status %s: %s", start_status, url)
+            raise Retry(f"start status {start_status}")
+        assert slot is not None
+
+        # ***NOTE*** here with slot marked active *MUST* call slot.finish!!!!
         t0 = time.monotonic()
         with self.timer("fetch"):
             # log starting URL
@@ -364,7 +478,7 @@ class Fetcher(MultiThreadStoryWorker):
 
             sess = requests.Session()
             try:  # call retire on exit
-                fret = self.fetch(sess, fqdn, url)
+                fret = self.fetch(sess, url)
                 if fret.resp and fret.resp.status_code == 200:
                     conn_status = ConnStatus.DATA
                 else:
@@ -385,9 +499,10 @@ class Fetcher(MultiThreadStoryWorker):
                 raise  # re-raised for retry counting
             finally:
                 # ALWAYS: report slot now idle!!
-                with self.timer("retire"):
+                # jumps in timing indicate lock contention!!
+                with self.timer("finish"):
                     # keep track of connection success, latency
-                    ir.slot.retire(conn_status, time.monotonic() - t0)
+                    slot.finish(conn_status, time.monotonic() - t0)
                 sess.close()
 
         resp = fret.resp  # requests.Response
@@ -410,7 +525,6 @@ class Fetcher(MultiThreadStoryWorker):
                 raise Retry(msg)
             else:
                 return self.incr_stories(counter, msg)
-
         # here with status == 200
         content = resp.content  # bytes
         lcontent = len(content)

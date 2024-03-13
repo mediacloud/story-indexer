@@ -14,10 +14,8 @@ import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, NamedTuple, NoReturn, Optional, Type
 
-from indexer.app import App
-
 # number of seconds after start of last request to keep idle slot around
-# (maintains request RTT)
+# if no active/delayed requests and no errors (maintains request RTT)
 SLOT_RECENT_MINUTES = 5
 
 # exponential moving average coefficient for avg_seconds.
@@ -26,21 +24,6 @@ SLOT_RECENT_MINUTES = 5
 ALPHA = 0.25
 
 logger = logging.getLogger(__name__)
-
-
-# _could_ try and map Slots by IP address(es), since THAT gets us closer
-# to the point (of not hammering a particular server);
-#
-#   BUT: Would have to deal with:
-#   1. A particular FQDN may map to multiple IP addrs
-#   2. The order of the IP addreses often changes between queries
-#       (so doing a lookup first, then connecting by name
-#        will likely give different first answers)
-#   3. The ENTIRE SET might change if a CDN is involved!
-#   4. Whether or not we're using IPv6 (if not, can ignore IPv6)
-#   5. IP addresses can serve multiple domains
-#   6. But domains served by shared servers (see #5)
-#       might have disjoint IP addr sets.
 
 
 class LockError(RuntimeError):
@@ -158,14 +141,39 @@ class Timer:
         return f"{self.elapsed():.3f}"
 
 
-class IssueStatus(Enum):
+class Alarm:
     """
-    return value from Slot._issue
+    time until a future event (born expired)
     """
 
-    OK = 0  # slot assigned
-    BUSY = 1  # too many fetches active or too soon
-    SKIPPED = 2  # recent connection error
+    def __init__(self) -> None:
+        self.time = 0.0
+
+    def set(self, delay: float) -> None:
+        """
+        if unexpired, extend expiration by delay seconds;
+        else set expiration to delay seconds in future
+        """
+        now = time.monotonic()
+        if self.time > now:
+            self.time += delay
+        else:
+            self.time = now + delay
+
+    def delay(self) -> float:
+        """
+        return seconds until alarm expires
+        """
+        return self.time - time.monotonic()
+
+    def __str__(self) -> str:
+        """
+        used in log messages!
+        """
+        delay = self.delay()
+        if delay >= 0:
+            return "%.2f" % delay
+        return "READY"
 
 
 class ConnStatus(Enum):
@@ -179,6 +187,20 @@ class ConnStatus(Enum):
     DATA = 1
 
 
+class StartStatus(Enum):
+    """
+    status from start()
+    """
+
+    OK = 1  # ok to start
+    SKIP = 2  # recently reported down
+    BUSY = 3  # currently busy
+
+
+DELAY_SKIP = -1.0  # recent attempt failed
+DELAY_LONG = -2.0  # delay to long to hold
+
+
 class Slot:
     """
     A slot for a single id (eg domain) within a ScoreBoard
@@ -188,59 +210,83 @@ class Slot:
         self.slot_id = slot_id  # ie; domain
         self.sb = sb
 
-        self.active_count = 0
-        self.last_issue = Timer(SLOT_RECENT_MINUTES * 60)
-        # time since last error at this workplace
+        # time since last error at this workplace:
         self.last_conn_error = Timer(sb.conn_retry_seconds)
+
         self.avg_seconds = 0.0  # smoothed average
-        self.issue_interval = 0.0
+        self.issue_interval = sb.min_interval_seconds
+
+        self.last_start = Timer(SLOT_RECENT_MINUTES)
+
+        self.next_issue = Alarm()
+        self.delayed = 0
+        self.active = 0
 
         # O(n) removal, only used for debug_info
         # unclear if using a Set would be better or not...
         self.active_threads: List[str] = []
 
-    def _issue(self) -> IssueStatus:
+    def _get_delay(self) -> float:
         """
-        return True if safe to issue (must call "retire" after)
-        return False if cannot be issued now
+        return delay in seconds until fetch can begin.
+        or value < 0 (DELAY_XXX)
+        """
+
+        # NOTE! Lock held: avoid logging!
+        self.sb.big_lock.assert_held()
+
+        # see if connection to domain failed "recently".
+        if not self.last_conn_error.expired():
+            return DELAY_SKIP
+
+        delay = self.next_issue.delay()
+        if delay > self.sb.max_delay_seconds:
+            return DELAY_LONG
+
+        if delay < 0:
+            delay = 0.0  # never issued or past due
+
+        self.next_issue.set(self.issue_interval)
+        self.delayed += 1
+        self.sb.delayed += 1
+        return delay
+
+    def _start(self) -> StartStatus:
+        """
+        Here in a worker thread, convert from delayed to active
+        returns False if connection failed recently
         """
         # NOTE! Lock held: avoid logging!
         self.sb.big_lock.assert_held()
 
-        # scrapy issue interval is avg_latency / concurrency
-        # goal is to keep "concurrency" requests active
-        if self.avg_seconds == 0:  # no running average yet.
-            # issue up to concurrency limit requests:
-            if self.active_count >= self.sb.target_concurrency:
-                return IssueStatus.BUSY
-        else:  # have running average of request times.
-            elapsed = self.last_issue.elapsed()
-            if elapsed < self.issue_interval:
-                # WISH: return delta, for second try sleep time??
-                return IssueStatus.BUSY
+        self.delayed -= 1
+        self.sb.delayed -= 1
 
         # see if connection to domain failed "recently".
         # last test so that preference is short delay
         # (and hope an active fetch succeeds).
         if not self.last_conn_error.expired():
-            return IssueStatus.SKIPPED
+            return StartStatus.SKIP
 
-        self.active_count += 1
-        self.last_issue.reset()
+        if self.active >= self.sb.target_concurrency:
+            return StartStatus.BUSY
+
+        self.active += 1
+        self.last_start.reset()
 
         self.active_threads.append(threading.current_thread().name)
-        return IssueStatus.OK
+        return StartStatus.OK
 
-    def retire(self, conn_status: ConnStatus, sec: float) -> None:
+    def finish(self, conn_status: ConnStatus, sec: float) -> None:
         """
         called when a fetch attempt has ended.
         """
         with self.sb.big_lock:
             # NOTE! Avoid logging while holding lock!!!
 
-            assert self.active_count > 0
-            self.active_count -= 1
-            # remove on list is O(n), but n is small (concurrency limit)
+            assert self.active > 0
+            self.active -= 1
+            # remove on list is O(n), but n is small (concurrency target)
             self.active_threads.remove(threading.current_thread().name)
             oavg = self.avg_seconds
             if conn_status == ConnStatus.NOCONN:
@@ -258,25 +304,23 @@ class Slot:
                     self.avg_seconds = sec
 
             if self.avg_seconds != oavg:
-                self.issue_interval = self.avg_seconds / self.sb.target_concurrency
+                interval = self.avg_seconds / self.sb.target_concurrency
+                if interval < self.sb.min_interval_seconds:
+                    interval = self.sb.min_interval_seconds
+                self.issue_interval = interval
 
             # adjust scoreboard counters
-            self.sb._slot_retired(self.active_count == 0)
+            self.sb._slot_finished(self.active == 0)
 
     def _consider_removing(self) -> None:
         self.sb.big_lock.assert_held()  # PARANOIA
         if (
-            self.active_count == 0
-            and self.last_issue.expired()
+            self.active == 0
+            and self.delayed == 0
+            and self.last_start.expired()
             and self.last_conn_error.expired()
         ):
             self.sb._remove_slot(self.slot_id)
-
-
-# status/value tuple: popular in GoLang
-class IssueReturn(NamedTuple):
-    status: IssueStatus
-    slot: Optional[Slot]  # if status == OK
 
 
 TS_IDLE = "idle"
@@ -287,19 +331,41 @@ class ThreadStatus:
     ts: float  # time.monotonic
 
 
+class StartRet(NamedTuple):
+    """
+    return value from start()
+    """
+
+    status: StartStatus
+    slot: Optional[Slot]
+
+
+class Stats(NamedTuple):
+    """
+    statistics returned by periodic()
+    """
+
+    slots: int
+    active_fetches: int
+    active_slots: int
+    delayed: int
+
+
 class ScoreBoard:
     """
     keep score of active requests by "id" (str)
     """
 
+    # arguments changed often in development,
+    # so all must be passed by keyword
     def __init__(
         self,
-        app: App,  # for stats
-        max_active: int,  # total concurrent active limit
+        *,
         target_concurrency: int,  # max active with same id (domain)
+        max_delay_seconds: float,  # max time to hold
         conn_retry_seconds: float,  # seconds before connect retry
+        min_interval_seconds: float,
     ):
-        self.app = app
         # single lock, rather than one each for scoreboard, active count,
         # and each slot.  Time spent with lock held should be small,
         # and lock ordering issues likely to make code complex and fragile!
@@ -307,12 +373,15 @@ class ScoreBoard:
         self.big_lock = Lock(
             "big_lock", self.debug_info_nolock
         )  # covers ALL variables!
-        self.max_active = max_active
         self.target_concurrency = target_concurrency
+        self.max_delay_seconds = max_delay_seconds
         self.conn_retry_seconds = conn_retry_seconds
+        self.min_interval_seconds = min_interval_seconds
+
         self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
-        self.active_fetches = 0
         self.active_slots = 0
+        self.active_fetches = 0
+        self.delayed = 0
 
         # map thread name to ThreadStatus
         self.thread_status: Dict[str, ThreadStatus] = {}
@@ -330,25 +399,35 @@ class ScoreBoard:
     def _remove_slot(self, slot_id: str) -> None:
         del self.slots[slot_id]
 
-    def issue(self, slot_id: str, note: str) -> IssueReturn:
-        with self.big_lock:
-            if self.active_fetches < self.max_active:
-                slot = self._get_slot(slot_id)
-                status = slot._issue()
-                if status == IssueStatus.OK:
-                    # *MUST* call slot.retire() when done
-                    if slot.active_count == 1:  # was idle
-                        self.active_slots += 1
-                    self.active_fetches += 1
-                    self._set_thread_status(note)  # full URL
-                    return IssueReturn(status, slot)
-            else:
-                status = IssueStatus.BUSY
-        return IssueReturn(status, None)
-
-    def _slot_retired(self, slot_idle: bool) -> None:
+    def get_delay(self, slot_id: str) -> float:
         """
-        here from slot.retired()
+        called when story first picked up from message queue.
+        return time to hold message before starting (delayed counts incremented)
+        if too long (more than max_delay_seconds), returns -1
+        """
+        with self.big_lock:
+            slot = self._get_slot(slot_id)
+            return slot._get_delay()
+
+    def start(self, slot_id: str, note: str) -> StartRet:
+        """
+        here from worker thread, after delay (if any)
+        """
+        with self.big_lock:
+            slot = self._get_slot(slot_id)
+            status = slot._start()
+            if status == StartStatus.OK:
+                # *MUST* call slot.finished() when done
+                if slot.active == 1:  # was idle
+                    self.active_slots += 1
+                self.active_fetches += 1
+                self._set_thread_status(note)  # full URL
+                return StartRet(status, slot)
+            return StartRet(status, None)
+
+    def _slot_finished(self, slot_idle: bool) -> None:
+        """
+        here from slot.finished()
         """
         # NOTE! lock held: avoid logging
         self.big_lock.assert_held()
@@ -357,7 +436,6 @@ class ScoreBoard:
         if slot_idle:
             assert self.active_slots > 0
             self.active_slots -= 1
-            # XXX _consider_removing
         self._set_thread_status(TS_IDLE)
 
     def _set_thread_status(self, info: str) -> None:
@@ -372,33 +450,26 @@ class ScoreBoard:
         ts.info = info
         ts.ts = time.monotonic()
 
-    def periodic(self, dump_slots: bool = False) -> None:
+    def periodic(self, dump_slots: bool = False) -> Stats:
         """
-        called periodically from main thread
+        called periodically from main thread.
+        NOTE!! dump_slots logs with lock held!!!!
+        Use only for debug!
         """
         with self.big_lock:
             # do this less frequently?
             for slot in list(self.slots.values()):
                 slot._consider_removing()
 
-            # avoid stats, logging with lock held!!!
-            recent = len(self.slots)
-            active_fetches = self.active_fetches
-            active_slots = self.active_slots
-
-            if dump_slots:
+            if dump_slots:  # NOTE!!! logs with lock held!!!
                 self.debug_info_nolock()
 
-        logger.info(
-            "%d recently active; %d URLs in %d domains active",
-            recent,
-            active_fetches,
-            active_slots,
-        )
-
-        self.app.gauge("active.recent", recent)
-        self.app.gauge("active.fetches", active_fetches)
-        self.app.gauge("active.slots", active_slots)
+            return Stats(
+                slots=len(self.slots),
+                active_fetches=self.active_fetches,
+                active_slots=self.active_slots,
+                delayed=self.delayed,
+            )
 
     def debug_info_nolock(self) -> None:
         """
@@ -407,11 +478,15 @@ class ScoreBoard:
         """
         for domain, slot in list(self.slots.items()):
             logger.info(
-                "%s: %s last issue: %s last err: %s",
+                "%s: %s avg %.3f, %da, %dd, last issue: %s last err: %s next: %s",
                 domain,
                 ",".join(slot.active_threads),
-                slot.last_issue,
+                slot.avg_seconds,
+                slot.active,
+                slot.delayed,
+                slot.last_start,
                 slot.last_conn_error,
+                slot.next_issue,
             )
 
         # here without lock, so grab before examining:

@@ -349,7 +349,7 @@ class QApp(App):
             return
 
         self._pika_thread = threading.Thread(
-            target=self._pika_thread_body, name="Pika-thread", daemon=True
+            target=self._pika_thread_body, name="Pika", daemon=True
         )
         self._pika_thread.start()
 
@@ -410,11 +410,8 @@ class QApp(App):
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        assert self.connection
-
-        # XXX this will need a lock if app runs in multiple threads
         if self._pika_thread is None:
-            # here from a QApp
+            # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()
@@ -428,6 +425,7 @@ class QApp(App):
 
         # NOTE! add_callback_threadsafe is documented (in the Pika
         # 1.3.2 comments) as the ONLY thread-safe connection method!!!
+        assert self.connection  # checked above
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
@@ -565,7 +563,16 @@ class Worker(QApp):
         """
         im = InputMessage(chan, method, properties, body, time.monotonic())
         msglogger.debug("on_message tag #%s", method.delivery_tag)
+        self._on_input_message(im)
+
+    def _on_input_message(self, im: InputMessage) -> None:
+        """
+        called in Pika thread.
+        override to interrupt direct delivery of messages to _message_queue
+        """
         self._message_queue.put(im)
+
+    _put_message_queue = _on_input_message
 
     def _subscribe(self) -> None:
         """
@@ -623,9 +630,9 @@ class Worker(QApp):
         except QuarantineException as e:
             status = "error"
             self._quarantine(im, e)
-        except RequeueException as e:
+        except RequeueException:
             status = "requeue"
-            self._requeue(im, e)
+            self._requeue(im)
         except Exception as e:
             if self._crash_on_exception:
                 raise  # for debug
@@ -655,18 +662,25 @@ class Worker(QApp):
         This avoids using functools.partial, which I find less
         illustrative of a function call with captured values. -phil
         """
+
+        def acker() -> None:
+            self._pika_ack_and_commit(im, multiple)
+
+        self._call_in_pika_thread(acker)
+
+    def _pika_ack_and_commit(self, im: InputMessage, multiple: bool = False) -> None:
+        """
+        call ONLY from pika thread!!
+        """
         tag = im.method.delivery_tag  # tag from last message
         assert tag is not None
 
-        def acker() -> None:
-            msglogger.debug("ack and commit #%s", tag)
+        chan = im.channel
 
-            im.channel.basic_ack(delivery_tag=tag, multiple=multiple)
-
-            # AFTER basic_ack!
-            im.channel.tx_commit()  # commit sent messages and ack atomically!
-
-        self._call_in_pika_thread(acker)
+        msglogger.debug("ack and commit #%s", tag)
+        chan.basic_ack(delivery_tag=tag, multiple=multiple)
+        # AFTER basic_ack!
+        chan.tx_commit()  # commit sent messages and ack atomically!
 
     def _exc_headers(self, e: Exception) -> Dict:
         """
@@ -774,7 +788,7 @@ class Worker(QApp):
     def set_requeue_delay_ms(self, ms: int) -> None:
         self.requeue_delay_str = str(int(ms))
 
-    def _requeue(self, im: InputMessage, e: Exception) -> bool:
+    def _requeue(self, im: InputMessage) -> bool:
         """
         Requeue message to -fast queue, which has no consumers, with
         an expiration/TTL; when messages expire, they are routed
@@ -796,6 +810,16 @@ class Worker(QApp):
             props,
         )
         return True  # requeued
+
+    def message_queue_len(self) -> int:
+        """
+        NOTE! the underlying qsize method is described as "unreliable"
+        USE ONLY FOR LOGGING/STATS!!
+        """
+        if self._message_queue:
+            return self._message_queue.qsize()
+        else:
+            return 0
 
     def process_message(self, im: InputMessage) -> None:
         raise NotImplementedError("Worker.process_message not overridden")
