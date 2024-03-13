@@ -433,6 +433,9 @@ services:
 
   news-search-api:
     <<: *news-search-service-settings
+    deploy:
+      <<: *news-search-deploy-settings
+      replicas: 8
     environment:
       <<: *news-search-environment-vars
       DESCRIPTION: "Descriptive text here"
