@@ -136,12 +136,12 @@ numpy==1.26.4
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
-packaging==23.2
+packaging==24.0
     # via
     #   docker
     #   parsel
     #   scrapy
-parsel==1.8.1
+parsel==1.9.0
     # via
     #   itemloaders
     #   scrapy
@@ -167,7 +167,7 @@ pycparser==2.21
     # via cffi
 pydispatcher==2.0.7
     # via scrapy
-pyopenssl==24.0.0
+pyopenssl==24.1.0
     # via scrapy
 python-dateutil==2.9.0.post0
     # via
@@ -279,7 +279,7 @@ zope-interface==6.2
     #   twisted
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==69.1.1
+setuptools==69.2.0
     # via
     #   scrapy
     #   supervisor
