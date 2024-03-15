@@ -7,6 +7,7 @@ Should exit gracefully if configurations already exists in Elasticsearch
 import argparse
 import os
 import sys
+from datetime import date
 from logging import getLogger
 from typing import Any
 
@@ -47,6 +48,13 @@ class ElasticConf(ElasticConfMixin, App):
             default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "",
             help="ES ILM policy max shard size",
         )
+        # SLM
+        ap.add_argument(
+            "--elasticsearch-snapshot-repo",
+            dest="elasticsearch_snapshot_repo",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
+            help="ES snapshot repository name",
+        )
 
     def process_args(self) -> None:
         super().process_args()
@@ -56,6 +64,7 @@ class ElasticConf(ElasticConfMixin, App):
             ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
+            ("elasticsearch_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -67,6 +76,7 @@ class ElasticConf(ElasticConfMixin, App):
         self.replicas = self.args.replicas
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
+        self.elasticsearch_snapshot_repo = self.args.elasticsearch_snapshot_repo
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -143,6 +153,35 @@ class ElasticConf(ElasticConfMixin, App):
             else:
                 logger.error("Failed to create Index. Response:%s", response)
             return acknowledged
+
+    def create_slm_policy(self, es: Elasticsearch) -> Any:
+        _TODAY = date.today().strftime("%Y.%m.%d")
+        policy_id = f"slm-policy-{_TODAY}"
+        repository_name = self.elasticsearch_snapshot_repo
+        json_data = self.load_slm_policy_template()
+        if not json_data:
+            logger.error("Elasticsearch create slm policy: error template not loaded")
+            sys.exit(1)
+        name = json_data["name"]
+        config = json_data["config"]
+        schedule = json_data["schedule"]
+        retention = json_data["retention"]
+
+        # SLM starts automatically when clusture is formed.If SLm stopped start using POST /_slm/start
+        response = es.slm.put_lifecycle(
+            policy_id=policy_id,
+            config=config,
+            name=name,
+            schedule=schedule,
+            retention=retention,
+            repository=repository_name,
+        )
+        acknowledged = response.get("acknowledged", False)
+        if acknowledged:
+            logger.info("SLM policy created successfully.")
+        else:
+            logger.error("Failed to create SLM policy. Response:%s", response)
+        return acknowledged
 
 
 if __name__ == "__main__":
