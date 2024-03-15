@@ -320,8 +320,8 @@ class Fetcher(MultiThreadStoryWorker):
             # here with redirect:
             nextreq = resp.next  # PreparedRequest | None
             if nextreq:
-                url = prepreq.url or ""
                 prepreq = nextreq
+                url = prepreq.url or ""
             else:
                 url = ""
 
