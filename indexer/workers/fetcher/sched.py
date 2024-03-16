@@ -18,10 +18,11 @@ from typing import Any, Callable, Dict, List, NamedTuple, NoReturn, Optional, Ty
 # if no active/delayed requests and no errors (maintains request RTT)
 SLOT_RECENT_MINUTES = 5
 
-# exponential moving average coefficient for avg_seconds.
-# (typ. used by TCP for RTT est)
-# https://en.wikipedia.org/wiki/Exponential_smoothing
-ALPHA = 0.25
+# exponentially decayed moving average coefficient for avg_seconds.
+# (used in TCP for RTT averaging, and in system load averages)
+# see https://en.wikipedia.org/wiki/Exponential_smoothing
+# Scrapy essentially uses 0.5: (old_avg + sample) / 2
+ALPHA = 0.25  # applied to new samples
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +230,7 @@ class Slot:
     def _get_delay(self) -> float:
         """
         return delay in seconds until fetch can begin.
-        or value < 0 (DELAY_XXX)
+        or value < 0 (DELAY_{SKIP,LONG})
         """
 
         # NOTE! Lock held: avoid logging!
@@ -244,6 +245,11 @@ class Slot:
             return DELAY_LONG
 
         if delay < 0:
+            # this site/slot clear to issue: consider some sort of
+            # rate limit here to avoid filling up _message_queue when
+            # incomming requests are well mixed (100 requests to 100
+            # sites will go right to the message queue)!  Could have a
+            # scoreboard wide "next_issue" clock??
             delay = 0.0  # never issued or past due
 
         self.next_issue.set(self.issue_interval)
@@ -291,19 +297,34 @@ class Slot:
             oavg = self.avg_seconds
             if conn_status == ConnStatus.NOCONN:
                 self.last_conn_error.reset()
+                # discard avg connection time estimate:
+                self.avg_seconds = 0
             elif conn_status == ConnStatus.DATA:
                 if self.avg_seconds == 0:
                     self.avg_seconds = sec
                 else:
-                    # exponentially moving average (typ. used by TCP for RTT est)
-                    # https://en.wikipedia.org/wiki/Exponential_smoothing
-                    self.avg_seconds += (sec - self.avg_seconds) * ALPHA
+                    if sec > self.avg_seconds:
+                        # per scrapy: adopt larger values directly
+                        self.avg_seconds = sec
+                    else:
+                        # exponentially decayed moving average
+                        # see comments on ALPHA declaration above.
+                        self.avg_seconds += (sec - self.avg_seconds) * ALPHA
+
+                        # note: the above is a simplification of:
+                        # avg = ALPHA * new + BETA * avg
+                        # where ALPHA + BETA == 1.0, or BETA = 1.0 - ALPHA
+                        # => avg = new * ALPHA + (1 - ALPHA) * avg
+                        # => avg = new * ALPHA + avg - avg * ALPHA
+                        # => avg = (new - avg) * ALPHA + avg
+                        # => avg += (new - avg) * ALPHA
             elif conn_status == ConnStatus.NODATA:  # got connection but no data
                 # better to have some estimate of connection average time than none
                 if self.avg_seconds == 0:
                     self.avg_seconds = sec
 
             if self.avg_seconds != oavg:
+                # average success time has changed, update issue interval
                 interval = self.avg_seconds / self.sb.target_concurrency
                 if interval < self.sb.min_interval_seconds:
                     interval = self.sb.min_interval_seconds

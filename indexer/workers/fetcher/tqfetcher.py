@@ -53,12 +53,7 @@ from indexer.storyapp import (
     non_news_fqdn,
     url_fqdn,
 )
-from indexer.worker import (
-    CONSUMER_TIMEOUT_SECONDS,
-    InputMessage,
-    QuarantineException,
-    RequeueException,
-)
+from indexer.worker import InputMessage, QuarantineException, RequeueException
 from indexer.workers.fetcher.sched import (
     DELAY_LONG,
     DELAY_SKIP,
@@ -74,8 +69,10 @@ TARGET_CONCURRENCY = 10  # scrapy fetcher AUTOTHROTTLE_TARGET_CONCURRENCY
 # sites that respond quickly.
 MIN_INTERVAL_SECONDS = 0.5
 
-# default delay time for "fast" queue, and max time to delay stories w/ call_later
-BUSY_DELAY_MINUTES = 10
+# default delay time for "fast" queue, and max time to delay stories
+# w/ call_later.  Large values allow more requests to be delayed, so
+# keeping it small, hopefully breaking up clumps.
+BUSY_DELAY_MINUTES = 2
 
 # time to cache server as down after a connection failure
 CONN_RETRY_MINUTES = 10
@@ -224,24 +221,12 @@ class Fetcher(MultiThreadStoryWorker):
         RabbitMQ to close the connection!!!  So the estimate
         MUST be prssimistic!!
         """
-        # time available to handle a request (in a worker thread)
-        # after maximum call_later delay
-        work_time = CONSUMER_TIMEOUT_SECONDS - self.busy_delay_seconds
-
-        # Maximum time handling a request.  This is both low (read
-        # timeout applies to EACH network read) but also possibly
-        # high. Would have to have working DNS but no TCP connectivity
-        # to have ALL requests fail (UNLESS Internet unreachable!!!).
-        max_request_seconds = CONNECT_SECONDS + READ_SECONDS
-
-        # only hand us as many as we KNOW it's possible to handle
-        # given multiple worker threads:
-        prefetch = int(self.workers * work_time / max_request_seconds)
-        if prefetch > 65535:  # 16-bit field
-            prefetch = 65535
-        logger.info("prefetch %d", prefetch)
-        chan.basic_qos(prefetch_count=prefetch)
-        self.prefetch = prefetch
+        # Want to avoid very large numbers of requests in the "ready"
+        # state (in message queue), since there is no inter-request
+        # delay enforced once requests land there.
+        self.prefetch = self.workers * 2
+        logger.info("prefetch %d", self.prefetch)
+        chan.basic_qos(prefetch_count=self.prefetch)
 
     def periodic(self) -> None:
         """
@@ -431,6 +416,8 @@ class Fetcher(MultiThreadStoryWorker):
 
                 # holding message, will be acked when processed
                 if delay == 0:
+                    # enforce SOME kind of rate limit?
+                    # see comments in Slot._get_delay()
                     put()
                 else:
                     logger.debug("delay #%s", im.method.delivery_tag)
