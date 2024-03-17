@@ -266,11 +266,8 @@ class Fetcher(MultiThreadStoryWorker):
         # above three should total to prefetch:
         self.gauge("prefetch", self.prefetch)
 
-        def slots(label: str, count: int) -> None:
-            self.gauge("slots", count, labels=[("status", label)])
-
-        slots("recent", stats.slots)
-        slots("active", stats.active_slots)
+        self.gauge("slots.recent", stats.slots)
+        self.gauge("slots.active", stats.active_slots)
 
     def fetch(self, sess: requests.Session, url: str) -> FetchReturn:
         """
