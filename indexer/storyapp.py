@@ -10,6 +10,7 @@ Story specific QApp stuff, split from worker.py
 
 import argparse
 import logging
+import multiprocessing
 import os
 import queue
 import sys
@@ -206,15 +207,22 @@ class StoryWorker(StoryMixin, Worker):
         # and avoid possible (if unlikely) surprise later.
         self.senders: Dict[BlockingChannel, StorySender] = {}
 
-    def process_message(self, im: InputMessage) -> None:
-        chan = im.channel
-        if chan in self.senders:
-            sender = self.senders[chan]
-        else:
+    def decode_story(self, im: InputMessage) -> BaseStory:
+        story = BaseStory.load(im.body)
+        assert isinstance(story, BaseStory)
+        return story
+
+    def _story_sender(self, chan: BlockingChannel) -> StorySender:
+        sender = self.senders.get(chan)
+        if not sender:
             sender = self.senders[chan] = StorySender(self, chan)
+        return sender
+
+    def process_message(self, im: InputMessage) -> None:
+        sender = self._story_sender(im.channel)
 
         # raised exceptions will cause retry; quarantine immediately?
-        story = BaseStory.load(im.body)
+        story = self.decode_story(im)
 
         self.process_story(sender, story)
 
@@ -369,10 +377,8 @@ class BatchStoryWorker(StoryWorker):
 class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     # include thread name in log message format
     LOG_FORMAT = "thread"
-
-    # subclass must set value!
-    # (else will see AttributeError)
-    WORKER_THREADS_DEFAULT: int
+    CPU_COUNT = multiprocessing.cpu_count()
+    WORKER_THREADS_DEFAULT = CPU_COUNT
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)

@@ -8,7 +8,8 @@ plus either --yesterday or --days N
 Queuer framework handles local files, http/https/s3 URLs,
 transparently un-gzips.
 
-On-the-fly XML parsing using "SAX" parser.
+On-the-fly XML parsing using iterparse
+(w/o reading whole file into memory)
 
 NOTE! --yesterday only valid after 01:00 GMT
 (before that, gets the day before)
@@ -18,8 +19,11 @@ import argparse
 import html
 import logging
 import time
-import xml.sax
-from typing import BinaryIO, List, Optional
+from typing import BinaryIO
+
+# xml.etree.ElementTree.iterparse doesn't have recover argument
+# (fatal error on control characters in element text), so using lxml
+from lxml.etree import iterparse
 
 from indexer.app import run
 from indexer.queuer import Queuer
@@ -27,110 +31,15 @@ from indexer.story import StoryFactory
 
 S3_URL_BASE = "https://mediacloud-public.s3.amazonaws.com/backup-daily-rss"
 
-Attrs = xml.sax.xmlreader.AttributesImpl
-
 Story = StoryFactory()
 
 logger = logging.getLogger("queue-rss")
 
 
-def optional_int(input: Optional[str]) -> Optional[int]:
+def optional_int(input: str | None) -> int | None:
     if not input or not input.isdigit():
         return None
     return int(input)
-
-
-class RSSHandler(xml.sax.ContentHandler):
-    link: str  # required!
-    domain: Optional[str]
-    pub_date: Optional[str]
-    title: Optional[str]
-    source_url: Optional[str]
-    source_feed_id: Optional[int]
-    source_source_id: Optional[int]
-    content: List[str]
-
-    def __init__(self, app: "RSSQueuer", fname: str):
-        self.app = app
-        self.parsed = self.bad = 0
-        self.in_item = False
-        self.file_name = fname
-        self.reset_item()
-        self.content = []
-
-    def reset_item(self) -> None:
-        self.link = ""
-        self.domain = ""
-        self.pub_date = ""
-        self.title = ""
-        self.source_url = None
-        self.source_feed_id = None
-        self.source_source_id = None
-
-    def startElement(self, name: str, attrs: Attrs) -> None:
-        if name == "item":
-            # error if in_item is True (missing end element?)
-            self.in_item = True
-        elif self.in_item:
-            if name == "source":
-                self.source_url = attrs.get("url")
-                self.source_feed_id = optional_int(attrs.get("mcFeedId"))
-                self.source_source_id = optional_int(attrs.get("mcSourceId"))
-        self.content = []  # DOES NOT WORK FOR NESTED TAGS!
-
-    def characters(self, content: str) -> None:
-        """
-        handle text content inside current tag;
-        may come in multiple calls!!
-        DOES NOT WORK FOR NESTED TAGS!!
-        (would need a stack pushed by startElement, popped by endElement)
-        """
-        self.content.append(content)
-
-    def endElement(self, name: str):  # type: ignore[no-untyped-def]
-        if not self.in_item:
-            return
-
-        # here at end of a tag inside an <item>
-
-        # join bits of tag content together
-        # DOES NOT WORK FOR NESTED TAGS!!
-        content = "".join(self.content)
-
-        if name == "link":
-            # undo HTML entity escapes:
-            self.link = html.unescape(content).strip()
-        elif name == "domain":
-            self.domain = content.strip() or None
-        elif name == "pubDate":
-            self.pub_date = content.strip() or None
-        elif name == "title":
-            self.title = content.strip() or None
-        elif name == "item":
-            # domain not required by queue-based fetcher
-            if self.link:
-                s = Story()
-                # mypy reval_type(rss) in "with s.rss_entry() as rss" gives Any!!
-                rss = s.rss_entry()
-                with rss:
-                    rss.link = self.link
-                    rss.domain = self.domain
-                    rss.pub_date = self.pub_date
-                    rss.title = self.title
-                    rss.source_url = self.source_url
-                    rss.source_feed_id = self.source_feed_id
-                    rss.source_source_id = self.source_source_id
-                    rss.via = self.file_name  # instead of fetch_date
-                self.app.send_story(s)
-                self.reset_item()
-                self.parsed += 1
-            else:
-                assert self.app.args
-                # don't muddy the water if just a dry-run:
-                if not self.app.args.dry_run:
-                    self.app.incr_stories("bad", self.link)
-                    self.bad += 1
-            self.in_item = False
 
 
 class RSSQueuer(Queuer):
@@ -138,9 +47,18 @@ class RSSQueuer(Queuer):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
+        self.reset_item(True)
 
-        self.sample_size: Optional[int] = None
-        self.dry_run = False
+    def reset_item(self, first: bool = False) -> None:
+        if first:
+            self.ok = self.bad = 0
+        self.link: str | None = ""
+        self.domain: str | None = ""
+        self.pub_date: str | None = ""
+        self.title: str | None = ""
+        self.source_url: str | None = None
+        self.source_feed_id: int | None = None
+        self.source_source_id: int | None = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -209,15 +127,85 @@ class RSSQueuer(Queuer):
             for days in range(1, args.days + 1):
                 add_previous(days)
 
+    def end_item(self, fname: str) -> None:
+        # domain not required by queue-based fetcher
+        if self.link:
+            s = Story()
+            # mypy reval_type(rss) in "with s.rss_entry() as rss" gives Any!!
+            rss = s.rss_entry()
+            with rss:
+                rss.link = self.link
+                rss.domain = self.domain
+                rss.pub_date = self.pub_date
+                rss.title = self.title
+                rss.source_url = self.source_url
+                rss.source_feed_id = self.source_feed_id
+                rss.source_source_id = self.source_source_id
+                rss.via = fname  # instead of fetch_date
+            self.send_story(s)
+            self.ok += 1
+        else:
+            assert self.args
+            # don't muddy the water if just a dry-run:
+            if not self.args.dry_run:
+                self.incr_stories("bad", self.link or "no-link")
+                self.bad += 1
+        self.reset_item()
+
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
-        called for each file/url on command line, and those
-        implied by --fetch-date, --days and --yesterday
+        called for each file/url on command line,
+        each file in a directory on the command line,
+        each S3 object matching an s3 URL prefix,
+        and URLs implied by --fetch-date, --days and --yesterday
         with an uncompressed (binary) byte stream
         """
-        handler = RSSHandler(self, fname)
-        xml.sax.parse(fobj, handler)
-        logger.info("processed %s: %d ok, %d bad", fname, handler.parsed, handler.bad)
+        path: list[str] = []
+        self.reset_item(True)
+
+        # recover=True avoids fatal error when control characters seen in title
+        for event, element in iterparse(fobj, events=("start", "end"), recover=True):
+            name = element.tag
+            logger.debug("%s tag %s level %d", event, name, len(path))
+            if event == "start":
+                path.append(name)
+            else:  # event == "end"
+                path.pop()
+                if name == "item":
+                    self.end_item(fname)
+                    continue
+
+                lpath = len(path)
+                if (
+                    (lpath > 0 and path[0] != "rss")
+                    or (lpath > 1 and path[1] != "channel")
+                    or (lpath > 2 and path[2] != "item")
+                    or lpath > 3
+                ):
+                    logger.warning(
+                        "%s: unexpected tag %s path %s",
+                        name,
+                        "/".join(path),
+                    )
+                    continue
+
+                # here at end of a tag inside an <item>
+                content = element.text or ""
+                assert isinstance(content, str)
+                if name == "link":
+                    # undo HTML entity escapes:
+                    self.link = html.unescape(content).strip()
+                elif name == "domain":
+                    self.domain = content.strip() or None
+                elif name == "pubDate":
+                    self.pub_date = content.strip() or None
+                elif name == "title":
+                    self.title = content.strip() or None
+                elif name == "source":
+                    self.source_url = element.get("url")
+                    self.source_feed_id = optional_int(element.get("mcFeedId"))
+                    self.source_source_id = optional_int(element.get("mcSourceId"))
+        logger.info("processed %s: %d ok, %d bad", fname, self.ok, self.bad)
 
 
 if __name__ == "__main__":
