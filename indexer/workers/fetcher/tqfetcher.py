@@ -196,7 +196,7 @@ class Fetcher(MultiThreadStoryWorker):
             target_concurrency=self.args.target_concurrency,
             max_delay_seconds=self.busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
-            min_interval_seconds=MIN_INTERVAL_SECONDS,
+            min_interval_seconds=self.args.min_interval_seconds,
         )
 
         self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
