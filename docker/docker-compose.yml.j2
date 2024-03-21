@@ -439,6 +439,7 @@ services:
     environment:
       <<: *news-search-environment-vars
       DESCRIPTION: "Descriptive text here"
+      ELASTICSEARCH_INDEX_NAME_PREFIX: mc_search
       ESHOSTS: {{elasticsearch_hosts}}
       ESOPTS: '{"timeout": 60, "max_retries": 3}' # 'timeout' parameter is deprecated
       TERMAGGRS: top,significant,rare
