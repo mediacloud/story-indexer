@@ -34,9 +34,9 @@ Set `RABBITMQ_URL` in your environment or supply a `--rabbitmq-url` option:
 
 Set `RABBITMQ_URL` in your environment or supply a `--rabbitmq-url` option:
 
-`python -m indexer.scripts.qutil purge QNAME` purges a queue (discards all messages).
+`./bin/run-qutil.sh purge QNAME` purges a queue (discards all messages).
 
-`python -m indexer.scripts.qutil dump_archives QNAME` dumps queue contents as WARC files.
+`./bin/run-qutil.sh dump_archives QNAME` dumps queue contents as WARC files.
 adding `--max MSGS` dumps at most MSGS messages.
 
-`python -m indexer.scripts.qutil load_archives QNAME FILES...` loads WARC files into queue.
+`./bin/run-qutil.sh load_archives QNAME FILES...` loads WARC files into queue.
