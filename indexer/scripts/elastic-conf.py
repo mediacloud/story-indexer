@@ -167,7 +167,7 @@ class ElasticConf(ElasticConfMixin, App):
         schedule = json_data["schedule"]
         retention = json_data["retention"]
 
-        # SLM starts automatically when clusture is formed.If SLm stopped start using POST /_slm/start
+        # SLM starts automatically when clusture is formed.If SLM stopped start using POST /_slm/start
         response = es.slm.put_lifecycle(
             policy_id=policy_id,
             config=config,
