@@ -111,3 +111,11 @@ class ElasticConfMixin(ElasticMixin):
             Any: The initial index template data.
         """
         return self._load_template("create_initial_index.json")
+
+    def load_slm_policy_template(self) -> Any:
+        """
+        Load the initial SLM Policy from a JSON file.
+        Returns:
+            Any: SLM policy data.
+        """
+        return self._load_template("create_slm_policy.json")
