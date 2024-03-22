@@ -50,7 +50,7 @@ class ElasticConf(ElasticConfMixin, App):
         )
         # SLM
         ap.add_argument(
-            "--elasticsearch-snapshot-repo",
+            "--slm-repo",
             dest="elasticsearch_snapshot_repo",
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
