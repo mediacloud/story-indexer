@@ -363,8 +363,13 @@ class Slot:
             # adjust scoreboard counters
             self.sb._slot_finished(self.active == 0)
 
+            # pass everything by keyword
             return FinishRet(
-                old_average, new_average, self.issue_interval, self.active, self.delayed
+                old_average=old_average,
+                new_average=new_average,
+                interval=self.issue_interval,
+                active=self.active,
+                delayed=self.delayed,
             )
 
     def _consider_removing(self) -> None:
