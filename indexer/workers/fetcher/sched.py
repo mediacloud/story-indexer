@@ -22,9 +22,17 @@ SLOT_RECENT_MINUTES = 5
 # (used in TCP for RTT averaging, and in system load averages)
 # see https://en.wikipedia.org/wiki/Exponential_smoothing
 # Scrapy essentially uses 0.5: (old_avg + sample) / 2
+#    avg = ALPHA * new + BETA * avg
+#    where ALPHA + BETA == 1.0, or BETA = 1.0 - ALPHA
+#    => avg = new * ALPHA + (1 - ALPHA) * avg
+#    => avg = new * ALPHA + avg - avg * ALPHA
+#    => avg = (new - avg) * ALPHA + avg
 ALPHA = 0.25  # applied to new samples
 
-logger = logging.getLogger(__name__)
+# interval to use when told to throttle
+THROTTLE_INTERVAL_SECONDS = 30.0
+
+logger = logging.getLogger(__name__)  # used only for debug: URL not known here
 
 
 class LockError(RuntimeError):
@@ -186,6 +194,7 @@ class ConnStatus(Enum):
     BADURL = -1
     NODATA = 0
     DATA = 1
+    THROTTLE = 2
 
 
 class StartStatus(Enum):
@@ -200,6 +209,18 @@ class StartStatus(Enum):
 
 DELAY_SKIP = -1.0  # recent attempt failed
 DELAY_LONG = -2.0  # delay to long to hold
+
+
+class FinishRet(NamedTuple):
+    """
+    return from slot.finish()
+    """
+
+    old_average: float
+    new_average: float
+    interval: float
+    active: int
+    delayed: int
 
 
 class Slot:
@@ -240,8 +261,17 @@ class Slot:
         if not self.last_conn_error.expired():
             return DELAY_SKIP
 
+        # if next_issue time more than max_delay_seconds away
+        # punt the story back to RabbitMQ fast delay queue.
         delay = self.next_issue.delay()
         if delay > self.sb.max_delay_seconds:
+            return DELAY_LONG
+
+        # attempt to keep a batch of requests to one (or a few) site(s)
+        # from plugging up the queue (most prefetched messages "delayed"
+        # with call_later).  When very few sites remain in queue
+        # this can cause burts of fetches max_delay_seconds apart.
+        if self.delayed >= self.sb.max_delayed_per_slot:
             return DELAY_LONG
 
         if delay < 0:
@@ -249,10 +279,12 @@ class Slot:
             # rate limit here to avoid filling up _message_queue when
             # incomming requests are well mixed (100 requests to 100
             # sites will go right to the message queue)!  Could have a
-            # scoreboard wide "next_issue" clock??
+            # scoreboard wide "next_issue" clock??  This is mostly a
+            # problem when "prefetch" is large (more than 2x the
+            # number of worker threads).
             delay = 0.0  # never issued or past due
 
-        self.next_issue.set(self.issue_interval)
+        self.next_issue.set(self.issue_interval)  # increment next_issue time
         self.delayed += 1
         self.sb.delayed += 1
         return delay
@@ -283,7 +315,7 @@ class Slot:
         self.active_threads.append(threading.current_thread().name)
         return StartStatus.OK
 
-    def finish(self, conn_status: ConnStatus, sec: float) -> None:
+    def finish(self, conn_status: ConnStatus, sec: float) -> FinishRet:
         """
         called when a fetch attempt has ended.
         """
@@ -294,37 +326,35 @@ class Slot:
             self.active -= 1
             # remove on list is O(n), but n is small (concurrency target)
             self.active_threads.remove(threading.current_thread().name)
-            oavg = self.avg_seconds
+
+            old_average = self.avg_seconds
             if conn_status == ConnStatus.NOCONN:
+                # failed to get connection, reset time since last error
+                # (will prevent new connection attempts until it expires)
                 self.last_conn_error.reset()
                 # discard avg connection time estimate:
-                self.avg_seconds = 0
-            elif conn_status == ConnStatus.DATA:
-                if self.avg_seconds == 0:
-                    self.avg_seconds = sec
+                new_average = 0.0
+            elif conn_status == ConnStatus.THROTTLE:
+                if self.avg_seconds >= THROTTLE_INTERVAL_SECONDS:
+                    new_average = self.avg_seconds * 2
                 else:
-                    if sec > self.avg_seconds:
-                        # per scrapy: adopt larger values directly
-                        self.avg_seconds = sec
-                    else:
-                        # exponentially decayed moving average
-                        # see comments on ALPHA declaration above.
-                        self.avg_seconds += (sec - self.avg_seconds) * ALPHA
-
-                        # note: the above is a simplification of:
-                        # avg = ALPHA * new + BETA * avg
-                        # where ALPHA + BETA == 1.0, or BETA = 1.0 - ALPHA
-                        # => avg = new * ALPHA + (1 - ALPHA) * avg
-                        # => avg = new * ALPHA + avg - avg * ALPHA
-                        # => avg = (new - avg) * ALPHA + avg
-                        # => avg += (new - avg) * ALPHA
-            elif conn_status == ConnStatus.NODATA:  # got connection but no data
-                # better to have some estimate of connection average time than none
+                    new_average = THROTTLE_INTERVAL_SECONDS
+            else:  # DATA or NODATA
                 if self.avg_seconds == 0:
-                    self.avg_seconds = sec
+                    new_average = sec
+                else:
+                    # exponentially decayed moving average
+                    # (see comments on ALPHA defn)
+                    new_average = self.avg_seconds + (sec - self.avg_seconds) * ALPHA
 
-            if self.avg_seconds != oavg:
+            # per-scrapy: only lower average if data received
+            # (errors could be returned more quickly than large data
+            #  hopefully no one is at the end of a 9600 baud line anymore)
+            if new_average > self.avg_seconds or (
+                conn_status == ConnStatus.DATA and new_average < self.avg_seconds
+            ):
                 # average success time has changed, update issue interval
+                self.avg_seconds = new_average
                 interval = self.avg_seconds / self.sb.target_concurrency
                 if interval < self.sb.min_interval_seconds:
                     interval = self.sb.min_interval_seconds
@@ -333,13 +363,20 @@ class Slot:
             # adjust scoreboard counters
             self.sb._slot_finished(self.active == 0)
 
+            return FinishRet(
+                old_average, new_average, self.issue_interval, self.active, self.delayed
+            )
+
     def _consider_removing(self) -> None:
+        """
+        called periodically to check if we're disposable.
+        """
         self.sb.big_lock.assert_held()  # PARANOIA
         if (
-            self.active == 0
-            and self.delayed == 0
-            and self.last_start.expired()
-            and self.last_conn_error.expired()
+            self.active == 0  # no active fetches
+            and self.delayed == 0  # nothing up our sleeve
+            and self.last_start.expired()  # not used in SLOT_RECENT_MINUTES
+            and self.last_conn_error.expired()  # no error in conn_retry_seconds
         ):
             self.sb._remove_slot(self.slot_id)
 
@@ -386,6 +423,7 @@ class ScoreBoard:
         max_delay_seconds: float,  # max time to hold
         conn_retry_seconds: float,  # seconds before connect retry
         min_interval_seconds: float,
+        max_delayed_per_slot: int,
     ):
         # single lock, rather than one each for scoreboard, active count,
         # and each slot.  Time spent with lock held should be small,
@@ -398,6 +436,7 @@ class ScoreBoard:
         self.max_delay_seconds = max_delay_seconds
         self.conn_retry_seconds = conn_retry_seconds
         self.min_interval_seconds = min_interval_seconds
+        self.max_delayed_per_slot = max_delayed_per_slot
 
         self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
         self.active_slots = 0
@@ -479,6 +518,8 @@ class ScoreBoard:
         """
         with self.big_lock:
             # do this less frequently?
+            # or at fixed interval (not at whim of --interval)
+            # get full list first for stable iteration!
             for slot in list(self.slots.values()):
                 slot._consider_removing()
 

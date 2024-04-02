@@ -64,10 +64,11 @@ from indexer.workers.fetcher.sched import (
 
 TARGET_CONCURRENCY = 10  # scrapy fetcher AUTOTHROTTLE_TARGET_CONCURRENCY
 
-# minimum interval between initiation of requests to a site
-# lower values increase chance of concurrent connections to
-# sites that respond quickly.
-MIN_INTERVAL_SECONDS = 0.5
+# minimum interval between initiation of requests to a site lower
+# values increase chance of concurrent connections to sites that
+# respond quickly, but also increase the chance a site will throttle
+# our requests.
+MIN_INTERVAL_SECONDS = 5
 
 # default delay time for "fast" queue, and max time to delay stories
 # w/ call_later.  Large values allow more requests to be delayed, so
@@ -189,11 +190,18 @@ class Fetcher(MultiThreadStoryWorker):
 
         self.busy_delay_seconds = self.args.busy_delay_minutes * 60
 
+        # Want to avoid very large numbers of requests in the "ready"
+        # state (in _message_queue), since there is no inter-request
+        # delay enforced once requests land there.
+        self.prefetch = self.workers * 2
+        logger.info("prefetch %d", self.prefetch)
+
         self.scoreboard = ScoreBoard(
             target_concurrency=self.args.target_concurrency,
             max_delay_seconds=self.busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
+            max_delayed_per_slot=self.prefetch // 4,
         )
 
         self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
@@ -218,11 +226,6 @@ class Fetcher(MultiThreadStoryWorker):
         RabbitMQ to close the connection!!!  So the estimate
         MUST be prssimistic!!
         """
-        # Want to avoid very large numbers of requests in the "ready"
-        # state (in _message_queue), since there is no inter-request
-        # delay enforced once requests land there.
-        self.prefetch = self.workers * 2
-        logger.info("prefetch %d", self.prefetch)
         chan.basic_qos(prefetch_count=self.prefetch)
 
     def periodic(self) -> None:
@@ -463,10 +466,12 @@ class Fetcher(MultiThreadStoryWorker):
 
             try:  # call retire on exit
                 fret = self.fetch(sess, url)
-                if fret.resp and fret.resp.status_code == 200:
-                    conn_status = ConnStatus.DATA
-                else:
-                    conn_status = ConnStatus.NODATA
+                conn_status = ConnStatus.NODATA
+                if fret.resp:
+                    if fret.resp.status_code == 200:
+                        conn_status = ConnStatus.DATA
+                    elif fret.resp.status_code == 429:
+                        conn_status = ConnStatus.THROTTLE
             except (
                 requests.exceptions.InvalidSchema,
                 requests.exceptions.MissingSchema,
@@ -482,11 +487,23 @@ class Fetcher(MultiThreadStoryWorker):
                 conn_status = ConnStatus.NOCONN  # used in finally
                 raise  # re-raised for retry counting
             finally:
-                # ALWAYS: report slot now idle!!
-                # jumps in timing indicate lock contention!!
+                conn_time = time.monotonic() - t0
+
+                # ALWAYS: report slot now idle, update avg time.
+                # jumps in "finish" timing indicate lock contention:
                 with self.timer("finish"):
-                    # keep track of connection success, latency
-                    slot.finish(conn_status, time.monotonic() - t0)
+                    f = slot.finish(conn_status, conn_time)
+                # no logging calls inside sched.py:
+                logger.info(
+                    "%s: %.3f sec; oavg %.3f navg %.3f int %.3f; %d active %d delayed",
+                    url,
+                    conn_time,
+                    f.old_average,
+                    f.new_average,
+                    f.interval,
+                    f.active,
+                    f.delayed,
+                )
 
         resp = fret.resp  # requests.Response
         if resp is None:
