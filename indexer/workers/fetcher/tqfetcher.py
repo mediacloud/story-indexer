@@ -41,11 +41,11 @@ from types import FrameType
 from typing import NamedTuple, Optional
 
 import requests
-from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from pika.adapters.blocking_connection import BlockingChannel
 from requests.exceptions import RequestException
 
 from indexer.app import run
+from indexer.requests_arcana import legacy_ssl_session
 from indexer.story import BaseStory
 from indexer.storyapp import (
     MultiThreadStoryWorker,
@@ -83,9 +83,6 @@ READ_SECONDS = 30.0  # for each read?
 
 # HTTP parameters:
 MAX_REDIRECTS = 30
-
-# scrapy default headers include: "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-HEADERS = {"User-Agent": MEDIA_CLOUD_USER_AGENT}
 
 # HHTP response codes to retry
 # (all others cause URL to be discarded)
@@ -222,7 +219,7 @@ class Fetcher(MultiThreadStoryWorker):
         MUST be prssimistic!!
         """
         # Want to avoid very large numbers of requests in the "ready"
-        # state (in message queue), since there is no inter-request
+        # state (in _message_queue), since there is no inter-request
         # delay enforced once requests land there.
         self.prefetch = self.workers * 2
         logger.info("prefetch %d", self.prefetch)
@@ -278,8 +275,9 @@ class Fetcher(MultiThreadStoryWorker):
         """
         redirects = 0
 
-        # prepare initial request:
-        request = requests.Request("GET", url, headers=HEADERS)
+        # prepare initial request.
+        # NOTE: all headers set in session object
+        request = requests.Request("GET", url)
         prepreq = sess.prepare_request(request)
         while True:  # loop processing redirects
             with self.timer("get"):  # time each HTTP get
@@ -374,6 +372,9 @@ class Fetcher(MultiThreadStoryWorker):
     def _on_input_message(self, im: InputMessage) -> None:
         """
         YIKES!! override a basic Worker method!!!
+        Hopefully will find a cleaner abstraction, but for now,
+        breaking the rules.  Don't try this at home kids!!
+
         Performs an additional decode of serialized Story!
         NOTE! Not covered by exception catching for retry!!!
         MUST ack and commit before returning!!!
@@ -456,11 +457,10 @@ class Fetcher(MultiThreadStoryWorker):
 
         # ***NOTE*** here with slot marked active *MUST* call slot.finish!!!!
         t0 = time.monotonic()
-        with self.timer("fetch"):
+        with self.timer("fetch"), legacy_ssl_session() as sess:
             # log starting URL
             logger.info("fetch %s", url)
 
-            sess = requests.Session()
             try:  # call retire on exit
                 fret = self.fetch(sess, url)
                 if fret.resp and fret.resp.status_code == 200:
@@ -487,7 +487,6 @@ class Fetcher(MultiThreadStoryWorker):
                 with self.timer("finish"):
                     # keep track of connection success, latency
                     slot.finish(conn_status, time.monotonic() - t0)
-                sess.close()
 
         resp = fret.resp  # requests.Response
         if resp is None:
@@ -514,19 +513,21 @@ class Fetcher(MultiThreadStoryWorker):
         lcontent = len(content)
         ct = resp.headers.get("content-type", "")
 
-        logger.info("length %d content-type %s", lcontent, ct)
+        logger.info(
+            "%s: enc %s length %d content-type %s", url, resp.encoding, lcontent, ct
+        )
 
-        # Scrapy skipped non-text documents: need to filter them out
+        # Scrapy skipped non-text documents: need to filter them out.
+        # vedomosti.ru does not return Content-Type header!!
+        # Other XML types handled by scrapy: application/atom+xml
+        # application/rdf+xml application/rss+xml.
         if not resp.encoding and not (
             ct.startswith("text/")
             or ct.startswith("application/xhtml")
-            or ct.startswith("application/vnd.wap.xhtml+xml")
             or ct.startswith("application/xml")
+            or ct.startswith("application/vnd.wap.xhtml+xml")
+            or not ct
         ):
-            # other XML types handled by scrapy: application/atom+xml
-            # application/rdf+xml application/rss+xml.
-            # Logging the rejected content-types here
-            # so that they can be seen in the log files:
             return self.incr_stories("not-text", url)
 
         if not self.check_story_length(content, url):
