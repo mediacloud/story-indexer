@@ -19,6 +19,7 @@ import queue
 import sys
 import threading
 import time
+from enum import Enum
 from typing import Callable, Dict, NamedTuple, Optional, Tuple, Type
 
 import pika.credentials
@@ -177,6 +178,15 @@ def _pika_message_filter(msg: logging.LogRecord) -> bool:
     return True
 
 
+class State(Enum):
+    PIKA_THREAD_NOT_STARTED = 0
+    PIKA_THREAD_STARTED = 1
+    PIKA_THREAD_RUNNING = 2
+    STOP_PIKA_THREAD = 3
+    PIKA_THREAD_ERROR = 4
+    FINISHED = 5
+
+
 class QApp(App):
     """
     Base class for AMQP/pika based App.
@@ -207,7 +217,8 @@ class QApp(App):
         self.connection: Optional[BlockingConnection] = None
 
         self._pika_thread: Optional[threading.Thread] = None
-        self._running = True
+        self._state = State.PIKA_THREAD_NOT_STARTED
+        self._app_errors = False
 
         # debugging aid to use with --from-quarantine:
         self._crash_on_exception = os.environ.get("WORKER_EXCEPTION_CRASH", "") != ""
@@ -348,6 +359,11 @@ class QApp(App):
             logger.error("start_pika_thread called again")
             return
 
+        if self._state != State.PIKA_THREAD_NOT_STARTED:
+            logger.error("start_pika_thread state %s", self._state)
+            return
+
+        self._state = State.PIKA_THREAD_STARTED
         self._pika_thread = threading.Thread(
             target=self._pika_thread_body, name="Pika", daemon=True
         )
@@ -375,28 +391,28 @@ class QApp(App):
         """
         logger.info("Pika thread starting")
 
+        self._state = State.PIKA_THREAD_RUNNING
+
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
         self._subscribe()
 
         try:
             while True:
-                if not self._running:
-                    logger.info("pika thread: _running False")
+                if self._state != State.PIKA_THREAD_RUNNING:
+                    logger.info("pika thread: state %s", self._state)
                     break
                 if not (self.connection and self.connection.is_open):
                     logger.info("pika thread: connection closed")
                     break
                 # Pika 1.3.2 sources accept None as an argument to block, but
                 # types-pika 1.2.0b3 doesn't reflect that, so sleep 24 hrs.
-                # _stop_pika_thread does _call_in_pika_thread(nop) to wake:
+                # _stop_pika_thread does _call_in_pika_thread(main_exited) to wake:
                 self.connection.process_data_events(SECONDS_PER_DAY)
 
         finally:
             # tell _process_messages
-            # (some completed work won't be queued/acked)
-            # XXX race here still possible w/ _call_in_pika_thread?
-            self._running = False
+            self._state = State.PIKA_THREAD_ERROR
 
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
@@ -404,18 +420,17 @@ class QApp(App):
                 logger.info("closing Pika connection")
                 self.connection.close()
             self.connection = None
-            self._running = False  # tell _process_messages
 
-            # here if _running was set False, connection closed, exception thrown
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        if self._pika_thread is None:
+        if self._state == State.PIKA_THREAD_NOT_STARTED:
             # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()
-        elif not self._pika_thread.is_alive():
+            # XXX wait for thread startup (connection object available)!?
+        elif not self._pika_thread or not self._pika_thread.is_alive():
             logger.info("Pika thread not running: %s", cb.__name__)
             return
         elif not (self.connection and self.connection.is_open):
@@ -429,23 +444,33 @@ class QApp(App):
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
+        """
+        called from cleanup (below) after main_loop exit
+        """
         if self._pika_thread:
             if self._pika_thread.is_alive():
-                self._running = False
+                # XXX assert in main thread???
+                logger.info("Stopping pika thread")
+
+                # wake up Pika thread, and have it change _state
+                # (after all other _call_in_pika_thread generated
+                # requests procesed) to avoid loss of newly queued Stories.
+                def stop() -> None:
+                    logger.info("stop")
+                    self._state = State.STOP_PIKA_THREAD
+
+                self._call_in_pika_thread(stop)
 
                 # Log message in case Pika thread hangs.
                 logger.info("Waiting for Pika thread to exit")
-
-                # wake up Pika thread:
-                def nop() -> None:
-                    logger.info("nop")
-
-                self._call_in_pika_thread(nop)
 
                 # could issue join with timeout.
                 self._pika_thread.join()
 
     def cleanup(self) -> None:
+        """
+        called when main_loop returns
+        """
         super().cleanup()
         # saw error "Fatal Python error: _enter_buffered_busy: could
         #   not acquire lock for <_io.BufferedWriter name='<stderr>'> at
@@ -606,9 +631,16 @@ class Worker(QApp):
         May run in multiple threads!
         """
 
-        while self._running:
+        while True:
+            if self._state != State.PIKA_THREAD_RUNNING:
+                logger.info("_process_messages state %s", self._state)
+                break
+            if self._app_errors:
+                logger.info("_process_messages _app_errors")
+                break
             im = self._message_queue.get()  # blocking
             if im is None:  # kiss of death?
+                logger.info("_process_messages kiss of death")
                 break
             self._process_one_message(im)
             self._ack_and_commit(im)

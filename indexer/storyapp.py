@@ -30,6 +30,7 @@ from indexer.worker import (
     DEFAULT_ROUTING_KEY,
     InputMessage,
     QApp,
+    State,
     Worker,
 )
 
@@ -298,7 +299,7 @@ class BatchStoryWorker(StoryWorker):
         msgs: List[InputMessage] = []
 
         logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._running:
+        while self._state == State.PIKA_THREAD_RUNNING:
             while msg_number <= batch_size:  # msg_number is one-based
                 if msg_number == 1:
                     logger.debug("waiting for first batch message")
@@ -388,6 +389,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         # self.tls = threading.local()  # thread local storage object
 
         threading.main_thread().name = "Main"  # shorten name for logging
+        self._worker_errors = False
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -420,9 +422,9 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         body for worker threads
         """
         self._process_messages()
-        if self._running:
-            logger.error("_process_messages returned")
-            self._running = False
+        if self._state == State.PIKA_THREAD_RUNNING:
+            logger.error("_worker_thread _process_messages returned")
+        self._worker_errors = True
 
     def _start_worker_threads(self) -> None:
         for i in range(0, self.workers):
@@ -458,11 +460,17 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     def main_loop(self) -> None:
         try:
             self._start_worker_threads()
-            while self._running:
+            while True:
+                if self._state != State.PIKA_THREAD_RUNNING:
+                    logger.info("_state %s", self._state)
+                    break
+                if self._worker_errors:
+                    logger.info("_worker_errors")
+                    break
                 self.periodic()
                 self.interval_sleep()
         finally:
             self._queue_kisses_of_death()
             # loop joining workers???
         # return to main, which
-        # calls cleanup for pika_thread.
+        # calls cleanup which calls _stop_pika_thread.
