@@ -230,7 +230,7 @@ class Fetcher(MultiThreadStoryWorker):
 
     def periodic(self) -> None:
         """
-        called from main_loop
+        called from main_loop (in Main thread)
         """
         assert self.scoreboard
         assert self.args
@@ -244,14 +244,12 @@ class Fetcher(MultiThreadStoryWorker):
         delayed = stats.delayed - ready
 
         load_avgs = os.getloadavg()
-
-        # when input queue non-empty, first three should total to self.prefetch
         logger.info(
-            "%d active, %d ready, %d delayed, for %d sites, %d recent; lavg %.2f",
+            "%d active, %d sites, %d ready, %d delayed, %d recent, lavg %.2f",
             stats.active_fetches,
+            stats.active_slots,
             ready,
             delayed,
-            stats.active_slots,
             stats.slots,
             load_avgs[0],
         )
