@@ -29,9 +29,6 @@ SLOT_RECENT_MINUTES = 5
 #    => avg = (new - avg) * ALPHA + avg
 ALPHA = 0.25  # applied to new samples
 
-# interval to use when told to throttle
-THROTTLE_INTERVAL_SECONDS = 30.0
-
 logger = logging.getLogger(__name__)  # used only for debug: URL not known here
 
 
@@ -335,10 +332,14 @@ class Slot:
                 # discard avg connection time estimate:
                 new_average = 0.0
             elif conn_status == ConnStatus.THROTTLE:
-                if self.avg_seconds >= THROTTLE_INTERVAL_SECONDS:
-                    new_average = self.avg_seconds * 2
+                if self.avg_seconds >= self.sb.throttle_interval_seconds:
+                    # NOTE! If target_concurrency requests in flight,
+                    # this may happen many times in a row!
+                    # Use the target_concurrency'nth root of 2,
+                    # math.exp(math.log(2)/target_concurrency)??
+                    new_average = old_average * 1.2
                 else:
-                    new_average = THROTTLE_INTERVAL_SECONDS
+                    new_average = self.sb.throttle_interval_seconds
             else:  # DATA or NODATA
                 if self.avg_seconds == 0:
                     new_average = sec
@@ -429,6 +430,7 @@ class ScoreBoard:
         conn_retry_seconds: float,  # seconds before connect retry
         min_interval_seconds: float,
         max_delayed_per_slot: int,
+        throttle_interval_seconds: float,
     ):
         # single lock, rather than one each for scoreboard, active count,
         # and each slot.  Time spent with lock held should be small,
@@ -442,6 +444,7 @@ class ScoreBoard:
         self.conn_retry_seconds = conn_retry_seconds
         self.min_interval_seconds = min_interval_seconds
         self.max_delayed_per_slot = max_delayed_per_slot
+        self.throttle_interval_seconds = throttle_interval_seconds
 
         self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
         self.active_slots = 0

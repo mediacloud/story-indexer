@@ -62,13 +62,19 @@ from indexer.workers.fetcher.sched import (
     StartStatus,
 )
 
-TARGET_CONCURRENCY = 10  # scrapy fetcher AUTOTHROTTLE_TARGET_CONCURRENCY
+# goal for number of concurrent connections to a site
+# (based on Scrapy autothrottle algorithm)
+TARGET_CONCURRENCY = 4
 
-# minimum interval between initiation of requests to a site lower
-# values increase chance of concurrent connections to sites that
+# minimum interval between initiation of requests to a site.
+# Lower values increase chance of concurrent connections to sites that
 # respond quickly, but also increase the chance a site will throttle
 # our requests.
-MIN_INTERVAL_SECONDS = 5
+MIN_INTERVAL_SECONDS = 0.5
+
+# interval to use when site sends HTTP 429 "Too Many Requests".
+# intervals >= than this will be doubled.
+THROTTLE_INTERVAL_SECONDS = MIN_INTERVAL_SECONDS * 2
 
 # default delay time for "fast" queue, and max time to delay stories
 # w/ call_later.  Large values allow more requests to be delayed, so
@@ -171,6 +177,13 @@ class Fetcher(MultiThreadStoryWorker):
         )
 
         ap.add_argument(
+            "--throttle-interval-seconds",
+            type=float,
+            default=THROTTLE_INTERVAL_SECONDS,
+            help=f"initial interval after HTTP 429 (default: {THROTTLE_INTERVAL_SECONDS})",
+        )
+
+        ap.add_argument(
             "--dump-slots",
             default=False,
             action="store_true",
@@ -202,6 +215,7 @@ class Fetcher(MultiThreadStoryWorker):
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
             max_delayed_per_slot=self.prefetch // 4,
+            throttle_interval_seconds=self.args.throttle_interval_seconds,
         )
 
         self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
@@ -463,12 +477,16 @@ class Fetcher(MultiThreadStoryWorker):
             logger.info("fetch %s", url)
 
             try:  # call retire on exit
+                resp = None
+                status = -1
                 fret = self.fetch(sess, url)
                 conn_status = ConnStatus.NODATA
-                if fret.resp:
-                    if fret.resp.status_code == 200:
+                resp = fret.resp  # requests.Response; do NOT test as bool!
+                if resp is not None:
+                    status = resp.status_code
+                    if status == 200:
                         conn_status = ConnStatus.DATA
-                    elif fret.resp.status_code == 429:
+                    elif status == 429:
                         conn_status = ConnStatus.THROTTLE
             except (
                 requests.exceptions.InvalidSchema,
@@ -503,14 +521,12 @@ class Fetcher(MultiThreadStoryWorker):
                     f.delayed,
                 )
 
-        resp = fret.resp  # requests.Response
         if resp is None:
             self.incr_stories(fret.counter, url)
             if fret.quarantine:
                 raise QuarantineException(fret.counter)
             return
 
-        status = resp.status_code
         if status != 200:
             if status in SEPARATE_COUNTS:
                 counter = f"http-{status}"
