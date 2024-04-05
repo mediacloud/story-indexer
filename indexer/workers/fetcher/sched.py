@@ -214,7 +214,7 @@ class FinishRet(NamedTuple):
     """
 
     old_average: float
-    new_average: float
+    average: float
     interval: float
     active: int
     delayed: int
@@ -232,8 +232,11 @@ class Slot:
         # time since last error at this workplace:
         self.last_conn_error = Timer(sb.conn_retry_seconds)
 
-        self.avg_seconds = 0.0  # smoothed average
-        self.issue_interval = sb.min_interval_seconds
+        # average request time kept as smoothed average.
+        # zero means will be initialized by first sample
+        # (could start at initial_interval_seconds * target_concurrency)
+        self.avg_seconds = 0.0
+        self.issue_interval = sb.initial_interval_seconds
 
         self.last_start = Timer(SLOT_RECENT_MINUTES)
 
@@ -326,18 +329,18 @@ class Slot:
 
             old_average = self.avg_seconds
             if conn_status == ConnStatus.NOCONN:
-                # failed to get connection, reset time since last error
-                # (will prevent new connection attempts until it expires)
+                # failed to get connection, reset time since last error:
+                # will prevent new connection attempts until it expires
+                # in conn_retry_seconds, avoiding repeated 30 second
+                # connection timeouts.
                 self.last_conn_error.reset()
                 # discard avg connection time estimate:
                 new_average = 0.0
             elif conn_status == ConnStatus.THROTTLE:
                 if self.avg_seconds >= self.sb.throttle_interval_seconds:
-                    # NOTE! If target_concurrency requests in flight,
-                    # this may happen many times in a row!
-                    # Use the target_concurrency'nth root of 2,
-                    # math.exp(math.log(2)/target_concurrency)??
-                    new_average = old_average * 1.2
+                    # exponential backoff.
+                    # see comments where throttle_multiplier is set.
+                    new_average = old_average * self.sb.throttle_multiplier
                 else:
                     new_average = self.sb.throttle_interval_seconds
             else:  # DATA or NODATA
@@ -367,7 +370,7 @@ class Slot:
             # pass everything by keyword
             return FinishRet(
                 old_average=old_average,
-                new_average=new_average,
+                average=self.avg_seconds,
                 interval=self.issue_interval,
                 active=self.active,
                 delayed=self.delayed,
@@ -431,6 +434,7 @@ class ScoreBoard:
         min_interval_seconds: float,
         max_delayed_per_slot: int,
         throttle_interval_seconds: float,
+        initial_interval_seconds: float,
     ):
         # single lock, rather than one each for scoreboard, active count,
         # and each slot.  Time spent with lock held should be small,
@@ -445,6 +449,21 @@ class ScoreBoard:
         self.min_interval_seconds = min_interval_seconds
         self.max_delayed_per_slot = max_delayed_per_slot
         self.throttle_interval_seconds = throttle_interval_seconds
+        self.initial_interval_seconds = initial_interval_seconds
+
+        # Multiplier to apply to slot average when a THROTTLE request
+        # seen and average is already over throttle_interval_seconds.
+        effective_mult = 2
+
+        # There may be max_delayed_per_slot requests about to go out,
+        # so it's likely to see THROTTLE max_delayed_per_slot times in
+        # a row.  With the goal of multiplying the average by
+        # effective_mult the interval each time a max_delayed_per_slot
+        # THROTTLE requests are seen, calculate the multiplier to by
+        # calculating the max_delayed_per_slot'th root of effective_mult:
+        self.throttle_multiplier = math.exp(
+            math.log(effective_mult) / max_delayed_per_slot
+        )
 
         self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
         self.active_slots = 0

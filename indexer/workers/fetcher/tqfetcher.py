@@ -62,21 +62,25 @@ from indexer.workers.fetcher.sched import (
     StartStatus,
 )
 
-# goal for number of concurrent connections to a site
-# (based on Scrapy autothrottle algorithm)
+# goal for number of concurrent connections to a site (based on Scrapy
+# autothrottle algorithm). Used as a divisor of the smoothed average
+# request time to calculate the issue (connection initiation)
+# interval.  Concurrent requests will only be made when
+# avg_request_time divided by TARGET_CONCURRENCY is more than
+# MIN_INTERVAL, and most sites respond in a second or less,
+# so this only kicks in for sites that are responding slowly.
 TARGET_CONCURRENCY = 4
 
 # minimum interval between initiation of requests to a site.
-# Lower values increase chance of concurrent connections to sites that
-# respond quickly, but also increase the chance a site will throttle
-# our requests.
-MIN_INTERVAL_SECONDS = 0.5
+MIN_INTERVAL_SECONDS = 5.0
 
 # interval to use when site sends HTTP 429 "Too Many Requests".
-# intervals >= than this will be doubled.
-THROTTLE_INTERVAL_SECONDS = MIN_INTERVAL_SECONDS * 2
+THROTTLE_INTERVAL_SECONDS = 30.0
 
-# default delay time for "fast" queue, and max time to delay stories
+# initial interval
+INITIAL_INTERVAL_SECONDS = THROTTLE_INTERVAL_SECONDS / 2
+
+# default delay time for "fast" delay queue, and max time to delay stories
 # w/ call_later.  Large values allow more requests to be delayed, so
 # keeping it small, hopefully breaking up clumps.
 BUSY_DELAY_MINUTES = 2
@@ -140,6 +144,10 @@ class Fetcher(MultiThreadStoryWorker):
     # RequestException hierarchy includes bad URLs
     NO_QUARANTINE = (Retry, RequestException)
 
+    # worker threads have been observed using top to run about 50%
+    # of the time; Aim at occupying 3/4 of all cores;
+    WORKER_THREADS_DEFAULT = int(MultiThreadStoryWorker.CPU_COUNT * 2 * 3 / 4)
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -160,6 +168,13 @@ class Fetcher(MultiThreadStoryWorker):
             type=float,
             default=CONN_RETRY_MINUTES,
             help=f"minutes to cache connection failure (default: {CONN_RETRY_MINUTES})",
+        )
+
+        ap.add_argument(
+            "--initial-interval-seconds",
+            type=float,
+            default=INITIAL_INTERVAL_SECONDS,
+            help=f"initial interval for site connections (default: {INITIAL_INTERVAL_SECONDS})",
         )
 
         ap.add_argument(
@@ -214,8 +229,10 @@ class Fetcher(MultiThreadStoryWorker):
             max_delay_seconds=self.busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
+            # don't allow one site to eat entire prefetch:
             max_delayed_per_slot=self.prefetch // 4,
             throttle_interval_seconds=self.args.throttle_interval_seconds,
+            initial_interval_seconds=self.args.initial_interval_seconds,
         )
 
         self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
@@ -515,7 +532,7 @@ class Fetcher(MultiThreadStoryWorker):
                     url,
                     conn_time,
                     f.old_average,
-                    f.new_average,
+                    f.average,
                     f.interval,
                     f.active,
                     f.delayed,
