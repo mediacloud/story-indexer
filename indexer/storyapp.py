@@ -299,7 +299,7 @@ class BatchStoryWorker(StoryWorker):
         msgs: List[InputMessage] = []
 
         logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._state == State.PIKA_THREAD_RUNNING:
+        while self._state == State.RUN_PIKA_THREAD:
             while msg_number <= batch_size:  # msg_number is one-based
                 if msg_number == 1:
                     logger.debug("waiting for first batch message")
@@ -422,7 +422,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         body for worker threads
         """
         self._process_messages()
-        if self._state == State.PIKA_THREAD_RUNNING:
+        if self._state == State.RUN_PIKA_THREAD:
             logger.error("_worker_thread _process_messages returned")
         self._worker_errors = True
 
@@ -461,7 +461,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         try:
             self._start_worker_threads()
             while True:
-                if self._state != State.PIKA_THREAD_RUNNING:
+                if self._state != State.RUN_PIKA_THREAD:
                     logger.info("_state %s", self._state)
                     break
                 if self._worker_errors:

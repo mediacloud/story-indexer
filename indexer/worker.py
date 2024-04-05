@@ -181,7 +181,7 @@ def _pika_message_filter(msg: logging.LogRecord) -> bool:
 class State(Enum):
     PIKA_THREAD_NOT_STARTED = 0
     PIKA_THREAD_STARTED = 1
-    PIKA_THREAD_RUNNING = 2
+    RUN_PIKA_THREAD = 2
     STOP_PIKA_THREAD = 3
     PIKA_THREAD_ERROR = 4
     FINISHED = 5
@@ -391,7 +391,7 @@ class QApp(App):
         """
         logger.info("Pika thread starting")
 
-        self._state = State.PIKA_THREAD_RUNNING
+        self._state = State.RUN_PIKA_THREAD
 
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
@@ -399,7 +399,7 @@ class QApp(App):
 
         try:
             while True:
-                if self._state != State.PIKA_THREAD_RUNNING:
+                if self._state != State.RUN_PIKA_THREAD:
                     logger.info("pika thread: state %s", self._state)
                     break
                 if not (self.connection and self.connection.is_open):
@@ -632,7 +632,7 @@ class Worker(QApp):
         """
 
         while True:
-            if self._state != State.PIKA_THREAD_RUNNING:
+            if self._state != State.RUN_PIKA_THREAD:
                 logger.info("_process_messages state %s", self._state)
                 break
             if self._app_errors:
