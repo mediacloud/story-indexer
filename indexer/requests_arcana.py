@@ -83,8 +83,8 @@ def legacy_ssl_session() -> requests.Session:
 # https://secariolabs.com/logging-raw-http-requests-in-python/
 def log_http_requests() -> None:
     """
-    calling this function once to patch code paths so that HTTP
-    request data is logged.  This is useful to see what is being sent.
+    call this function once to patch code paths so that HTTP
+    requests are logged for test/debug.
     """
     import http
 
