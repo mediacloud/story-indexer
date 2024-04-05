@@ -345,9 +345,7 @@ class QApp(App):
 
     def start_pika_thread(self) -> None:
         """
-        Pika I/O thread. ONLY START ONE!
-        Handles async messages from AMQP (ie; RabbitMQ) server,
-        including connection keep-alive.
+        Start Pika I/O thread. ONLY START ONE!
         """
         assert self.connection
 
@@ -369,6 +367,13 @@ class QApp(App):
         )
         self._pika_thread.start()
 
+        for x in range(0, 5):
+            if self._state == State.RUN_PIKA_THREAD:
+                return
+            time.sleep(x)
+        logger.fatal("Pika thread did not start")
+        sys.exit(1)
+
     def _subscribe(self) -> None:
         """
         Called from Pika thread with newly opened connection.
@@ -381,13 +386,13 @@ class QApp(App):
 
     def _pika_thread_body(self) -> None:
         """
-        Body for Pika-thread.  Processes all Pika I/O events.
+        Body for Pika-thread.  Processes all Pika I/O events:
+        async messages from AMQP (ie; RabbitMQ) server,
+        including connection keep-alive.
 
-        Pika is not thread aware, so once started, the connection
-        is owned by this thread!!!
-
-        ALL channel methods MUST be executed via
-        self._call_in_pika_thread to run here.
+        Pika is not thread aware, so once started, the connection is
+        owned by this thread, and ALL channel methods MUST be executed
+        via self._call_in_pika_thread to run here.
         """
         logger.info("Pika thread starting")
 
@@ -407,7 +412,7 @@ class QApp(App):
                     break
                 # Pika 1.3.2 sources accept None as an argument to block, but
                 # types-pika 1.2.0b3 doesn't reflect that, so sleep 24 hrs.
-                # _stop_pika_thread does _call_in_pika_thread(main_exited) to wake:
+                # _stop_pika_thread does _call_in_pika_thread(stop) to wake:
                 self.connection.process_data_events(SECONDS_PER_DAY)
 
         finally:
