@@ -209,9 +209,9 @@ class Fetcher(MultiThreadStoryWorker):
 
         ap.add_argument(
             "--dump-slots",
-            default=False,
-            action="store_true",
-            help="dump slot info once a minute",
+            type=str,
+            default=os.environ.get("FETCHER_DUMP_FILE"),
+            help="dump slot info once a minute into named file",
         )
 
     def process_args(self) -> None:

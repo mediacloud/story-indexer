@@ -9,6 +9,7 @@ hides details of data structures and locking.
 
 import logging
 import math
+import os
 import threading
 import time
 from enum import Enum
@@ -30,6 +31,9 @@ SLOT_RECENT_MINUTES = 5
 ALPHA = 0.25  # applied to new samples
 
 logger = logging.getLogger(__name__)  # used only for debug: URL not known here
+
+
+LineOutputFunc = Callable[..., None]
 
 
 class LockError(RuntimeError):
@@ -141,9 +145,8 @@ class Timer:
         used in log messages!
         """
         if self.last == _NEVER:
-            return "not set"
-        if self.expired():
-            return "expired"
+            return "never"
+        # add a '*' if self.expired()?
         return f"{self.elapsed():.3f}"
 
 
@@ -394,8 +397,8 @@ TS_IDLE = "idle"
 
 
 class ThreadStatus:
-    info: str | None  # work info (URL or TS_IDLE)
-    ts: float  # time.monotonic
+    info: str  # thread status (URL or TS_IDLE)
+    ts: float  # time.monotonic of last change
 
 
 class StartRet(NamedTuple):
@@ -473,6 +476,9 @@ class ScoreBoard:
         # map thread name to ThreadStatus
         self.thread_status: dict[str, ThreadStatus] = {}
 
+        # so Main shows up in dumps (may be lock holder)
+        self._set_thread_status(TS_IDLE)
+
     def _get_slot(self, slot_id: str) -> Slot:
         # _COULD_ try to use IP addresses to map to slots, BUT would
         # have to deal with multiple addrs per domain name and
@@ -540,21 +546,36 @@ class ScoreBoard:
         ts.info = info
         ts.ts = time.monotonic()
 
-    def periodic(self, dump_slots: bool = False) -> Stats:
+    def periodic(self, dump_file: str | None) -> Stats:
         """
         called periodically from main thread.
-        NOTE!! dump_slots logs with lock held!!!!
-        Use only for debug!
         """
+        # so Main shows up as lock holder:
+        self._set_thread_status("periodic")
+        if dump_file:
+            tmp = dump_file + ".tmp"
+            with open(tmp, "w") as f:
+
+                def ofunc(format: str, *args: object) -> None:
+                    f.write((format % args) + "\n")
+
+                stats = self._periodic(ofunc)
+            os.rename(tmp, dump_file)
+        else:
+            stats = self._periodic(None)
+        self._set_thread_status(TS_IDLE)
+        return stats
+
+    def _periodic(self, func: LineOutputFunc | None) -> Stats:
         with self.big_lock:
-            # do this less frequently?
+            # do aging less frequently?
             # or at fixed interval (not at whim of --interval)
             # get full list first for stable iteration!
             for slot in list(self.slots.values()):
                 slot._consider_removing()
 
-            if dump_slots:  # NOTE!!! logs with lock held!!!
-                self.debug_info_nolock()
+            if func:
+                self._dump_nolock(func)
 
             return Stats(
                 slots=len(self.slots),
@@ -568,10 +589,28 @@ class ScoreBoard:
         NOTE!!! called when lock attempt times out!
         dumps info without attempting to get lock!
         """
-        for domain, slot in list(self.slots.items()):
-            logger.info(
-                "%s: %s avg %.3f, %da, %dd, last issue: %s last err: %s next: %s",
-                domain,
+        self._dump_nolock(logger.info)
+
+    def _dump_nolock(self, func: LineOutputFunc) -> None:
+        """
+        dump debugging info using supplied func
+        (passed a % style format, like logging functions)
+
+        Calling with a logger method (ie; logger.info)
+        AND the lock held is to be avoided, since logging
+        handlers make blocking DNS lookups (not on each call).
+        """
+
+        # dump all slots:
+        if self.slots:
+            func("slots:")
+        # may be called without lock, so grab list first:
+        for id_, slot in list(self.slots.items()):
+            func(
+                # display: slot id, avg request time, active req, delayed req,
+                # time since last req start, last req error, time until next issuable
+                "%s: %s avg %.3f, %da, %dd, last issue: %s, last err: %s, next: %s",
+                id_,
                 ",".join(slot.active_threads),
                 slot.avg_seconds,
                 slot.active,
@@ -581,20 +620,21 @@ class ScoreBoard:
                 slot.next_issue,
             )
 
-        # here without lock, so grab before examining:
+        # dump status for each thread
+        # can come here without lock, so take snapshot of owner:
         lock_owner_thread = self.big_lock._owner
         if lock_owner_thread:
             lock_owner_name = lock_owner_thread.name
         else:
             lock_owner_name = "NONE"
 
+        func("threads:")
         now = time.monotonic()
         for name, ts in list(self.thread_status.items()):
             if name == lock_owner_name:
                 have_lock = " *LOCK*"
             else:
                 have_lock = ""
-            # by definition debug info, but only on request/error
-            # so try to avoid having it filtered out:
             if ts.info != TS_IDLE:
-                logger.info("%s%s %.3f %s", name, have_lock, now - ts.ts, ts.info)
+                # display: thread name, secs since last status update, status
+                func("%s%s %.3f %s", name, have_lock, now - ts.ts, ts.info)
