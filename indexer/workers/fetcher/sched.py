@@ -12,7 +12,7 @@ import math
 import threading
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, List, NamedTuple, NoReturn, Optional, Type
+from typing import Any, Callable, NamedTuple, NoReturn, Type
 
 # number of seconds after start of last request to keep idle slot around
 # if no active/delayed requests and no errors (maintains request RTT)
@@ -66,7 +66,7 @@ class Lock:
         self.name = str
         self._lock = threading.Lock()
         self._error_handler = error_handler
-        self._owner: Optional[threading.Thread] = None
+        self._owner: threading.Thread | None = None
 
     def held(self) -> bool:
         """
@@ -109,7 +109,7 @@ class Timer:
     measure intervals; doesn't start ticking until reset called.
     """
 
-    def __init__(self, duration: Optional[float]) -> None:
+    def __init__(self, duration: float | None) -> None:
         """
         lock is container object lock (for asserts)
         """
@@ -246,7 +246,7 @@ class Slot:
 
         # O(n) removal, only used for debug_info
         # unclear if using a Set would be better or not...
-        self.active_threads: List[str] = []
+        self.active_threads: list[str] = []
 
     def _get_delay(self) -> float:
         """
@@ -394,7 +394,7 @@ TS_IDLE = "idle"
 
 
 class ThreadStatus:
-    info: Optional[str]  # work info (URL or TS_IDLE)
+    info: str | None  # work info (URL or TS_IDLE)
     ts: float  # time.monotonic
 
 
@@ -404,7 +404,7 @@ class StartRet(NamedTuple):
     """
 
     status: StartStatus
-    slot: Optional[Slot]
+    slot: Slot | None
 
 
 class Stats(NamedTuple):
@@ -465,13 +465,13 @@ class ScoreBoard:
             math.log(effective_mult) / max_delayed_per_slot
         )
 
-        self.slots: Dict[str, Slot] = {}  # map "id" (domain) to Slot
+        self.slots: dict[str, Slot] = {}  # map "id" (domain) to Slot
         self.active_slots = 0
         self.active_fetches = 0
         self.delayed = 0
 
         # map thread name to ThreadStatus
-        self.thread_status: Dict[str, ThreadStatus] = {}
+        self.thread_status: dict[str, ThreadStatus] = {}
 
     def _get_slot(self, slot_id: str) -> Slot:
         # _COULD_ try to use IP addresses to map to slots, BUT would
@@ -486,15 +486,18 @@ class ScoreBoard:
     def _remove_slot(self, slot_id: str) -> None:
         del self.slots[slot_id]
 
-    def get_delay(self, slot_id: str) -> float:
+    def get_delay(self, slot_id: str) -> tuple[float, int]:
         """
         called when story first picked up from message queue.
-        return time to hold message before starting (delayed counts incremented)
-        if too long (more than max_delay_seconds), returns -1
+        returns (hold_sec, num_delayed)
+
+        hold_sec: seconds to hold message before starting (delayed counts incremented)
+        (negative values are DELAY_{SKIP,LONG}). num_delayed: number of delayed fetches
+        for this slot.
         """
         with self.big_lock:
             slot = self._get_slot(slot_id)
-            return slot._get_delay()
+            return (slot._get_delay(), slot.delayed)
 
     def start(self, slot_id: str, note: str) -> StartRet:
         """

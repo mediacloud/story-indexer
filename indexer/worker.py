@@ -555,6 +555,7 @@ class Worker(QApp):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._message_queue: queue.Queue[Optional[InputMessage]] = queue.Queue()
+        self.prefetch = 2  # double buffer: one to work on, one on deck
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -616,18 +617,15 @@ class Worker(QApp):
         # (first send or ACK implicitly opens a transaction)
         chan.tx_select()
 
-        self._qos(chan)
+        # set "prefetch" limit: distributes messages among worker
+        # processes, limits the number of unacked messages queued
+        # to worker processes.
+        assert self.prefetch > 0
+        logger.info("prefetch %d", self.prefetch)
+        chan.basic_qos(prefetch_count=self.prefetch)
 
         # subscribe to the queue.
         chan.basic_consume(self.input_queue_name, self._on_message)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
-        # double buffered: one to work on, one on deck
-        chan.basic_qos(prefetch_count=2)
 
     def _process_messages(self) -> None:
         """

@@ -38,10 +38,9 @@ import signal
 import sys
 import time
 from types import FrameType
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import requests
-from pika.adapters.blocking_connection import BlockingChannel
 from requests.exceptions import RequestException
 
 from indexer.app import run
@@ -126,7 +125,7 @@ class Retry(Exception):
 
 
 class FetchReturn(NamedTuple):
-    resp: Optional[requests.Response]
+    resp: requests.Response | None
 
     # only valid if resp is None:
     counter: str
@@ -144,15 +143,24 @@ class Fetcher(MultiThreadStoryWorker):
     # RequestException hierarchy includes bad URLs
     NO_QUARANTINE = (Retry, RequestException)
 
-    # worker threads have been observed using top to run about 50%
-    # of the time; Aim at occupying 3/4 of all cores;
-    WORKER_THREADS_DEFAULT = int(MultiThreadStoryWorker.CPU_COUNT * 2 * 3 / 4)
+    # Calculate default number of worker threads.
+    # Cannot make the fractions command line options because they're needed to
+    # calculate the default for another option (when define_options is called)
+    WORKER_THREADS_DEFAULT = max(
+        1,  # at least one worker!
+        int(
+            MultiThreadStoryWorker.CPU_COUNT
+            # workers observed to run 50% of time:
+            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.5))
+            # fraction of CPU cores to occupy:
+            * float(os.environ.get("FETCHER_CORE_FRACTION", 2 / 3))
+        ),
+    )
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        self.scoreboard: Optional[ScoreBoard] = None
-        self.prefetch = 0
+        self.scoreboard: ScoreBoard | None = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -216,17 +224,16 @@ class Fetcher(MultiThreadStoryWorker):
             )
             sys.exit(1)
 
-        self.busy_delay_seconds = self.args.busy_delay_minutes * 60
+        busy_delay_seconds = self.args.busy_delay_minutes * 60
 
         # Want to avoid very large numbers of requests in the "ready"
         # state (in _message_queue), since there is no inter-request
         # delay enforced once requests land there.
         self.prefetch = self.workers * 2
-        logger.info("prefetch %d", self.prefetch)
 
         self.scoreboard = ScoreBoard(
             target_concurrency=self.args.target_concurrency,
-            max_delay_seconds=self.busy_delay_seconds,
+            max_delay_seconds=busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
             # don't allow one site to eat entire prefetch:
@@ -235,29 +242,14 @@ class Fetcher(MultiThreadStoryWorker):
             initial_interval_seconds=self.args.initial_interval_seconds,
         )
 
-        self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
+        self.set_requeue_delay_ms(1000 * busy_delay_seconds)
 
         # enable debug dump on SIGUSR1
-        def usr1_handler(sig: int, frame: Optional[FrameType]) -> None:
+        def usr1_handler(sig: int, frame: FrameType | None) -> None:
             if self.scoreboard:
                 self.scoreboard.debug_info_nolock()
 
         signal.signal(signal.SIGUSR1, usr1_handler)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit, the number of unacked messages
-        RabbitMQ will send us at any time.
-
-        Active requests, ready messages waiting in _message_queue,
-        and delayed (call_later) should total to the prefetch limit.
-
-        NOTE!!! Failure to send an ACK to RabbitMQ for
-        CONSUMER_TIMEOUT_SECONDS for ANY message will cause
-        RabbitMQ to close the connection!!!  So the estimate
-        MUST be prssimistic!!
-        """
-        chan.basic_qos(prefetch_count=self.prefetch)
 
     def periodic(self) -> None:
         """
@@ -281,7 +273,7 @@ class Fetcher(MultiThreadStoryWorker):
             stats.active_slots,
             ready,
             delayed,
-            stats.slots,
+            stats.slots,  # slots recently active, or connection failed
             load_avgs[0],
         )
 
@@ -432,9 +424,9 @@ class Fetcher(MultiThreadStoryWorker):
                 return
 
             with self.timer("get_delay"):
-                delay = self.scoreboard.get_delay(id)
+                delay, num_delayed = self.scoreboard.get_delay(id)
 
-            logger.info("%s: delay %.3f", url, delay)
+            logger.info("%s: delay %.3f (%d)", url, delay, num_delayed)
             if delay >= 0:
                 # NOTE! Using pika connection.call_later because it's available.
                 # "put" does not need to be run in the Pika thread, and the

@@ -275,14 +275,9 @@ class BatchStoryWorker(StoryWorker):
             )
             sys.exit(1)
 
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
-        assert self.args
-        # buffer exactly one full batch:
-        chan.basic_qos(prefetch_count=self.args.batch_size)
+        # buffer exactly one full batch
+        # (ACK on all messages delayed until batch processing complete)
+        self.prefetch = self.args.batch_size
 
     def _process_messages(self) -> None:
         """
@@ -407,15 +402,11 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         assert self.args
         self.workers = self.args.worker_threads
         assert self.workers > 0
+        logger.info("%d workers", self.workers)
 
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages put into
-        _message_queue
-        """
-        # buffer one for each worker thread, and one to spare:
-        chan.basic_qos(prefetch_count=int(self.workers + 1))
+        # default to one message for each worker, plus one read-ahead
+        # may be overwritten by subclasses
+        self.prefetch = self.workers + 1
 
     def _worker_thread(self) -> None:
         """
@@ -439,12 +430,12 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     def _queue_kisses_of_death(self) -> None:
         """
         queue a "None" for each worker thread,
-        ensuring everyone wakes up and knows the end is near.
+        ensuring workers wake up and knows the end is near.
 
-        Called from main thread when _running has been set to False.
+        Called from main thread when _state != RUN_PIKA_THREAD
+        or worker_errors is True
         """
         logger.info("queue_kisses_of_death")
-        self._running = False
 
         # wake up workers (in _process_messages)
         for i in range(0, self.workers):
