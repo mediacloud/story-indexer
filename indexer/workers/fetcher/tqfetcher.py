@@ -151,8 +151,8 @@ class Fetcher(MultiThreadStoryWorker):
         1,  # at least one worker!
         int(
             MultiThreadStoryWorker.CPU_COUNT
-            # workers observed to run 50% of time:
-            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.5))
+            # workers observed to run 25% of time:
+            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.25))
             # fraction of CPU cores to occupy:
             * float(os.environ.get("FETCHER_CORE_FRACTION", 2 / 3))
         ),
@@ -215,7 +215,6 @@ class Fetcher(MultiThreadStoryWorker):
         )
 
     def process_args(self) -> None:
-        super().process_args()
         assert self.args
 
         # Make sure cannot attempt a URL twice using old status information:
@@ -231,6 +230,9 @@ class Fetcher(MultiThreadStoryWorker):
         # state (in _message_queue), since there is no inter-request
         # delay enforced once requests land there.
         self.prefetch = self.workers * 2
+
+        # AFTER setting prefetch:
+        super().process_args()
 
         self.scoreboard = ScoreBoard(
             target_concurrency=self.args.target_concurrency,
