@@ -61,16 +61,18 @@ from indexer.workers.fetcher.sched import (
     StartStatus,
 )
 
-# goal for number of concurrent connections to a site (based on Scrapy
-# autothrottle algorithm). Used as a divisor of the smoothed average
-# request time to calculate the issue (connection initiation)
-# interval.  Concurrent requests will only be made when
-# avg_request_time divided by TARGET_CONCURRENCY is more than
-# MIN_INTERVAL, and most sites respond in a second or less,
-# so this only kicks in for sites that are responding slowly.
+# Limit for maximum number of concurrent connections to a site (based
+# on Scrapy autothrottle algorithm). Used as a divisor of the smoothed
+# average request time to calculate the issue (connection initiation)
+# interval.  Most of the time this is less than MIN_INTERVAL (most
+# sites respond in a second or less), so this only kicks in for sites
+# that are responding slowly, and functions to LIMIT concurrency (by
+# increasing interval above MIN_INTERVAL).
 TARGET_CONCURRENCY = 4
 
 # minimum interval between initiation of requests to a site.
+# decreasing this may cause sites to respond with HTTP 429,
+# or even ban us (for a while?), responding with HTTP 403.
 MIN_INTERVAL_SECONDS = 5.0
 
 # interval to use when site sends HTTP 429 "Too Many Requests".
@@ -80,8 +82,7 @@ THROTTLE_INTERVAL_SECONDS = 30.0
 INITIAL_INTERVAL_SECONDS = THROTTLE_INTERVAL_SECONDS / 2
 
 # default delay time for "fast" delay queue, and max time to delay stories
-# w/ call_later.  Large values allow more requests to be delayed, so
-# keeping it small, hopefully breaking up clumps.
+# w/ call_later.
 BUSY_DELAY_MINUTES = 2
 
 # time to cache server as down after a connection failure
@@ -196,7 +197,7 @@ class Fetcher(MultiThreadStoryWorker):
             "--target-concurrency",
             type=int,
             default=TARGET_CONCURRENCY,
-            help=f"goal for concurrent requests/fqdn (default: {TARGET_CONCURRENCY})",
+            help=f"maximum concurrent requests/fqdn (default: {TARGET_CONCURRENCY})",
         )
 
         ap.add_argument(
