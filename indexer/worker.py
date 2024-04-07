@@ -240,7 +240,7 @@ class QApp(App):
             "-U",
             dest="amqp_url",
             default=default_url,
-            help=f"override RABBITMQ_URL ({default_url})",
+            help=f"override RABBITMQ_URL (default {default_url})",
         )
 
         if self.PIKA_LOG_DEFAULT is not None:
