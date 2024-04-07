@@ -403,7 +403,6 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         self.workers = self.args.worker_threads
         assert self.workers > 0
 
-        # AFTER setting prefetch:
         super().process_args()
 
         # logging configured by super().process_args()
