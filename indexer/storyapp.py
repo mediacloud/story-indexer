@@ -260,6 +260,8 @@ class BatchStoryWorker(StoryWorker):
         )
 
     def process_args(self) -> None:
+        super().process_args()
+
         # leave a minimum of one minute for processing!!!
         assert self.WORK_TIME < CONSUMER_TIMEOUT_SECONDS - 60
         batch_seconds_max = CONSUMER_TIMEOUT_SECONDS - self.WORK_TIME
@@ -273,12 +275,11 @@ class BatchStoryWorker(StoryWorker):
             )
             sys.exit(1)
 
+    def prefetch(self) -> int:
         # buffer exactly one full batch
         # (ACK on all messages delayed until batch processing complete)
-        self.prefetch = self.args.batch_size
-
-        # AFTER setting prefetch:
-        super().process_args()
+        assert self.args
+        return int(self.args.batch_size)
 
     def _process_messages(self) -> None:
         """
@@ -402,15 +403,15 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         self.workers = self.args.worker_threads
         assert self.workers > 0
 
-        # default to one message for each worker, plus one read-ahead
-        # may be overwritten by subclasses
-        self.prefetch = self.workers + 1
-
         # AFTER setting prefetch:
         super().process_args()
 
         # logging configured by super().process_args()
         logger.info("%d workers", self.workers)
+
+    def prefetch(self) -> int:
+        # one to work on, and one ready for each worker thread
+        return self.workers * 2
 
     def _worker_thread(self) -> None:
         """

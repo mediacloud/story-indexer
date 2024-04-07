@@ -26,6 +26,14 @@ We have thirty minutes to ACK a message before RabbitMQ has a fit
     a callback to queue the InputMessage to the work queue (_message_queue)
     and the InputMessage will be picked up by a worker thread and passed
     to process_story()
+
+To get larger numbers of active requests, it might make more sense to
+have one worker thread for each CPU core we're trying to keep busy,
+and process many requests asynchronously in each thread.
+
+Large numbers of "ready" requests (in _message_queue), are problematic
+since there is no inter-request delay enforced once requests land
+there.  This can happen with large prefetchs.
 """
 
 # To find all stories_incr label names:
@@ -34,10 +42,8 @@ We have thirty minutes to ACK a message before RabbitMQ has a fit
 import argparse
 import logging
 import os
-import signal
 import sys
 import time
-from types import FrameType
 from typing import NamedTuple
 
 import requests
@@ -71,15 +77,18 @@ from indexer.workers.fetcher.sched import (
 TARGET_CONCURRENCY = 4
 
 # minimum interval between initiation of requests to a site.
-# decreasing this may cause sites to respond with HTTP 429,
-# or even ban us (for a while?), responding with HTTP 403.
+# decreasing this may cause sites to respond with HTTP 429, or even
+# ban us (for a while?), responding with HTTP 403.  NOTE!  Larger
+# values will limit how many articles day can be fetched (especially
+# if using IP address or "canonical domain"), at 10s, limit is
+# 8640/day, and more prolific sources would back up the queue.
 MIN_INTERVAL_SECONDS = 5.0
 
 # interval to use when site sends HTTP 429 "Too Many Requests".
 THROTTLE_INTERVAL_SECONDS = 30.0
 
 # initial interval
-INITIAL_INTERVAL_SECONDS = THROTTLE_INTERVAL_SECONDS / 2
+INITIAL_INTERVAL_SECONDS = MIN_INTERVAL_SECONDS
 
 # default delay time for "fast" delay queue, and max time to delay stories
 # w/ call_later.
@@ -140,6 +149,8 @@ class GetIdReturn(NamedTuple):
 
 
 class Fetcher(MultiThreadStoryWorker):
+    AUTO_CONNECT = False
+
     # Exceptions to discard instead of quarantine after repeated retries:
     # RequestException hierarchy includes bad URLs
     NO_QUARANTINE = (Retry, RequestException)
@@ -151,10 +162,10 @@ class Fetcher(MultiThreadStoryWorker):
         1,  # at least one worker!
         int(
             MultiThreadStoryWorker.CPU_COUNT
-            # workers observed to run 25% of time:
-            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.25))
+            # workers observed to run at most 12% most of the time via top -cH
+            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.12))
             # fraction of CPU cores to occupy:
-            * float(os.environ.get("FETCHER_CORE_FRACTION", 2 / 3))
+            * float(os.environ.get("FETCHER_CORE_FRACTION", 0.5))
         ),
     )
 
@@ -162,6 +173,7 @@ class Fetcher(MultiThreadStoryWorker):
         super().__init__(process_name, descr)
 
         self.scoreboard: ScoreBoard | None = None
+        self._prefetch = 0
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -216,6 +228,7 @@ class Fetcher(MultiThreadStoryWorker):
 
     def process_args(self) -> None:
         assert self.args
+        super().process_args()
 
         # Make sure cannot attempt a URL twice using old status information:
         if self.args.conn_retry_minutes >= self.RETRY_DELAY_MINUTES:
@@ -226,33 +239,23 @@ class Fetcher(MultiThreadStoryWorker):
 
         busy_delay_seconds = self.args.busy_delay_minutes * 60
 
-        # Want to avoid very large numbers of requests in the "ready"
-        # state (in _message_queue), since there is no inter-request
-        # delay enforced once requests land there.
-        self.prefetch = self.workers * 2
-
-        # AFTER setting prefetch:
-        super().process_args()
-
         self.scoreboard = ScoreBoard(
             target_concurrency=self.args.target_concurrency,
             max_delay_seconds=busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
-            # don't allow one site to eat entire prefetch:
-            max_delayed_per_slot=self.prefetch // 4,
+            # don't allow one or two sites to eat entire prefetch
+            # and stop progress on all other sites.
+            max_delayed_per_slot=self.prefetch() // 4,
             throttle_interval_seconds=self.args.throttle_interval_seconds,
             initial_interval_seconds=self.args.initial_interval_seconds,
         )
 
         self.set_requeue_delay_ms(1000 * busy_delay_seconds)
 
-        # enable debug dump on SIGUSR1
-        def usr1_handler(sig: int, frame: FrameType | None) -> None:
-            if self.scoreboard:
-                self.scoreboard.debug_info_nolock()
-
-        signal.signal(signal.SIGUSR1, usr1_handler)
+        # after scoreboard created (launches Pika thread which calls _on_input_message)
+        self.qconnect()
+        self._prefetch = self.prefetch()  # for gauge
 
     def periodic(self) -> None:
         """
@@ -288,7 +291,7 @@ class Fetcher(MultiThreadStoryWorker):
         requests("delayed", delayed)
 
         # above three should total to prefetch:
-        self.gauge("prefetch", self.prefetch)
+        self.gauge("prefetch", self._prefetch)
 
         self.gauge("slots.recent", stats.slots)
         self.gauge("slots.active", stats.active_slots)
@@ -367,14 +370,16 @@ class Fetcher(MultiThreadStoryWorker):
         "canonical" domain means EVERYTHING inside a domain
         looks to be one server (when that may not be the case).
 
-        *COULD* look up addresses, sort them, and pick the lowest or
-        highest?!  this would avoid hitting single servers that handle
-        many thing.dom.ain names hard, but incurrs overhead (and
-        unless the id is stashed in the story object would require
-        multiple DNS lookups: initial Pika thread dispatch, in worker
-        thread for "start" call, and again for actual connection.
-        Hopefully the result is cached nearby, but it would still incurr
-        latency for due to system calls, network delay etc.
+        *COULD* look up addresses with getaddrinfo, sort them, and
+        pick the lowest or highest?!  this would avoid hitting single
+        servers that handle many thing.dom.ain names hard, but incurrs
+        overhead (and unless the id is stashed in the story object
+        would require multiple DNS lookups: initial Pika thread
+        dispatch, in worker thread for "start" call, and again for
+        actual connection.  Hopefully the result is cached nearby, but
+        it would still incurr latency for due to system calls, network
+        delay etc.  Could also maintain a local cache (but would need
+        to be thread-safe).
         """
         rss = story.rss_entry()
 
@@ -431,26 +436,30 @@ class Fetcher(MultiThreadStoryWorker):
 
             logger.info("%s: delay %.3f (%d)", url, delay, num_delayed)
             if delay >= 0:
-                # NOTE! Using pika connection.call_later because it's available.
-                # "put" does not need to be run in the Pika thread, and the
-                # delay _could_ be managed in another thread.
+
                 def put() -> None:
-                    # _put_message queue is the normal "_on_input_message" handler
+                    # _put_message_queue is the normal "_on_input_message" handler
                     logger.debug("put #%s", im.method.delivery_tag)
                     self._put_message_queue(im)
 
-                # holding message, will be acked when processed
+                # holding message, will be acked, and counted when processed
                 if delay == 0:
-                    # enforce SOME kind of rate limit?
+                    # enforce SOME kind of rate limit to avoid pileups
+                    # with lots of new sites and large prefetch?
                     # see comments in Slot._get_delay()
                     put()
                 else:
-                    logger.debug("delay #%s", im.method.delivery_tag)
+                    # NOTE! Using pika connection.call_later because it's available.
+                    # "put" does not need to be run in the Pika thread, and the
+                    # timeouts _could_ be managed in another thread.
+                    logger.debug("delay #%s %.3f sec", im.method.delivery_tag, delay)
                     self.connection.call_later(delay, put)
                 return
             elif delay == DELAY_SKIP:
+                self.incr_stories("skipped", url)
                 raise Retry("skipped due to recent connection failure")
             elif delay == DELAY_LONG:
+                self.incr_stories("delayed", url)
                 self._requeue(im)
             else:
                 raise Retry(f"unknown delay {delay}")

@@ -5,6 +5,11 @@ Scoreboard/issue/retire terminology comes from CPU instruction
 scheduling.
 
 hides details of data structures and locking.
+
+agnostic about meaning of "id" (passed in from fetcher)
+
+GENERALLY avoids logging, since logging with a held lock
+is a bad idea (may involve a blocking DNS lookup!)
 """
 
 import logging
@@ -480,9 +485,6 @@ class ScoreBoard:
         self._set_thread_status(TS_IDLE)
 
     def _get_slot(self, slot_id: str) -> Slot:
-        # _COULD_ try to use IP addresses to map to slots, BUT would
-        # have to deal with multiple addrs per domain name and
-        # possibility of non-overlapping sets from different fqdns
         self.big_lock.assert_held()  # PARANOIA
         slot = self.slots.get(slot_id, None)
         if not slot:
@@ -584,6 +586,19 @@ class ScoreBoard:
                 delayed=self.delayed,
             )
 
+    def _append_dump_nolock(self, fname: str) -> None:
+        """
+        call for debug only
+        """
+        with open(fname, "a") as f:
+            ts = time.strftime("%F %T", time.gmtime())
+            f.write(f"==== {ts}\n")
+
+            def ofunc(format: str, *args: object) -> None:
+                f.write((format % args) + "\n")
+
+            self._dump_nolock(ofunc)
+
     def debug_info_nolock(self) -> None:
         """
         NOTE!!! called when lock attempt times out!
@@ -600,6 +615,10 @@ class ScoreBoard:
         AND the lock held is to be avoided, since logging
         handlers make blocking DNS lookups (not on each call).
         """
+
+        func(
+            f"{self.active_fetches} fetches, {self.active_slots} slots, {self.delayed} delayed"
+        )
 
         # dump all slots:
         if self.slots:

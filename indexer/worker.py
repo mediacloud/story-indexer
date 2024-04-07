@@ -555,7 +555,6 @@ class Worker(QApp):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._message_queue: queue.Queue[Optional[InputMessage]] = queue.Queue()
-        self.prefetch = 2  # double buffer: one to work on, one on deck
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -571,6 +570,10 @@ class Worker(QApp):
         assert self.args
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
+
+    def prefetch(self) -> int:
+        # double buffer: one to work on, one on deck
+        return 2
 
     def main_loop(self) -> None:
         """
@@ -620,9 +623,10 @@ class Worker(QApp):
         # set "prefetch" limit: distributes messages among worker
         # processes, limits the number of unacked messages queued
         # to worker processes.
-        assert self.prefetch > 0
-        logger.info("prefetch %d", self.prefetch)
-        chan.basic_qos(prefetch_count=self.prefetch)
+        prefetch = self.prefetch()
+        assert prefetch > 0
+        logger.info("prefetch %d", prefetch)
+        chan.basic_qos(prefetch_count=prefetch)
 
         # subscribe to the queue.
         chan.basic_consume(self.input_queue_name, self._on_message)
