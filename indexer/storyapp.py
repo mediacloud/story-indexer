@@ -401,7 +401,6 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         assert self.args
         self.workers = self.args.worker_threads
         assert self.workers > 0
-        logger.info("%d workers", self.workers)
 
         # default to one message for each worker, plus one read-ahead
         # may be overwritten by subclasses
@@ -409,6 +408,9 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
 
         # AFTER setting prefetch:
         super().process_args()
+
+        # logging configured by super().process_args()
+        logger.info("%d workers", self.workers)
 
     def _worker_thread(self) -> None:
         """
