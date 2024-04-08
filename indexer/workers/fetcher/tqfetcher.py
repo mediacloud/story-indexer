@@ -162,8 +162,8 @@ class Fetcher(MultiThreadStoryWorker):
         1,  # at least one worker!
         int(
             MultiThreadStoryWorker.CPU_COUNT
-            # workers observed to run at most 12% most of the time via top -cH
-            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.12))
+            # workers observed to run, on average about 25% of the time
+            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.25))
             # fraction of CPU cores to occupy:
             * float(os.environ.get("FETCHER_CORE_FRACTION", 0.5))
         ),
