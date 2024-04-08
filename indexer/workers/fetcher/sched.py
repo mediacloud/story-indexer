@@ -10,6 +10,8 @@ agnostic about meaning of "id" (passed in from fetcher)
 
 GENERALLY avoids logging, since logging with a held lock
 is a bad idea (may involve a blocking DNS lookup!)
+and full URLs are not (currently) passed to all calls
+(they can be passed as "note" to start())
 """
 
 import logging
@@ -608,16 +610,19 @@ class ScoreBoard:
 
     def _dump_nolock(self, func: LineOutputFunc) -> None:
         """
-        dump debugging info using supplied func
-        (passed a % style format, like logging functions)
+        dump debugging info using supplied func passed a % style format;
+        can be a logger method, like logger.info.
 
-        Calling with a logger method (ie; logger.info)
-        AND the lock held is to be avoided, since logging
-        handlers make blocking DNS lookups (not on each call).
+        NOTE!! Calling with a logger method AND the lock held should
+        be avoided, since logging handlers make blocking DNS lookups
+        (not on each call).
         """
 
         func(
-            f"{self.active_fetches} fetches, {self.active_slots} slots, {self.delayed} delayed"
+            "%s fetches, %d slots, %d delayed",
+            self.active_fetches,
+            self.active_slots,
+            self.delayed,
         )
 
         # dump all slots:
@@ -654,6 +659,6 @@ class ScoreBoard:
                 have_lock = " *LOCK*"
             else:
                 have_lock = ""
-            if ts.info != TS_IDLE:
+            if ts.info != TS_IDLE or have_lock:
                 # display: thread name, secs since last status update, status
                 func("%s%s %.3f %s", name, have_lock, now - ts.ts, ts.info)

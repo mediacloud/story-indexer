@@ -178,13 +178,12 @@ def _pika_message_filter(msg: logging.LogRecord) -> bool:
     return True
 
 
-class State(Enum):
-    PIKA_THREAD_NOT_STARTED = 0
-    PIKA_THREAD_STARTED = 1
-    RUN_PIKA_THREAD = 2
-    STOP_PIKA_THREAD = 3
-    PIKA_THREAD_ERROR = 4
-    FINISHED = 5
+class PikaThreadState(Enum):
+    NOT_STARTED = 0  # initial state
+    STARTED = 1  # set by start_pika_thread (by Main thread)
+    RUNNING = 2  # set by _pika_thread_body (by Pika thread)
+    STOPPING = 3  # set via _stop_pika_thread (by stop in Pika thread)
+    STOPPED = 4  # set at end of _pika_thread_body (by Pika thread)
 
 
 class QApp(App):
@@ -217,7 +216,7 @@ class QApp(App):
         self.connection: Optional[BlockingConnection] = None
 
         self._pika_thread: Optional[threading.Thread] = None
-        self._state = State.PIKA_THREAD_NOT_STARTED
+        self._state = PikaThreadState.NOT_STARTED
         self._app_errors = False
 
         # debugging aid to use with --from-quarantine:
@@ -357,18 +356,18 @@ class QApp(App):
             logger.error("start_pika_thread called again")
             return
 
-        if self._state != State.PIKA_THREAD_NOT_STARTED:
+        if self._state != PikaThreadState.NOT_STARTED:
             logger.error("start_pika_thread state %s", self._state)
             return
 
-        self._state = State.PIKA_THREAD_STARTED
+        self._state = PikaThreadState.STARTED
         self._pika_thread = threading.Thread(
             target=self._pika_thread_body, name="Pika", daemon=True
         )
         self._pika_thread.start()
 
         for x in range(0, 5):
-            if self._state == State.RUN_PIKA_THREAD:
+            if self._state == PikaThreadState.RUNNING:
                 return
             time.sleep(x)
         logger.fatal("Pika thread did not start")
@@ -396,7 +395,7 @@ class QApp(App):
         """
         logger.info("Pika thread starting")
 
-        self._state = State.RUN_PIKA_THREAD
+        self._state = PikaThreadState.RUNNING
 
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
@@ -404,7 +403,7 @@ class QApp(App):
 
         try:
             while True:
-                if self._state != State.RUN_PIKA_THREAD:
+                if self._state != PikaThreadState.RUNNING:
                     logger.info("pika thread: state %s", self._state)
                     break
                 if not (self.connection and self.connection.is_open):
@@ -417,7 +416,7 @@ class QApp(App):
 
         finally:
             # tell _process_messages
-            self._state = State.PIKA_THREAD_ERROR
+            self._state = PikaThreadState.STOPPED
 
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
@@ -429,7 +428,7 @@ class QApp(App):
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        if self._state == State.PIKA_THREAD_NOT_STARTED:
+        if self._state == PikaThreadState.NOT_STARTED:
             # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
@@ -462,7 +461,7 @@ class QApp(App):
                 # requests procesed) to avoid loss of newly queued Stories.
                 def stop() -> None:
                     logger.info("stop")
-                    self._state = State.STOP_PIKA_THREAD
+                    self._state = PikaThreadState.STOPPING
 
                 self._call_in_pika_thread(stop)
 
@@ -639,7 +638,7 @@ class Worker(QApp):
         """
 
         while True:
-            if self._state != State.RUN_PIKA_THREAD:
+            if self._state != PikaThreadState.RUNNING:
                 logger.info("_process_messages state %s", self._state)
                 break
             if self._app_errors:

@@ -29,8 +29,8 @@ from indexer.worker import (
     CONSUMER_TIMEOUT_SECONDS,
     DEFAULT_ROUTING_KEY,
     InputMessage,
+    PikaThreadState,
     QApp,
-    State,
     Worker,
 )
 
@@ -296,7 +296,7 @@ class BatchStoryWorker(StoryWorker):
         msgs: List[InputMessage] = []
 
         logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._state == State.RUN_PIKA_THREAD:
+        while self._state == PikaThreadState.RUNNING:
             while msg_number <= batch_size:  # msg_number is one-based
                 if msg_number == 1:
                     logger.debug("waiting for first batch message")
@@ -417,7 +417,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         body for worker threads
         """
         self._process_messages()
-        if self._state == State.RUN_PIKA_THREAD:
+        if self._state == PikaThreadState.RUNNING:
             logger.error("_worker_thread _process_messages returned")
         self._worker_errors = True
 
@@ -436,7 +436,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         queue a "None" for each worker thread,
         ensuring workers wake up and knows the end is near.
 
-        Called from main thread when _state != RUN_PIKA_THREAD
+        Called from main thread when _state != RUNNING
         or worker_errors is True
         """
         logger.info("queue_kisses_of_death")
@@ -456,7 +456,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         try:
             self._start_worker_threads()
             while True:
-                if self._state != State.RUN_PIKA_THREAD:
+                if self._state != PikaThreadState.RUNNING:
                     logger.info("_state %s", self._state)
                     break
                 if self._worker_errors:
