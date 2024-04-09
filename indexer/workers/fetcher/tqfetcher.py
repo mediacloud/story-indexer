@@ -459,7 +459,8 @@ class Fetcher(MultiThreadStoryWorker):
                 self.incr_stories("skipped", url)
                 raise Retry("skipped due to recent connection failure")
             elif delay == DELAY_LONG:
-                self.incr_stories("requeued", url, log_level=logging.DEBUG)
+                # was:
+                # self.incr_stories("requeued", url, log_level=logging.DEBUG)
                 self._requeue(im)
             else:
                 raise Retry(f"unknown delay {delay}")
