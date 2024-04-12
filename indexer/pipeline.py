@@ -395,13 +395,13 @@ class MyPipeline(Pipeline):
         p_i_a = self.add_worker("parser", [importer])
 
         # create exchanges to route outputs to regular parse/import/archive chain
-        # XXX option for queue-rss producer, feeding fetcher as worker!
         if pt == "batch-fetcher":
             self.add_producer("fetcher", [p_i_a])
         elif pt == "queue-fetcher":
-            self.add_producer(
-                "rss-queuer", [self.add_worker("fetcher", [p_i_a], fast_delay=True)]
-            )
+            # fetch/parse/import/archive:
+            f_p_i_a = self.add_worker("fetcher", [p_i_a], fast_delay=True)
+            self.add_producer("rss-queuer", [f_p_i_a])  # reads rss file
+            self.add_producer("rss-puller", [f_p_i_a])  # pulls from rss-fetcher API
         elif pt == "historical":
             # output to archiver may or may not be enabled
             # (via command line options to importer)
