@@ -86,3 +86,20 @@ To create the snapshot without SLM policy using Elasticsearch snapshot API
 ```sh
 curl X -POST "http://localhost:9200/_snapshot/mc_ec_s3_repository/snapshot_{now/d}?wait_for_completion=true"
 ```
+
+### SLM (Snapshot Lifecycle Manager)
+
+We create snapshots using Elasticsearch's Snapshot API, the policy defined [here](../../conf/elasticsearch/templates/create_slm_policy.json)
+
+The snapshots are incremental in nature, therefore this means that every 2 week snapshot taken builds from the previous snapshot's data segments. Each of the snapshots taken is full snapshot, hence can be used independently for restore operations.
+
+Our policy defines a retention policy of, minimum 5 snaps and maximum 10. This should allow us to have at minimum 1 month & 1/2 backdated data to restore from.
+PS: We can change the retention policy based on storage costs going forward.
+
+```
+"retention": {
+        "min_count": 5,
+        "max_count": 10
+    }
+
+```
