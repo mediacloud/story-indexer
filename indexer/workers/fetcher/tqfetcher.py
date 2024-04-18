@@ -26,6 +26,14 @@ We have thirty minutes to ACK a message before RabbitMQ has a fit
     a callback to queue the InputMessage to the work queue (_message_queue)
     and the InputMessage will be picked up by a worker thread and passed
     to process_story()
+
+To get larger numbers of active requests, it might make more sense to
+have one worker thread for each CPU core we're trying to keep busy,
+and process many requests asynchronously in each thread.
+
+Large numbers of "ready" requests (in _message_queue), are problematic
+since there is no inter-request delay enforced once requests land
+there.  This can happen with large prefetchs.
 """
 
 # To find all stories_incr label names:
@@ -34,18 +42,15 @@ We have thirty minutes to ACK a message before RabbitMQ has a fit
 import argparse
 import logging
 import os
-import signal
 import sys
 import time
-from types import FrameType
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import requests
-from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
-from pika.adapters.blocking_connection import BlockingChannel
 from requests.exceptions import RequestException
 
 from indexer.app import run
+from indexer.requests_arcana import legacy_ssl_session
 from indexer.story import BaseStory
 from indexer.storyapp import (
     MultiThreadStoryWorker,
@@ -62,16 +67,31 @@ from indexer.workers.fetcher.sched import (
     StartStatus,
 )
 
-TARGET_CONCURRENCY = 10  # scrapy fetcher AUTOTHROTTLE_TARGET_CONCURRENCY
+# Limit for maximum number of concurrent connections to a site (based
+# on Scrapy autothrottle algorithm). Used as a divisor of the smoothed
+# average request time to calculate the issue (connection initiation)
+# interval.  Most of the time this is less than MIN_INTERVAL (most
+# sites respond in a second or less), so this only kicks in for sites
+# that are responding slowly, and functions to LIMIT concurrency (by
+# increasing interval above MIN_INTERVAL).
+TARGET_CONCURRENCY = 4
 
-# minimum interval between initiation of requests to a site
-# lower values increase chance of concurrent connections to
-# sites that respond quickly.
-MIN_INTERVAL_SECONDS = 0.5
+# minimum interval between initiation of requests to a site.
+# decreasing this may cause sites to respond with HTTP 429, or even
+# ban us (for a while?), responding with HTTP 403.  NOTE!  Larger
+# values will limit how many articles day can be fetched (especially
+# if using IP address or "canonical domain"), at 10s, limit is
+# 8640/day, and more prolific sources would back up the queue.
+MIN_INTERVAL_SECONDS = 5.0
 
-# default delay time for "fast" queue, and max time to delay stories
-# w/ call_later.  Large values allow more requests to be delayed, so
-# keeping it small, hopefully breaking up clumps.
+# interval to use when site sends HTTP 429 "Too Many Requests".
+THROTTLE_INTERVAL_SECONDS = 30.0
+
+# initial interval
+INITIAL_INTERVAL_SECONDS = MIN_INTERVAL_SECONDS
+
+# default delay time for "fast" delay queue, and max time to delay stories
+# w/ call_later.
 BUSY_DELAY_MINUTES = 2
 
 # time to cache server as down after a connection failure
@@ -83,9 +103,6 @@ READ_SECONDS = 30.0  # for each read?
 
 # HTTP parameters:
 MAX_REDIRECTS = 30
-
-# scrapy default headers include: "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-HEADERS = {"User-Agent": MEDIA_CLOUD_USER_AGENT}
 
 # HHTP response codes to retry
 # (all others cause URL to be discarded)
@@ -118,7 +135,7 @@ class Retry(Exception):
 
 
 class FetchReturn(NamedTuple):
-    resp: Optional[requests.Response]
+    resp: requests.Response | None
 
     # only valid if resp is None:
     counter: str
@@ -132,15 +149,31 @@ class GetIdReturn(NamedTuple):
 
 
 class Fetcher(MultiThreadStoryWorker):
+    AUTO_CONNECT = False
+
     # Exceptions to discard instead of quarantine after repeated retries:
     # RequestException hierarchy includes bad URLs
     NO_QUARANTINE = (Retry, RequestException)
 
+    # Calculate default number of worker threads.
+    # Cannot make the fractions command line options because they're needed to
+    # calculate the default for another option (when define_options is called)
+    WORKER_THREADS_DEFAULT = max(
+        1,  # at least one worker!
+        int(
+            MultiThreadStoryWorker.CPU_COUNT
+            # workers observed to run, on average about 25% of the time
+            / float(os.environ.get("FETCHER_RUN_FRACTION", 0.25))
+            # fraction of CPU cores to occupy:
+            * float(os.environ.get("FETCHER_CORE_FRACTION", 0.5))
+        ),
+    )
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        self.scoreboard: Optional[ScoreBoard] = None
-        self.prefetch = 0
+        self.scoreboard: ScoreBoard | None = None
+        self._prefetch = 0
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -159,6 +192,13 @@ class Fetcher(MultiThreadStoryWorker):
         )
 
         ap.add_argument(
+            "--initial-interval-seconds",
+            type=float,
+            default=INITIAL_INTERVAL_SECONDS,
+            help=f"initial interval for site connections (default: {INITIAL_INTERVAL_SECONDS})",
+        )
+
+        ap.add_argument(
             "--min-interval-seconds",
             type=float,
             default=MIN_INTERVAL_SECONDS,
@@ -169,19 +209,26 @@ class Fetcher(MultiThreadStoryWorker):
             "--target-concurrency",
             type=int,
             default=TARGET_CONCURRENCY,
-            help=f"goal for concurrent requests/fqdn (default: {TARGET_CONCURRENCY})",
+            help=f"maximum concurrent requests/fqdn (default: {TARGET_CONCURRENCY})",
+        )
+
+        ap.add_argument(
+            "--throttle-interval-seconds",
+            type=float,
+            default=THROTTLE_INTERVAL_SECONDS,
+            help=f"initial interval after HTTP 429 (default: {THROTTLE_INTERVAL_SECONDS})",
         )
 
         ap.add_argument(
             "--dump-slots",
-            default=False,
-            action="store_true",
-            help="dump slot info once a minute",
+            type=str,
+            default=os.environ.get("FETCHER_DUMP_FILE"),
+            help="dump slot info once a minute into named file",
         )
 
     def process_args(self) -> None:
-        super().process_args()
         assert self.args
+        super().process_args()
 
         # Make sure cannot attempt a URL twice using old status information:
         if self.args.conn_retry_minutes >= self.RETRY_DELAY_MINUTES:
@@ -190,47 +237,29 @@ class Fetcher(MultiThreadStoryWorker):
             )
             sys.exit(1)
 
-        self.busy_delay_seconds = self.args.busy_delay_minutes * 60
+        busy_delay_seconds = self.args.busy_delay_minutes * 60
 
         self.scoreboard = ScoreBoard(
             target_concurrency=self.args.target_concurrency,
-            max_delay_seconds=self.busy_delay_seconds,
+            max_delay_seconds=busy_delay_seconds,
             conn_retry_seconds=self.args.conn_retry_minutes * 60,
             min_interval_seconds=self.args.min_interval_seconds,
+            # don't allow one or two sites to eat entire prefetch
+            # and stop progress on all other sites.
+            max_delayed_per_slot=self.prefetch() // 4,
+            throttle_interval_seconds=self.args.throttle_interval_seconds,
+            initial_interval_seconds=self.args.initial_interval_seconds,
         )
 
-        self.set_requeue_delay_ms(1000 * self.busy_delay_seconds)
+        self.set_requeue_delay_ms(1000 * busy_delay_seconds)
 
-        # enable debug dump on SIGUSR1
-        def usr1_handler(sig: int, frame: Optional[FrameType]) -> None:
-            if self.scoreboard:
-                self.scoreboard.debug_info_nolock()
-
-        signal.signal(signal.SIGUSR1, usr1_handler)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit, the number of unacked messages
-        RabbitMQ will send us at any time.
-
-        Active requests, ready messages waiting in _message_queue,
-        and delayed (call_later) should total to the prefetch limit.
-
-        NOTE!!! Failure to send an ACK to RabbitMQ for
-        CONSUMER_TIMEOUT_SECONDS for ANY message will cause
-        RabbitMQ to close the connection!!!  So the estimate
-        MUST be prssimistic!!
-        """
-        # Want to avoid very large numbers of requests in the "ready"
-        # state (in message queue), since there is no inter-request
-        # delay enforced once requests land there.
-        self.prefetch = self.workers * 2
-        logger.info("prefetch %d", self.prefetch)
-        chan.basic_qos(prefetch_count=self.prefetch)
+        # after scoreboard created (launches Pika thread which calls _on_input_message)
+        self.qconnect()
+        self._prefetch = self.prefetch()  # for gauge
 
     def periodic(self) -> None:
         """
-        called from main_loop
+        called from main_loop (in Main thread)
         """
         assert self.scoreboard
         assert self.args
@@ -244,15 +273,13 @@ class Fetcher(MultiThreadStoryWorker):
         delayed = stats.delayed - ready
 
         load_avgs = os.getloadavg()
-
-        # when input queue non-empty, first three should total to self.prefetch
         logger.info(
-            "%d active, %d ready, %d delayed, for %d sites, %d recent; lavg %.2f",
+            "%d active, %d sites, %d ready, %d delayed, %d recent, lavg %.2f",
             stats.active_fetches,
+            stats.active_slots,
             ready,
             delayed,
-            stats.active_slots,
-            stats.slots,
+            stats.slots,  # slots recently active, or connection failed
             load_avgs[0],
         )
 
@@ -264,7 +291,7 @@ class Fetcher(MultiThreadStoryWorker):
         requests("delayed", delayed)
 
         # above three should total to prefetch:
-        self.gauge("prefetch", self.prefetch)
+        self.gauge("prefetch", self._prefetch)
 
         self.gauge("slots.recent", stats.slots)
         self.gauge("slots.active", stats.active_slots)
@@ -278,8 +305,9 @@ class Fetcher(MultiThreadStoryWorker):
         """
         redirects = 0
 
-        # prepare initial request:
-        request = requests.Request("GET", url, headers=HEADERS)
+        # prepare initial request.
+        # NOTE: all headers set in session object
+        request = requests.Request("GET", url)
         prepreq = sess.prepare_request(request)
         while True:  # loop processing redirects
             with self.timer("get"):  # time each HTTP get
@@ -342,14 +370,16 @@ class Fetcher(MultiThreadStoryWorker):
         "canonical" domain means EVERYTHING inside a domain
         looks to be one server (when that may not be the case).
 
-        *COULD* look up addresses, sort them, and pick the lowest or
-        highest?!  this would avoid hitting single servers that handle
-        many thing.dom.ain names hard, but incurrs overhead (and
-        unless the id is stashed in the story object would require
-        multiple DNS lookups: initial Pika thread dispatch, in worker
-        thread for "start" call, and again for actual connection.
-        Hopefully the result is cached nearby, but it would still incurr
-        latency for due to system calls, network delay etc.
+        *COULD* look up addresses with getaddrinfo, sort them, and
+        pick the lowest or highest?!  this would avoid hitting single
+        servers that handle many thing.dom.ain names hard, but incurrs
+        overhead (and unless the id is stashed in the story object
+        would require multiple DNS lookups: initial Pika thread
+        dispatch, in worker thread for "start" call, and again for
+        actual connection.  Hopefully the result is cached nearby, but
+        it would still incurr latency for due to system calls, network
+        delay etc.  Could also maintain a local cache (but would need
+        to be thread-safe).
         """
         rss = story.rss_entry()
 
@@ -374,6 +404,9 @@ class Fetcher(MultiThreadStoryWorker):
     def _on_input_message(self, im: InputMessage) -> None:
         """
         YIKES!! override a basic Worker method!!!
+        Hopefully will find a cleaner abstraction, but for now,
+        breaking the rules.  Don't try this at home kids!!
+
         Performs an additional decode of serialized Story!
         NOTE! Not covered by exception catching for retry!!!
         MUST ack and commit before returning!!!
@@ -399,30 +432,35 @@ class Fetcher(MultiThreadStoryWorker):
                 return
 
             with self.timer("get_delay"):
-                delay = self.scoreboard.get_delay(id)
+                delay, num_delayed = self.scoreboard.get_delay(id)
 
-            logger.info("%s: delay %.3f", url, delay)
+            logger.info("%s: delay %.3f (%d)", url, delay, num_delayed)
             if delay >= 0:
-                # NOTE! Using pika connection.call_later because it's available.
-                # "put" does not need to be run in the Pika thread, and the
-                # delay _could_ be managed in another thread.
+
                 def put() -> None:
-                    # _put_message queue is the normal "_on_input_message" handler
+                    # _put_message_queue is the normal "_on_input_message" handler
                     logger.debug("put #%s", im.method.delivery_tag)
                     self._put_message_queue(im)
 
-                # holding message, will be acked when processed
+                # holding message, will be acked, and counted when processed
                 if delay == 0:
-                    # enforce SOME kind of rate limit?
+                    # enforce SOME kind of rate limit to avoid pileups
+                    # with lots of new sites and large prefetch?
                     # see comments in Slot._get_delay()
                     put()
                 else:
-                    logger.debug("delay #%s", im.method.delivery_tag)
+                    # NOTE! Using pika connection.call_later because it's available.
+                    # "put" does not need to be run in the Pika thread, and the
+                    # timeouts _could_ be managed in another thread.
+                    logger.debug("delay #%s %.3f sec", im.method.delivery_tag, delay)
                     self.connection.call_later(delay, put)
                 return
             elif delay == DELAY_SKIP:
+                self.incr_stories("skipped", url)
                 raise Retry("skipped due to recent connection failure")
             elif delay == DELAY_LONG:
+                # was:
+                # self.incr_stories("requeued", url, log_level=logging.DEBUG)
                 self._requeue(im)
             else:
                 raise Retry(f"unknown delay {delay}")
@@ -456,17 +494,22 @@ class Fetcher(MultiThreadStoryWorker):
 
         # ***NOTE*** here with slot marked active *MUST* call slot.finish!!!!
         t0 = time.monotonic()
-        with self.timer("fetch"):
+        with self.timer("fetch"), legacy_ssl_session() as sess:
             # log starting URL
             logger.info("fetch %s", url)
 
-            sess = requests.Session()
             try:  # call retire on exit
+                resp = None
+                status = -1
                 fret = self.fetch(sess, url)
-                if fret.resp and fret.resp.status_code == 200:
-                    conn_status = ConnStatus.DATA
-                else:
-                    conn_status = ConnStatus.NODATA
+                conn_status = ConnStatus.NODATA
+                resp = fret.resp  # requests.Response; do NOT test as bool!
+                if resp is not None:
+                    status = resp.status_code
+                    if status == 200:
+                        conn_status = ConnStatus.DATA
+                    elif status == 429:
+                        conn_status = ConnStatus.THROTTLE
             except (
                 requests.exceptions.InvalidSchema,
                 requests.exceptions.MissingSchema,
@@ -482,21 +525,30 @@ class Fetcher(MultiThreadStoryWorker):
                 conn_status = ConnStatus.NOCONN  # used in finally
                 raise  # re-raised for retry counting
             finally:
-                # ALWAYS: report slot now idle!!
-                # jumps in timing indicate lock contention!!
-                with self.timer("finish"):
-                    # keep track of connection success, latency
-                    slot.finish(conn_status, time.monotonic() - t0)
-                sess.close()
+                conn_time = time.monotonic() - t0
 
-        resp = fret.resp  # requests.Response
+                # ALWAYS: report slot now idle, update avg time.
+                # jumps in "finish" timing indicate lock contention:
+                with self.timer("finish"):
+                    f = slot.finish(conn_status, conn_time)
+                # no logging calls inside sched.py:
+                logger.info(
+                    "%s: %.3f sec; oavg %.3f navg %.3f int %.3f; %d active %d delayed",
+                    url,
+                    conn_time,
+                    f.old_average,
+                    f.average,
+                    f.interval,
+                    f.active,
+                    f.delayed,
+                )
+
         if resp is None:
             self.incr_stories(fret.counter, url)
             if fret.quarantine:
                 raise QuarantineException(fret.counter)
             return
 
-        status = resp.status_code
         if status != 200:
             if status in SEPARATE_COUNTS:
                 counter = f"http-{status}"
@@ -514,19 +566,21 @@ class Fetcher(MultiThreadStoryWorker):
         lcontent = len(content)
         ct = resp.headers.get("content-type", "")
 
-        logger.info("length %d content-type %s", lcontent, ct)
+        logger.info(
+            "%s: enc %s length %d content-type %s", url, resp.encoding, lcontent, ct
+        )
 
-        # Scrapy skipped non-text documents: need to filter them out
+        # Scrapy skipped non-text documents: need to filter them out.
+        # vedomosti.ru does not return Content-Type header!!
+        # Other XML types handled by scrapy: application/atom+xml
+        # application/rdf+xml application/rss+xml.
         if not resp.encoding and not (
             ct.startswith("text/")
             or ct.startswith("application/xhtml")
-            or ct.startswith("application/vnd.wap.xhtml+xml")
             or ct.startswith("application/xml")
+            or ct.startswith("application/vnd.wap.xhtml+xml")
+            or not ct
         ):
-            # other XML types handled by scrapy: application/atom+xml
-            # application/rdf+xml application/rss+xml.
-            # Logging the rejected content-types here
-            # so that they can be seen in the log files:
             return self.incr_stories("not-text", url)
 
         if not self.check_story_length(content, url):

@@ -29,6 +29,7 @@ from indexer.worker import (
     CONSUMER_TIMEOUT_SECONDS,
     DEFAULT_ROUTING_KEY,
     InputMessage,
+    PikaThreadState,
     QApp,
     Worker,
 )
@@ -274,14 +275,11 @@ class BatchStoryWorker(StoryWorker):
             )
             sys.exit(1)
 
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
+    def prefetch(self) -> int:
+        # buffer exactly one full batch
+        # (ACK on all messages delayed until batch processing complete)
         assert self.args
-        # buffer exactly one full batch:
-        chan.basic_qos(prefetch_count=self.args.batch_size)
+        return int(self.args.batch_size)
 
     def _process_messages(self) -> None:
         """
@@ -298,7 +296,7 @@ class BatchStoryWorker(StoryWorker):
         msgs: List[InputMessage] = []
 
         logger.info("batch_size %d, batch_seconds %d", batch_size, batch_seconds)
-        while self._running:
+        while self._state == PikaThreadState.RUNNING:
             while msg_number <= batch_size:  # msg_number is one-based
                 if msg_number == 1:
                     logger.debug("waiting for first batch message")
@@ -388,6 +386,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         # self.tls = threading.local()  # thread local storage object
 
         threading.main_thread().name = "Main"  # shorten name for logging
+        self._worker_errors = False
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -400,29 +399,27 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         )
 
     def process_args(self) -> None:
-        super().process_args()
-
         assert self.args
         self.workers = self.args.worker_threads
         assert self.workers > 0
 
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages put into
-        _message_queue
-        """
-        # buffer one for each worker thread, and one to spare:
-        chan.basic_qos(prefetch_count=int(self.workers + 1))
+        super().process_args()
+
+        # logging configured by super().process_args()
+        logger.info("%d workers", self.workers)
+
+    def prefetch(self) -> int:
+        # one to work on, and one ready for each worker thread
+        return self.workers * 2
 
     def _worker_thread(self) -> None:
         """
         body for worker threads
         """
         self._process_messages()
-        if self._running:
-            logger.error("_process_messages returned")
-            self._running = False
+        if self._state == PikaThreadState.RUNNING:
+            logger.error("_worker_thread _process_messages returned")
+        self._worker_errors = True
 
     def _start_worker_threads(self) -> None:
         for i in range(0, self.workers):
@@ -437,12 +434,12 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     def _queue_kisses_of_death(self) -> None:
         """
         queue a "None" for each worker thread,
-        ensuring everyone wakes up and knows the end is near.
+        ensuring workers wake up and knows the end is near.
 
-        Called from main thread when _running has been set to False.
+        Called from main thread when _state != RUNNING
+        or worker_errors is True
         """
         logger.info("queue_kisses_of_death")
-        self._running = False
 
         # wake up workers (in _process_messages)
         for i in range(0, self.workers):
@@ -458,11 +455,17 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     def main_loop(self) -> None:
         try:
             self._start_worker_threads()
-            while self._running:
+            while True:
+                if self._state != PikaThreadState.RUNNING:
+                    logger.info("_state %s", self._state)
+                    break
+                if self._worker_errors:
+                    logger.info("_worker_errors")
+                    break
                 self.periodic()
                 self.interval_sleep()
         finally:
             self._queue_kisses_of_death()
             # loop joining workers???
         # return to main, which
-        # calls cleanup for pika_thread.
+        # calls cleanup which calls _stop_pika_thread.

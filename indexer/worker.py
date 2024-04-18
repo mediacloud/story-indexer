@@ -19,6 +19,7 @@ import queue
 import sys
 import threading
 import time
+from enum import Enum
 from typing import Callable, Dict, NamedTuple, Optional, Tuple, Type
 
 import pika.credentials
@@ -177,6 +178,14 @@ def _pika_message_filter(msg: logging.LogRecord) -> bool:
     return True
 
 
+class PikaThreadState(Enum):
+    NOT_STARTED = 0  # initial state
+    STARTED = 1  # set by start_pika_thread (by Main thread)
+    RUNNING = 2  # set by _pika_thread_body (by Pika thread)
+    STOPPING = 3  # set via _stop_pika_thread (by stop in Pika thread)
+    STOPPED = 4  # set at end of _pika_thread_body (by Pika thread)
+
+
 class QApp(App):
     """
     Base class for AMQP/pika based App.
@@ -207,7 +216,8 @@ class QApp(App):
         self.connection: Optional[BlockingConnection] = None
 
         self._pika_thread: Optional[threading.Thread] = None
-        self._running = True
+        self._state = PikaThreadState.NOT_STARTED
+        self._app_errors = False
 
         # debugging aid to use with --from-quarantine:
         self._crash_on_exception = os.environ.get("WORKER_EXCEPTION_CRASH", "") != ""
@@ -229,7 +239,7 @@ class QApp(App):
             "-U",
             dest="amqp_url",
             default=default_url,
-            help="override RABBITMQ_URL ({default_url}",
+            help=f"override RABBITMQ_URL (default {default_url})",
         )
 
         if self.PIKA_LOG_DEFAULT is not None:
@@ -334,9 +344,7 @@ class QApp(App):
 
     def start_pika_thread(self) -> None:
         """
-        Pika I/O thread. ONLY START ONE!
-        Handles async messages from AMQP (ie; RabbitMQ) server,
-        including connection keep-alive.
+        Start Pika I/O thread. ONLY START ONE!
         """
         assert self.connection
 
@@ -348,10 +356,22 @@ class QApp(App):
             logger.error("start_pika_thread called again")
             return
 
+        if self._state != PikaThreadState.NOT_STARTED:
+            logger.error("start_pika_thread state %s", self._state)
+            return
+
+        self._state = PikaThreadState.STARTED
         self._pika_thread = threading.Thread(
             target=self._pika_thread_body, name="Pika", daemon=True
         )
         self._pika_thread.start()
+
+        for x in range(0, 5):
+            if self._state == PikaThreadState.RUNNING:
+                return
+            time.sleep(x)
+        logger.fatal("Pika thread did not start")
+        sys.exit(1)
 
     def _subscribe(self) -> None:
         """
@@ -365,15 +385,17 @@ class QApp(App):
 
     def _pika_thread_body(self) -> None:
         """
-        Body for Pika-thread.  Processes all Pika I/O events.
+        Body for Pika-thread.  Processes all Pika I/O events:
+        async messages from AMQP (ie; RabbitMQ) server,
+        including connection keep-alive.
 
-        Pika is not thread aware, so once started, the connection
-        is owned by this thread!!!
-
-        ALL channel methods MUST be executed via
-        self._call_in_pika_thread to run here.
+        Pika is not thread aware, so once started, the connection is
+        owned by this thread, and ALL channel methods MUST be executed
+        via self._call_in_pika_thread to run here.
         """
         logger.info("Pika thread starting")
+
+        self._state = PikaThreadState.RUNNING
 
         # hook for Workers to make consume calls,
         # (and/or any blocking calls, like exchange/queue creation)
@@ -381,22 +403,20 @@ class QApp(App):
 
         try:
             while True:
-                if not self._running:
-                    logger.info("pika thread: _running False")
+                if self._state != PikaThreadState.RUNNING:
+                    logger.info("pika thread: state %s", self._state)
                     break
                 if not (self.connection and self.connection.is_open):
                     logger.info("pika thread: connection closed")
                     break
                 # Pika 1.3.2 sources accept None as an argument to block, but
                 # types-pika 1.2.0b3 doesn't reflect that, so sleep 24 hrs.
-                # _stop_pika_thread does _call_in_pika_thread(nop) to wake:
+                # _stop_pika_thread does _call_in_pika_thread(stop) to wake:
                 self.connection.process_data_events(SECONDS_PER_DAY)
 
         finally:
             # tell _process_messages
-            # (some completed work won't be queued/acked)
-            # XXX race here still possible w/ _call_in_pika_thread?
-            self._running = False
+            self._state = PikaThreadState.STOPPED
 
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
@@ -404,18 +424,17 @@ class QApp(App):
                 logger.info("closing Pika connection")
                 self.connection.close()
             self.connection = None
-            self._running = False  # tell _process_messages
 
-            # here if _running was set False, connection closed, exception thrown
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        if self._pika_thread is None:
+        if self._state == PikaThreadState.NOT_STARTED:
             # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()
-        elif not self._pika_thread.is_alive():
+            # XXX wait for thread startup (connection object available)!?
+        elif not self._pika_thread or not self._pika_thread.is_alive():
             logger.info("Pika thread not running: %s", cb.__name__)
             return
         elif not (self.connection and self.connection.is_open):
@@ -429,23 +448,33 @@ class QApp(App):
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
+        """
+        called from cleanup (below) after main_loop exit
+        """
         if self._pika_thread:
             if self._pika_thread.is_alive():
-                self._running = False
+                # XXX assert in main thread???
+                logger.info("Stopping pika thread")
+
+                # wake up Pika thread, and have it change _state
+                # (after all other _call_in_pika_thread generated
+                # requests procesed) to avoid loss of newly queued Stories.
+                def stop() -> None:
+                    logger.info("stop")
+                    self._state = PikaThreadState.STOPPING
+
+                self._call_in_pika_thread(stop)
 
                 # Log message in case Pika thread hangs.
                 logger.info("Waiting for Pika thread to exit")
-
-                # wake up Pika thread:
-                def nop() -> None:
-                    logger.info("nop")
-
-                self._call_in_pika_thread(nop)
 
                 # could issue join with timeout.
                 self._pika_thread.join()
 
     def cleanup(self) -> None:
+        """
+        called when main_loop returns
+        """
         super().cleanup()
         # saw error "Fatal Python error: _enter_buffered_busy: could
         #   not acquire lock for <_io.BufferedWriter name='<stderr>'> at
@@ -541,6 +570,10 @@ class Worker(QApp):
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
 
+    def prefetch(self) -> int:
+        # double buffer: one to work on, one on deck
+        return 2
+
     def main_loop(self) -> None:
         """
         basic main_loop for a consumer.
@@ -586,18 +619,16 @@ class Worker(QApp):
         # (first send or ACK implicitly opens a transaction)
         chan.tx_select()
 
-        self._qos(chan)
+        # set "prefetch" limit: distributes messages among worker
+        # processes, limits the number of unacked messages queued
+        # to worker processes.
+        prefetch = self.prefetch()
+        assert prefetch > 0
+        logger.info("prefetch %d", prefetch)
+        chan.basic_qos(prefetch_count=prefetch)
 
         # subscribe to the queue.
         chan.basic_consume(self.input_queue_name, self._on_message)
-
-    def _qos(self, chan: BlockingChannel) -> None:
-        """
-        set "prefetch" limit: distributes messages among workers
-        processes, limits the number of unacked messages queued
-        """
-        # double buffered: one to work on, one on deck
-        chan.basic_qos(prefetch_count=2)
 
     def _process_messages(self) -> None:
         """
@@ -606,9 +637,16 @@ class Worker(QApp):
         May run in multiple threads!
         """
 
-        while self._running:
+        while True:
+            if self._state != PikaThreadState.RUNNING:
+                logger.info("_process_messages state %s", self._state)
+                break
+            if self._app_errors:
+                logger.info("_process_messages _app_errors")
+                break
             im = self._message_queue.get()  # blocking
             if im is None:  # kiss of death?
+                logger.info("_process_messages kiss of death")
                 break
             self._process_one_message(im)
             self._ack_and_commit(im)
