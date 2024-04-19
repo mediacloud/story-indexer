@@ -50,8 +50,8 @@ class ElasticConf(ElasticConfMixin, App):
         )
         # SLM
         ap.add_argument(
-            "--slm-repo",
-            dest="elasticsearch_snapshot_repo",
+            "--es-snapshot-repo",
+            dest="es_snapshot_repo",
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
         )
@@ -64,7 +64,7 @@ class ElasticConf(ElasticConfMixin, App):
             ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
-            ("elasticsearch_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
+            ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -76,7 +76,7 @@ class ElasticConf(ElasticConfMixin, App):
         self.replicas = self.args.replicas
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
-        self.elasticsearch_snapshot_repo = self.args.elasticsearch_snapshot_repo
+        self.es_snapshot_repo = self.args.es_snapshot_repo
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -155,9 +155,8 @@ class ElasticConf(ElasticConfMixin, App):
             return acknowledged
 
     def create_slm_policy(self, es: Elasticsearch) -> Any:
-        _TODAY = date.today().strftime("%Y.%m.%d")
-        policy_id = f"slm-policy-{_TODAY}"
-        repository_name = self.elasticsearch_snapshot_repo
+        policy_id = "bi_weekly_slm"
+        repository = self.es_snapshot_repo
         json_data = self.load_slm_policy_template()
         if not json_data:
             logger.error("Elasticsearch create slm policy: error template not loaded")
@@ -174,7 +173,7 @@ class ElasticConf(ElasticConfMixin, App):
             name=name,
             schedule=schedule,
             retention=retention,
-            repository=repository_name,
+            repository=repository,
         )
         acknowledged = response.get("acknowledged", False)
         if acknowledged:

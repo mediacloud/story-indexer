@@ -1,7 +1,7 @@
 {
-    "schedule": "0 30 1 */14 * ?",
+    "schedule": "0 30 1 1,15 * ?",
     "name": "<snapshot-{now/d}>",
-    "repository": "$repository_name",
+    "repository": "$repository",
     "config": {
         "indices": ["mc_search-*"],
         "ignore_unavailable": true,

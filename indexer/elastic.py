@@ -118,4 +118,4 @@ class ElasticConfMixin(ElasticMixin):
         Returns:
             Any: SLM policy data.
         """
-        return self._load_template("create_slm_policy.json")
+        return self._load_template("bi_weekly_slm_policy.json")

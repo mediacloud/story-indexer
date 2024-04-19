@@ -103,3 +103,17 @@ PS: We can change the retention policy based on storage costs going forward.
     }
 
 ```
+
+### Snapshot restoration
+
+To restore the snapshots published to S3 using SLM, we can use the [Snapshot & Restore API](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html) as follows
+
+1. Get the list of available snapshots
+
+```
+curl -x GET "http://localhost:9200/_snapshot
+```
+
+2. Restore an index
+
+
