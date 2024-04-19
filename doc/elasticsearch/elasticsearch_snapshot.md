@@ -118,7 +118,7 @@ curl -x GET "http://localhost:9200/_snapshot
 
 If we're restoring data to a pre-existing cluster, we can use either of the following methods.
 
-Delete and Restore - Delete an existing index before restoring it
+* **Delete and Restore** - Delete an existing index before restoring it
 
     ```
     # Delete an index
@@ -132,7 +132,7 @@ Delete and Restore - Delete an existing index before restoring it
     '
     ```
 
-Rename on restore - To avoid deleting existing data, we can rename the indices on restore. e.g rename "mc
+* **Rename on restore** - To avoid deleting existing data, we can rename the indices on restore. e.g rename "mc
 -search_000001" to "mc_search_restored_000001"
 
     ```
