@@ -116,4 +116,32 @@ curl -x GET "http://localhost:9200/_snapshot
 
 2. Restore an index
 
+If we're restoring data to a pre-existing cluster, we can use either of the following methods.
 
+Delete and Restore - Delete an existing index before restoring it
+
+    ```
+    # Delete an index
+    curl -X DELETE "localhost:9200/<index_name>?pretty"
+
+    # Restore Index
+    curl -X POST "localhost:9200/_snapshot/<repository_name>/<snapshot_id>/_restore?pretty" -H 'Content-Type: application/json' -d'
+    {
+    "indices": "<my-index-name>"
+    }
+    '
+    ```
+
+Rename on restore - To avoid deleting existing data, we can rename the indices on restore. e.g rename "mc
+-search_000001" to "mc_search_restored_000001"
+
+    ```
+    curl -X POST "localhost:9200/_snapshot/<repository_name>/<snapshot_id>/_restore?pretty" -H 'Content-Type: application/json' -d'
+    {
+    "indices": "mc_search-*",
+    "rename_pattern": "mc_search-(.+)",
+    "rename_replacement": "mc_search_restored-$1"
+    }
+    '
+
+    ```
