@@ -21,6 +21,9 @@ from warcio.warcwriter import WARCWriter
 
 from indexer.story import BaseStory, StoryFactory
 
+ARCHIVE_WRITER_SOFTWARE = "mediacloud story-indexer ArchiveWriter"
+ARCHIVE_EXTENSION = ".warc.gz"
+
 Story = StoryFactory()
 
 # WARC spec readings (November 2023):
@@ -176,9 +179,15 @@ class StoryArchiveWriter:
         # WARC 1.1 Annex C suggests naming:
         # Prefix-Timestamp-Serial-Crawlhost.warc.gz
         # where Timestamp is "a 14-digit GMT time-stamp"
-        ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.timestamp))
-        self.filename = f"{prefix}-{ts}-{serial}-{hostname}.warc.gz"
-        self.full_path = os.path.join(work_dir, self.filename)
+        if serial >= 0:
+            ts = time.strftime("%Y%m%d%H%M%S", time.gmtime(self.timestamp))
+            self.filename = f"{prefix}-{ts}-{serial}-{hostname}{ARCHIVE_EXTENSION}"
+        else:
+            self.filename = f"{prefix}{ARCHIVE_EXTENSION}"
+        if work_dir:
+            self.full_path = os.path.join(work_dir, self.filename)
+        else:  # allow prefix to be absolute path for testing
+            self.full_path = self.filename
         self.temp_path = f"{self.full_path}.tmp"
         self._file = open(self.temp_path, "wb")
         self.size = -1
@@ -189,7 +198,7 @@ class StoryArchiveWriter:
         info = {
             "hostname": hostname,  # likely internal or Docker container
             # ip is almost CERTAINLY an RFC1918 private addr
-            "software": "mediacloud story-indexer ArchiveWriter",
+            "software": ARCHIVE_WRITER_SOFTWARE,
             "format": "WARC file version " + WARC_VERSION.split("/")[-1],
             # others:
             # description, isPartOf, operator
@@ -337,6 +346,10 @@ class StoryArchiveWriter:
 
 
 class StoryArchiveReader:
+    """
+    read an archive written by StoryArchiveWriter
+    """
+
     def __init__(self, fileobj: BinaryIO):
         self.iterator = ArchiveIterator(fileobj)
 
@@ -346,8 +359,10 @@ class StoryArchiveReader:
         html = b""
         for record in self.iterator:
             if record.rec_type != expect:
+                # XXX log warning?
                 continue
             elif expect == "warcinfo":
+                # XXX log warning if software != ARCHIVE_WRITER_SOFTWARE?
                 expect = "response"
             elif expect == "response":
                 html = record.raw_stream.read()
