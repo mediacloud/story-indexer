@@ -49,6 +49,9 @@ def rss_fetcher_name2var(name: str) -> str:
 
 
 def rss_fetcher_name2env(name: str) -> str:
+    """
+    convert short name to environment variable name
+    """
     return rss_fetcher_name2var(name).upper()
 
 
