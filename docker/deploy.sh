@@ -58,7 +58,7 @@ usage() {
     exit 1
 }
 
-PIPELINE_TYPE=batch-fetcher	# default
+PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
 # take command line option? used for input and archive output (if created)
 HIST_YEAR=2023
