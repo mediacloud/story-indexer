@@ -1,6 +1,9 @@
 """
-Pull storeies using rss-fetcher API to fetch stories without an actual
-RSS file.
+Pull stories using rss-fetcher API (without a generated RSS file).
+
+Allows arbitrary pull frequency.  Pulling too often could result in
+clumps of stories from a single source, which isn't ideal for the
+current queue-based fetcher.
 """
 
 import argparse
@@ -25,6 +28,10 @@ from indexer.storyapp import StoryProducer
 Story = StoryFactory()
 
 logger = logging.getLogger("rss-puller")
+
+# parameter names used to generate options, members, environment vars
+# values are available as api_params[name]
+RSS_FETCHER_PARAMS = ["pass", "url", "user"]
 
 
 def rss_fetcher_name2opt(name: str) -> str:
@@ -63,6 +70,13 @@ class StoryJSON(TypedDict):
 
 
 class RSSPuller(StoryProducer):
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+
+        self.api_params = {}
+        for param in RSS_FETCHER_PARAMS:
+            self.api_params[param] = ""
+
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
 
@@ -75,12 +89,14 @@ class RSSPuller(StoryProducer):
                 help=f"rss-fetcher API {name} (default: {env})",
             )
 
-        add_rss_fetcher_arg("pass")
-        add_rss_fetcher_arg("url")
-        add_rss_fetcher_arg("user")
+        for param in RSS_FETCHER_PARAMS:
+            add_rss_fetcher_arg(param)
 
         # small batches more likely to have all stories from one source
-        # (which thawts the goal of the "shuffle" to make queue more varied)
+        # (which thawrts the goal of the "shuffle" to make queue more varied).
+        # COULD have two params (one for API, and a (possibly larger) one for
+        # how many to collect before queuing (to avoid making rss-fetcher API
+        # web server from needing to serialize large JSON strings).
         default_batch_size = int(os.environ.get("RSS_FETCHER_BATCH_SIZE", 2500))
         ap.add_argument(
             "--rss-fetcher-batch-size",
@@ -88,6 +104,23 @@ class RSSPuller(StoryProducer):
             default=default_batch_size,
             help=f"Use rss-fetcher API to fetch stories (default: {default_batch_size})",
         )
+
+    def _get_rss_fetcher_value(self, name: str) -> None:
+        """
+        worker function to fetch value from command line
+        or default (from environment) into self.api_params dict
+        """
+        member_name = rss_fetcher_name2var(name)
+        val = getattr(self.args, member_name)
+        if val == "" or val is None:
+            logger.error(
+                "need --%s or %s env var",
+                rss_fetcher_name2opt(name),
+                rss_fetcher_name2env(name),
+            )
+            sys.exit(1)
+        assert isinstance(val, str)
+        self.api_params[name] = val
 
     def process_args(self) -> None:
         super().process_args()
@@ -97,24 +130,11 @@ class RSSPuller(StoryProducer):
 
         self.dry_run = args.dry_run
 
-        def get(name: str) -> str:
-            member_name = rss_fetcher_name2var(name)
-            val = getattr(self.args, member_name)
-            if val == "" or val is None:
-                logger.error(
-                    "need --%s or %s env var",
-                    rss_fetcher_name2opt(name),
-                    rss_fetcher_name2env(name),
-                )
-                sys.exit(1)
-            assert isinstance(val, str)
-            return val
+        # fetch rss_fetcher parameters into self.api_params
+        for name in RSS_FETCHER_PARAMS:
+            self._get_rss_fetcher_value(name)
 
-        self.rss_fetcher_user = get("user")
-        self.rss_fetcher_pass = get("pass")
-        self.rss_fetcher_url = get("url")
-
-        u = urlparse(self.rss_fetcher_url)
+        u = urlparse(self.api_params["url"])
         self.rss_fetcher_netloc = u.netloc  # get host:port for "via"
 
     def api_pull_stories(self, first: int, count: int) -> list[StoryJSON]:
@@ -123,12 +143,13 @@ class RSSPuller(StoryProducer):
         """
         # There is an RSS API access class in the web-search repo, but it's
         # not a "public API", so there doesn't seem to be much point in putting
-        # the code in a PyPI module of it's own.
-        url = f"{self.rss_fetcher_url}/api/rss_entries/{first}?_limit={count}"
-        if self.rss_fetcher_user and self.rss_fetcher_pass:
-            auth = requests.auth.HTTPBasicAuth(
-                self.rss_fetcher_user, self.rss_fetcher_pass
-            )
+        # the code in a PyPI module of its own.
+        base_url = self.api_params["url"]
+        user = self.api_params["user"]
+        password = self.api_params["pass"]
+        url = f"{base_url}/api/rss_entries/{first}?_limit={count}"
+        if user and password:
+            auth = requests.auth.HTTPBasicAuth(user, password)
         else:
             auth = None
         hdrs = {"User-Agent": "story-indexer rss-queuer.py"}
