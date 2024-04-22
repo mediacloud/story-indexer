@@ -431,6 +431,8 @@ class StoryWorker(StoryMixin, Worker):
         for story in archive.read_stories():
             # XXX inside try to handle errors for "retry"?!
             # (also QuarantineException and RetryException??)
+            # or... force an InputMessage and call _process_one_message??
+            # (would need to make ArchiveStorySender in _story_sender)
             self.process_story(sender, story)
             stories += 1
         logger.info("processed %d stories", stories)
