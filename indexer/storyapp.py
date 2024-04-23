@@ -232,10 +232,6 @@ class ArchiveStorySender(StorySender):
         routing_key: str = DEFAULT_ROUTING_KEY,
         expiration_ms: Optional[int] = None,
     ) -> None:
-        print(
-            "ArchiveStorySender.send_story", story, exchange, routing_key, expiration_ms
-        )
-
         extra_metadata = {
             "queue_data": {
                 "exchange": exchange,
