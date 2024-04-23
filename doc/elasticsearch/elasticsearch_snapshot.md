@@ -89,7 +89,7 @@ curl X -POST "http://localhost:9200/_snapshot/mc_ec_s3_repository/snapshot_{now/
 
 ### SLM (Snapshot Lifecycle Manager)
 
-We create snapshots using Elasticsearch's Snapshot API, the policy defined [here](../../conf/elasticsearch/templates/create_slm_policy.json)
+We create snapshots using Elasticsearch's Snapshot API, the policy defined [here](../../conf/elasticsearch/templates/bi_weekly_slm_policy.json)
 
 The snapshots are incremental in nature, therefore this means that every 2 week snapshot taken builds from the previous snapshot's data segments. Each of the snapshots taken is full snapshot, hence can be used independently for restore operations.
 

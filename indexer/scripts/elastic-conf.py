@@ -7,7 +7,6 @@ Should exit gracefully if configurations already exists in Elasticsearch
 import argparse
 import os
 import sys
-from datetime import date
 from logging import getLogger
 from typing import Any
 
@@ -155,9 +154,9 @@ class ElasticConf(ElasticConfMixin, App):
             return acknowledged
 
     def create_slm_policy(self, es: Elasticsearch) -> Any:
-        policy_id = "bi_weekly_slm"
+        CURRENT_POLICY_ID = "bi_weekly_slm"
         repository = self.es_snapshot_repo
-        json_data = self.load_slm_policy_template()
+        json_data = self.load_slm_policy_template(CURRENT_POLICY_ID)
         if not json_data:
             logger.error("Elasticsearch create slm policy: error template not loaded")
             sys.exit(1)
@@ -168,7 +167,7 @@ class ElasticConf(ElasticConfMixin, App):
 
         # SLM starts automatically when clusture is formed.If SLM stopped start using POST /_slm/start
         response = es.slm.put_lifecycle(
-            policy_id=policy_id,
+            policy_id=CURRENT_POLICY_ID,
             config=config,
             name=name,
             schedule=schedule,
