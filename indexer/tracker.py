@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Any, Optional, Tuple, Type
 
 from indexer.app import AppException
-from indexer.path import DATAROOT
+from indexer.path import app_data_dir
 
 # basename assumes URLs and local paths both use "/":
 assert os.path.sep == "/"
@@ -134,14 +134,8 @@ class LocalFileTracker(FileTracker):
 
     def __init__(self, app_name: str, fname: str, cleanup: bool):
         super().__init__(app_name, fname, cleanup)
-        self._app_data_dir = DATAROOT()
-        if not os.path.isdir(self._app_data_dir):
-            logger.warning("%s directory not found", self._app_data_dir)
-            self._app_data_dir = "."
-        self._work_dir = os.path.join(self._app_data_dir, self.app_name)
-        if not os.path.isdir(self._work_dir):
-            os.mkdir(self._work_dir)
-        self._db_path = os.path.join(self._work_dir, f"file-tracker.{self.FILE_EXT}")
+        work_dir = app_data_dir(app_name)
+        self._db_path = os.path.join(work_dir, f"file-tracker.{self.FILE_EXT}")
 
     def _start_if_available(self) -> None:
         try:

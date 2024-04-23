@@ -33,7 +33,7 @@ S3_URL_BASE = "https://mediacloud-public.s3.amazonaws.com/backup-daily-rss"
 
 Story = StoryFactory()
 
-logger = logging.getLogger("queue-rss")
+logger = logging.getLogger("rss-queuer")
 
 
 def optional_int(input: str | None) -> int | None:

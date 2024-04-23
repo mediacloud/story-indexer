@@ -284,7 +284,7 @@ services:
       <<: *worker-deploy-settings
       labels:
          swarm.cronjob.enable: "{{queuer_cronjob_enable}}"
-         swarm.cronjob.schedule: "0 3-59/5 * * * *" {# sec min hr DOM mon DOW #}
+         swarm.cronjob.schedule: "0 {{queuer_cronjob_minutes}} * * * *" # sec min hr DOM mon DOW
          swarm.cronjob.replicas: {{queuer_cronjob_replicas}}
          swarm.cronjob.skip-running: "true" {# don't restart if currently running #}
       replicas: {{queuer_initial_replicas}}
@@ -295,6 +295,10 @@ services:
       QUEUER_S3_ACCESS_KEY_ID: {{queuer_s3_access_key_id}}
       QUEUER_S3_REGION: {{queuer_s3_region}}
       QUEUER_S3_SECRET_ACCESS_KEY: {{queuer_s3_secret_access_key}}
+      RSS_FETCHER_PASS: {{rss_fetcher_pass}}
+      RSS_FETCHER_URL: {{rss_fetcher_url}}
+      RSS_FETCHER_USER: {{rss_fetcher_user}}
+
 {% endif %}
 {% if pipeline_type == 'batch-fetcher' %}
   # scrapy batch-based fetcher:

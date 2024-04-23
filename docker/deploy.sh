@@ -146,6 +146,7 @@ NEWS_SEARCH_UI_TITLE="News Search Query" # Explorer currently appended
 PARSER_REPLICAS=4
 
 QUEUER_CRONJOB_ENABLE=true
+QUEUER_CRONJOB_MINUTES=3-59/5
 QUEUER_CRONJOB_REPLICAS=1
 QUEUER_INITIAL_REPLICAS=0
 
@@ -437,17 +438,6 @@ WORKER_IMAGE_FULL=$WORKER_IMAGE_REGISTRY$WORKER_IMAGE_NAME:$WORKER_IMAGE_TAG
 # allow multiple deploys on same swarm/cluster:
 NETWORK_NAME=$STACK_NAME
 
-# construct QUEUER_ARGS for {arch,hist,rss}-queuers
-if [ "x$QUEUER_TYPE" != x ]; then
-    if [ "x$STORY_LIMIT" != x ]; then
-	# pick random sample:
-	QUEUER_ARGS="--force --sample-size $STORY_LIMIT"
-    fi
-    QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
-else
-    QUEUER_ARGS='N/A'
-fi
-
 # calculate exported port numbers using pipeline-type and deployment-type biases:
 ELASTICSEARCH_PORT_BASE_EXPORTED=$(expr $ELASTICSEARCH_PORT_BASE + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
 NEWS_SEARCH_API_PORT_EXPORTED=$(expr $NEWS_SEARCH_API_PORT + $PIPE_TYPE_PORT_BIAS + $PORT_BIAS)
@@ -508,7 +498,28 @@ arch-queuer)
     QUEUER_S3_REGION=$ARCHIVER_S3_REGION
     QUEUER_S3_SECRET_ACCESS_KEY=$ARCHIVER_S3_SECRET_ACCESS_KEY
     ;;
+rss-queuer)
+    if [ "x$RSS_FETCHER_URL" != x ]; then
+        # switch to rss-puller if rss-fetcher API URL supplied
+	QUEUER_TYPE=rss-puller
+	QUEUER_FILES=
+	# polling too quickly will generate many small archives
+	# starting once an hour, can add /30 for twice an hour, etc
+	QUEUER_CRONJOB_MINUTES=17 # 17 is MIT Random Hall "most random number"
+    fi
 esac
+
+# construct QUEUER_ARGS for {arch,hist,rss}-queuers
+# after reading PRIVATE_CONF and checking for RSS_FETCHER_xxx params
+if [ "x$QUEUER_TYPE" != x ]; then
+    if [ "x$STORY_LIMIT" != x ]; then
+	# pick random sample:
+	QUEUER_ARGS="--force --sample-size $STORY_LIMIT"
+    fi
+    QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
+else
+    QUEUER_ARGS='N/A'
+fi
 
 # function to add a parameter to JSON CONFIG file
 add() {
@@ -609,6 +620,7 @@ add NEWS_SEARCH_UI_TITLE
 add PIPELINE_TYPE
 add QUEUER_ARGS
 add QUEUER_CRONJOB_ENABLE	# NOT bool!
+add QUEUER_CRONJOB_MINUTES	# can be *, int or range with optional /minutes
 add QUEUER_CRONJOB_REPLICAS int
 add QUEUER_INITIAL_REPLICAS int
 add QUEUER_S3_ACCESS_KEY_ID	# private
@@ -620,6 +632,9 @@ add RABBITMQ_CONTAINERS int
 add RABBITMQ_PORT int
 add RABBITMQ_PORT_EXPORTED int
 add RABBITMQ_URL
+add RSS_FETCHER_PASS allow-empty # private
+add RSS_FETCHER_URL allow-empty # private
+add RSS_FETCHER_USER allow-empty # private
 add SENTRY_DSN allow-empty	# private: empty to disable
 add SENTRY_ENVIRONMENT		# private
 add STACK_NAME

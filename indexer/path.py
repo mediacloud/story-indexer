@@ -18,3 +18,17 @@ def DATAPATH_BY_DATE(date: str, init_path: bool = True) -> str:
 
 
 STORIES = "stories"
+
+
+def app_data_dir(app_name: str) -> str:
+    """
+    return path for per-application data directory
+    (creating it first, if needed)
+    """
+    dataroot = DATAROOT()
+    if not os.path.isdir(dataroot):
+        dataroot = "."
+    work_dir = os.path.join(dataroot, app_name)
+    if not os.path.isdir(work_dir):
+        os.mkdir(work_dir)
+    return work_dir
