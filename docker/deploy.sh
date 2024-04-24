@@ -61,7 +61,7 @@ usage() {
 PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
 # take command line option? used for input and archive output (if created)
-HIST_YEAR=2023
+HIST_YEAR=2022
 #HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
 
 while getopts B:abdhinT:u OPT; do
