@@ -86,3 +86,62 @@ To create the snapshot without SLM policy using Elasticsearch snapshot API
 ```sh
 curl X -POST "http://localhost:9200/_snapshot/mc_ec_s3_repository/snapshot_{now/d}?wait_for_completion=true"
 ```
+
+### SLM (Snapshot Lifecycle Manager)
+
+We create snapshots using Elasticsearch's Snapshot API, the policy defined [here](../../conf/elasticsearch/templates/bi_weekly_slm_policy.json)
+
+The snapshots are incremental in nature, therefore this means that every 2 week snapshot taken builds from the previous snapshot's data segments. Each of the snapshots taken is full snapshot, hence can be used independently for restore operations.
+
+Our policy defines a retention policy of, minimum 5 snaps and maximum 10. This should allow us to have at minimum 1 month & 1/2 backdated data to restore from.
+PS: We can change the retention policy based on storage costs going forward.
+
+```
+"retention": {
+        "min_count": 5,
+        "max_count": 10
+    }
+
+```
+
+### Snapshot restoration
+
+To restore the snapshots published to S3 using SLM, we can use the [Snapshot & Restore API](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html) as follows
+
+1. Get the list of available snapshots
+
+```
+curl -x GET "http://localhost:9200/_snapshot
+```
+
+2. Restore an index
+
+If we're restoring data to a pre-existing cluster, we can use either of the following methods.
+
+* **Delete and Restore** - Delete an existing index before restoring it
+
+    ```
+    # Delete an index
+    curl -X DELETE "localhost:9200/<index_name>?pretty"
+
+    # Restore Index
+    curl -X POST "localhost:9200/_snapshot/<repository_name>/<snapshot_id>/_restore?pretty" -H 'Content-Type: application/json' -d'
+    {
+    "indices": "<my-index-name>"
+    }
+    '
+    ```
+
+* **Rename on restore** - To avoid deleting existing data, we can rename the indices on restore. e.g rename "mc
+-search_000001" to "mc_search_restored_000001"
+
+    ```
+    curl -X POST "localhost:9200/_snapshot/<repository_name>/<snapshot_id>/_restore?pretty" -H 'Content-Type: application/json' -d'
+    {
+    "indices": "mc_search-*",
+    "rename_pattern": "mc_search-(.+)",
+    "rename_replacement": "mc_search_restored-$1"
+    }
+    '
+
+    ```
