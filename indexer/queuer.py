@@ -40,13 +40,13 @@ logger = logging.getLogger(__name__)
 
 
 class Queuer(StoryProducer):
-    AWS_PREFIX: str  # prefix for environment vars
+    APP_BLOBSTORE: str  # first choice for config
 
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.blobstores = [self.AWS_PREFIX.upper(), "QUEUER"]
+        self.blobstores = [self.APP_BLOBSTORE.upper(), "QUEUER"]
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     from indexer.app import run
 
     class TestQueuer(Queuer):
-        AWS_PREFIX = "FOO"
+        APP_BLOBSTORE = "FOO"
         HANDLE_GZIP = True
 
         def process_file(self, fname: str, fobj: BinaryIO) -> None:

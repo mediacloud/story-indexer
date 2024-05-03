@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveQueuer(Queuer):
-    AWS_PREFIX = "ARCHIVER"  # same as archiver.py
+    APP_BLOBSTORE = "ARCHIVER"  # same as archiver.py
     HANDLE_GZIP = False  # handled by warcio
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:

@@ -49,6 +49,10 @@ class Archiver(BatchStoryWorker):
         if len(self.blobstores) == 0:
             logger.error("no blobstores found")
             sys.exit(1)
+        logger.info(
+            "blobstores configured: %s",
+            ", ".join(bs.PROVIDER for bs in self.blobstores),
+        )
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -132,7 +136,6 @@ class Archiver(BatchStoryWorker):
                             bs.PROVIDER,
                             remote_path,
                         )
-                        self.maybe_unlink_local(local_path)
                         # XXX keep count for each store instead of last?
                         status = "uploaded"
                     except tuple(bs.EXCEPTIONS) as e:
@@ -141,6 +144,7 @@ class Archiver(BatchStoryWorker):
                         )
                         # XXX keep count for each store instead of last?
                         status = "noupload"
+                self.maybe_unlink_local(local_path)
             else:
                 status = "nostore"
         else:
