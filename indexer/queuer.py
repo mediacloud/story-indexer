@@ -27,17 +27,12 @@ import logging
 import os
 import sys
 import tempfile
-from typing import TYPE_CHECKING, Any, BinaryIO, Generator, List, Optional, cast
+from typing import BinaryIO, cast
 
-import boto3
 import requests
 
-if TYPE_CHECKING:
-    from mypy_boto3_s3.client import S3Client
-else:
-    S3Client = Any
-
 from indexer.app import AppException
+from indexer.blobstore import blobstore_by_url, is_blobstore_url
 from indexer.storyapp import StoryProducer
 from indexer.tracker import TrackerException, get_tracker
 
@@ -51,7 +46,7 @@ class Queuer(StoryProducer):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.s3_client_object: Optional[S3Client] = None
+        self.blobstores = [self.AWS_PREFIX.upper(), "QUEUER"]
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -78,37 +73,6 @@ class Queuer(StoryProducer):
         """
         raise NotImplementedError("process_file not overridden")
 
-    def s3_client(self) -> S3Client:
-        """
-        return an S3 client object.
-        """
-        if not self.s3_client_object:
-            # NOTE! None values should default to using ~/.aws/credentials
-            # for command line debug/test.
-            for app in [self.AWS_PREFIX.upper(), "QUEUER"]:
-                region = os.environ.get(f"{app}_S3_REGION")
-                access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
-                secret_access_key = os.environ.get(f"{app}_S3_SECRET_ACCESS_KEY")
-                if region and access_key_id and secret_access_key:
-                    break
-            self.s3_client_object = boto3.client(
-                "s3",
-                region_name=region,
-                aws_access_key_id=access_key_id,
-                aws_secret_access_key=secret_access_key,
-            )
-        return self.s3_client_object
-
-    def split_s3_url(self, objname: str) -> List[str]:
-        """
-        assumes starts with s3://
-        returns [bucket, key]
-        """
-        path = objname[5:]
-        if "/" in path:
-            return path.split("/", 1)
-        return [path, ""]
-
     def open_file(self, fname: str) -> BinaryIO:
         """
         take local file path or a URL
@@ -131,12 +95,17 @@ class Queuer(StoryProducer):
             # which is a subclass of io.IOBase)
             assert isinstance(resp.raw, io.IOBase)
             fobj = cast(BinaryIO, resp.raw)
-        elif fname.startswith("s3://"):  # XXX handle any "blobstore" url?
-            bucket, objname = self.split_s3_url(fname)
-            s3 = self.s3_client()
+        elif is_blobstore_url(fname):
+            for store in self.blobstores:
+                try:
+                    bs, schema, objname = blobstore_by_url(store, fname)
+                except KeyError:
+                    logger.debug("no config for blobstore %s for %s", store, fname)
+                    continue
+
             # anonymous temp file: maybe cache in named file?
             tmpf = tempfile.TemporaryFile()
-            s3.download_fileobj(bucket, objname, tmpf)
+            bs.download_fileobj(objname, tmpf)
             tmpf.seek(0)  # rewind
             fobj = cast(BinaryIO, tmpf)
         else:
@@ -165,36 +134,21 @@ class Queuer(StoryProducer):
             # process in reverse sorted/chronological order (back-fill):
             for path in sorted(paths, reverse=True):
                 self.maybe_process_file(path)
-        elif fname.startswith("s3://"):  # XXX handle any blobstore URL?
-            # process in reverse sorted/chronological order (back-fill):
-            for url in sorted(self.s3_prefix_matches(fname), reverse=True):
-                self.maybe_process_file(url)
+        elif is_blobstore_url(fname):
+            # treat command line non-http URLs as prefixes and expand to all matching objects
+            # (impossible to process just one object if its key is a prefix of other keys)
+            # but as long as stores object have extensions (like .csv)
+            # this is unlikely to occur.
+            for store in self.blobstores:
+                try:
+                    bs, scheme, prefix = blobstore_by_url(store, fname)
+                except KeyError:
+                    continue
+                # process in reverse sorted/chronological order (back-fill):
+                for key in sorted(bs.list_objects(prefix), reverse=True):
+                    self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
         else:  # local files, http, https
             self.maybe_process_file(fname)
-
-    def s3_prefix_matches(self, url: str) -> Generator:
-        """
-        generator to enumerate all matching objects
-        (push into blobstore?)
-        """
-        logger.debug("s3_prefix_matches: %s", url)
-        bucket, prefix = self.split_s3_url(url)
-        s3 = self.s3_client()
-        marker = ""
-        while True:
-            res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
-            for item in res["Contents"]:
-                key = item["Key"]
-                # XXX filter based on ending?
-                out = f"s3://{bucket}/{key}"
-                logger.debug("match: %s", out)
-                yield out
-            if not res["IsTruncated"]:
-                break
-            marker = key  # see https://github.com/boto/boto3/issues/470
-            logger.debug("object list truncated; next marker: %s", marker)
-            if not marker:
-                break
 
     def maybe_process_file(self, fname: str) -> None:
         """
@@ -213,7 +167,7 @@ class Queuer(StoryProducer):
 
         queued_before = self.queued_stories
 
-        def incr_files(status: str, exc: Optional[Exception] = None) -> None:
+        def incr_files(status: str, exc: Exception | None = None) -> None:
             self.incr("files", labels=[("status", status)])
 
             queued = self.queued_stories - queued_before

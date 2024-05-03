@@ -5,6 +5,7 @@ Media Cloud Archiver Worker
 import logging
 import os
 import socket
+import sys
 import time
 from typing import Optional
 
@@ -28,7 +29,7 @@ class Archiver(BatchStoryWorker):
 
         self.archive: Optional[StoryArchiveWriter] = None
         self.archive_prefix = os.environ.get("ARCHIVER_PREFIX", "mc")
-        self.blobstore: Optional[indexer.blobstore.BlobStore] = None
+        self.blobstores: list[indexer.blobstore.BlobStore] = []
 
         self.stories = 0  # stories written to current archive
         self.archives = 0  # number of archives written
@@ -44,7 +45,10 @@ class Archiver(BatchStoryWorker):
             os.makedirs(self.work_dir)
             logger.info("created work directory %s", self.work_dir)
 
-        self.blobstore = indexer.blobstore.blobstore("ARCHIVER")
+        self.blobstores = indexer.blobstore.blobstores("ARCHIVER")
+        if len(self.blobstores) == 0:
+            logger.error("no blobstores found")
+            sys.exit(1)
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         """
@@ -112,26 +116,31 @@ class Archiver(BatchStoryWorker):
                 except OSError as e:
                     logger.warning("unlink empty %s failed: %r", local_path, e)
                 status = "empty"
-            elif self.blobstore:
+            elif self.blobstores:
                 # S3 rate limits requests to
                 #  3500 PUTs/s and 5500 GETs/s per prefix.
                 #  Varying the prefix allows faster retrieval.
                 prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
                 remote_path = prefix + name
 
-                try:
-                    self.blobstore.store_from_local_file(local_path, remote_path)
-                    logger.info(
-                        "uploaded %s to %s %s",
-                        local_path,
-                        self.blobstore.PROVIDER,
-                        remote_path,
-                    )
-                    self.maybe_unlink_local(local_path)
-                    status = "uploaded"
-                except tuple(self.blobstore.EXCEPTIONS) as e:
-                    logger.error("archive %s upload failed: %r", name, e)  # exc_info?
-                    status = "noupload"
+                for bs in self.blobstores:
+                    try:
+                        bs.upload_file(local_path, remote_path)
+                        logger.info(
+                            "uploaded %s to %s %s",
+                            local_path,
+                            bs.PROVIDER,
+                            remote_path,
+                        )
+                        self.maybe_unlink_local(local_path)
+                        # XXX keep count for each store instead of last?
+                        status = "uploaded"
+                    except tuple(bs.EXCEPTIONS) as e:
+                        logger.error(
+                            "archive %s upload to %s failed: %r", name, bs.PROVIDER, e
+                        )
+                        # XXX keep count for each store instead of last?
+                        status = "noupload"
             else:
                 status = "nostore"
         else:
