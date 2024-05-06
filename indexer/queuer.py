@@ -39,6 +39,12 @@ from indexer.tracker import TrackerException, get_tracker
 logger = logging.getLogger(__name__)
 
 
+class QueuerException(AppException):
+    """
+    Class for all exceptions raised inside Queuer
+    """
+
+
 class Queuer(StoryProducer):
     APP_BLOBSTORE: str  # first choice for config
 
@@ -70,13 +76,25 @@ class Queuer(StoryProducer):
         Override, calling "self.queue_story" for each Story
         NOTE! fobj is a binary file!
         Wrap with TextIOWrapper for reading strings
+
+        Remote file could be large (daily RSS file or WARC file) so
+        avoid assuming it's reasonable to read it all into memory
+        (multiple instances of a queuer may be running in parallel)
+
+        Called inside "with tracker", so MUST raise exception on error
         """
         raise NotImplementedError("process_file not overridden")
 
     def open_file(self, fname: str) -> BinaryIO:
         """
-        take local file path or a URL
-        return BinaryIO file object (optionally decompressed)
+        take local file path or a URL (http/https/blobstore)
+        return BinaryIO file object (optionally decompressed).
+
+        Remote file could be large (daily RSS file or WARC file) so
+        avoid assuming it's reasonable to read it all into memory
+        (multiple instances of a queuer may be running in parallel)
+
+        Called inside "with tracker"; MUST raise exception on error!
         """
         if os.path.isfile(fname):
             if self.HANDLE_GZIP and fname.endswith(".gz"):
@@ -90,26 +108,32 @@ class Queuer(StoryProducer):
         if fname.startswith("http:") or fname.startswith("https:"):
             resp = requests.get(fname, stream=True, timeout=60)
             if not resp or resp.status_code != 200:
-                raise AppException(str(resp))
+                raise QueuerException(str(resp))
             # (resp.raw is urllib3.response.HTTPResponse,
             # which is a subclass of io.IOBase)
             assert isinstance(resp.raw, io.IOBase)
             fobj = cast(BinaryIO, resp.raw)
         elif is_blobstore_url(fname):
+            # look for a complete set of blobstore configuration
             for store in self.blobstores:
                 try:
                     bs, schema, objname = blobstore_by_url(store, fname)
+                    break  # stop at first complete set of config
                 except KeyError:
                     logger.debug("no config for blobstore %s for %s", store, fname)
                     continue
+            else:
+                # called inside try w/ Tracker
+                raise QueuerException(f"no blobstore configuration for {fname}")
 
-            # anonymous temp file: maybe cache in named file?
+            # remote object could be large (a WARC file) so download into
+            # anonymous temp (disk) file: maybe cache in named file?
             tmpf = tempfile.TemporaryFile()
             bs.download_fileobj(objname, tmpf)
             tmpf.seek(0)  # rewind
             fobj = cast(BinaryIO, tmpf)
         else:
-            raise AppException("file not found or unknown URL")
+            raise QueuerException(f"{fname} not found or unknown URL schema")
 
         # uncompress on the fly?
         if self.HANDLE_GZIP and fname.endswith(".gz"):
@@ -139,14 +163,22 @@ class Queuer(StoryProducer):
             # (impossible to process just one object if its key is a prefix of other keys)
             # but as long as stores object have extensions (like .csv)
             # this is unlikely to occur.
+
+            # look for a complete set of blobstore configuration:
             for store in self.blobstores:
                 try:
                     bs, scheme, prefix = blobstore_by_url(store, fname)
+                    break  # stop at first complete set of config
                 except KeyError:
+                    logger.debug("no config for blobstore %s for %s", store, fname)
                     continue
-                # process in reverse sorted/chronological order (back-fill):
-                for key in sorted(bs.list_objects(prefix), reverse=True):
-                    self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
+            else:
+                logger.error("no blobstore configuration for %s", fname)
+                # may have already processed some files, so keep going
+                return
+            # process in reverse sorted/chronological order (back-fill):
+            for key in sorted(bs.list_objects(prefix), reverse=True):
+                self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
         else:  # local files, http, https
             self.maybe_process_file(fname)
 
