@@ -61,7 +61,7 @@ usage() {
 PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
 # take command line option? used for input and archive output (if created)
-HIST_YEAR=2023
+HIST_YEAR=2022
 #HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
 
 while getopts B:abdhinT:u OPT; do
@@ -127,6 +127,7 @@ ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.12.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
+ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
 
 FETCHER_CRONJOB_ENABLE=true	# batch fetcher
 FETCHER_NUM_BATCHES=20		# batch fetcher
