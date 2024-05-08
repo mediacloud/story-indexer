@@ -45,10 +45,11 @@ class Archiver(BatchStoryWorker):
             os.makedirs(self.work_dir)
             logger.info("created work directory %s", self.work_dir)
 
+        # returns list of 0 or more BlobStore provider objects
         self.blobstores = indexer.blobstore.blobstores("ARCHIVER")
         if len(self.blobstores) == 0:
             logger.error("no blobstores found")
-            sys.exit(1)
+            sys.exit(0)  # happy exit (for developers w/o keys)
         logger.info(
             "blobstores configured: %s",
             ", ".join(bs.PROVIDER for bs in self.blobstores),

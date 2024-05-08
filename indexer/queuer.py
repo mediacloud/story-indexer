@@ -48,6 +48,7 @@ class QueuerException(AppException):
 class Queuer(StoryProducer):
     APP_BLOBSTORE: str  # first choice for config
 
+    # will be False when handling WARC files (warcio handles it)
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
     def __init__(self, process_name: str, descr: str):
@@ -98,7 +99,7 @@ class Queuer(StoryProducer):
         """
         if os.path.isfile(fname):
             if self.HANDLE_GZIP and fname.endswith(".gz"):
-                # read/uncompress local gzip'ed file
+                logger.debug("uncompressing local %s on the fly", fname)
                 gzio = gzip.GzipFile(fname, "rb")
                 assert isinstance(gzio, io.IOBase)
                 return cast(BinaryIO, gzio)
@@ -118,26 +119,36 @@ class Queuer(StoryProducer):
             for store in self.blobstores:
                 try:
                     bs, schema, objname = blobstore_by_url(store, fname)
-                    break  # stop at first complete set of config
                 except KeyError:
                     logger.debug("no config for blobstore %s for %s", store, fname)
+                    continue
+
+                try:
+                    # now inside "try" because Backblaze keys are
+                    # either single bucket, or all buckets, and it's
+                    # more likely a queuer might actually need
+                    # multiple keys (eg; reading CSVs from one bucket
+                    # that reference objects in another bucket).
+
+                    # remote object could be large (a WARC file) so download into
+                    # anonymous temp (disk) file: maybe cache in named file?
+                    tmpf = tempfile.TemporaryFile()
+                    bs.download_fileobj(objname, tmpf)
+                    tmpf.seek(0)  # rewind
+                    fobj = cast(BinaryIO, tmpf)
+                    break  # found working config: for store .... loop
+                except tuple(bs.EXCEPTIONS) as e:
+                    logger.debug("blobstore %s for %s: %r", store, fname, e)
                     continue
             else:
                 # called inside try w/ Tracker
                 raise QueuerException(f"no blobstore configuration for {fname}")
 
-            # remote object could be large (a WARC file) so download into
-            # anonymous temp (disk) file: maybe cache in named file?
-            tmpf = tempfile.TemporaryFile()
-            bs.download_fileobj(objname, tmpf)
-            tmpf.seek(0)  # rewind
-            fobj = cast(BinaryIO, tmpf)
         else:
             raise QueuerException(f"{fname} not found or unknown URL schema")
 
-        # uncompress on the fly?
         if self.HANDLE_GZIP and fname.endswith(".gz"):
-            logger.debug("zcat ")
+            logger.debug("uncompressing %s on the fly", fname)
             gzio = gzip.GzipFile(filename=fname, mode="rb", fileobj=fobj)
             return cast(BinaryIO, gzio)
 
@@ -168,17 +179,28 @@ class Queuer(StoryProducer):
             for store in self.blobstores:
                 try:
                     bs, scheme, prefix = blobstore_by_url(store, fname)
-                    break  # stop at first complete set of config
                 except KeyError:
                     logger.debug("no config for blobstore %s for %s", store, fname)
+                    continue
+
+                try:
+                    # now inside loop+try because Backblaze keys are
+                    # either single bucket, or all buckets, and it's
+                    # more likely a queuer might actually need
+                    # multiple keys (eg; reading CSVs from one bucket
+                    # that reference objects in another bucket).
+                    for key in sorted(bs.list_objects(prefix), reverse=True):
+                        self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
+                    break  # found working config: for store .... loop
+
+                except tuple(bs.EXCEPTIONS) as e:
+                    logger.debug("blobstore %s for %s: %r", store, fname, e)
                     continue
             else:
                 logger.error("no blobstore configuration for %s", fname)
                 # may have already processed some files, so keep going
                 return
             # process in reverse sorted/chronological order (back-fill):
-            for key in sorted(bs.list_objects(prefix), reverse=True):
-                self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
         else:  # local files, http, https
             self.maybe_process_file(fname)
 
