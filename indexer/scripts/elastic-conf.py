@@ -75,7 +75,9 @@ class ElasticConf(ElasticConfMixin, App):
         self.replicas = self.args.replicas
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
-        self.es_snapshot_repo = self.args.es_snapshot_repo
+        self.es_snapshot_repo = getattr(
+            self.args, "es_snapshot_repo", "mediacloud-test-elasticsearch-snapshots"
+        )
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -165,7 +167,7 @@ class ElasticConf(ElasticConfMixin, App):
         schedule = json_data["schedule"]
         retention = json_data["retention"]
 
-        # SLM starts automatically when clusture is formed.If SLM stopped start using POST /_slm/start
+        # SLM starts automatically when cluster is formed.If SLM stopped start using POST /_slm/start
         response = es.slm.put_lifecycle(
             policy_id=CURRENT_POLICY_ID,
             config=config,
