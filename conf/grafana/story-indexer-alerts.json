@@ -237,7 +237,8 @@
       "targets": [
         {
           "refId": "A",
-          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in)"
+          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in, stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-delay)",
+          "textEditor": false
         }
       ],
       "thresholds": [
@@ -252,7 +253,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "all input queues",
+      "title": "sum of all input & delay queues",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -618,5 +619,5 @@
   "timezone": "",
   "title": "story-indexer alerts",
   "uid": "hN1OxidSk",
-  "version": 12
+  "version": 13
 }
