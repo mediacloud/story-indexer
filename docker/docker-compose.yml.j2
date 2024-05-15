@@ -345,7 +345,7 @@ services:
    # Hopefully, each archive has enough stories to keep
    # pipeline busy enough not to need parallel fetching.
 {% elif pipeline_type == 'csv-fetcher' %}
-  csv-queuer:
+  csv-fetcher:
     <<: *worker-service-settings
     deploy:
       <<: *worker-deploy-settings
