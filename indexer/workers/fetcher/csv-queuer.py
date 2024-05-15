@@ -1,9 +1,5 @@
 """
-Read CSVs of articles from legacy system from S3, http or local
-files and queues Stories with URL and legacy downloads_id for
-hist-fetcher (S3 fetch latency is too high for a single process to
-achieve anything close to S3 request rate limit (5500 requests/second
-per prefix)
+Read CSVs of URLS from legacy system in S3, between the dates, 2022 01/25 - 02/17
 """
 
 import csv
@@ -65,7 +61,6 @@ class CSVQueuer(Queuer):
             if not self.check_story_url(url):
                 continue  # logged and counted
 
-
             # let hist-fetcher quarantine if bad
 
             story = Story()
@@ -83,24 +78,24 @@ class CSVQueuer(Queuer):
             # with story.http_metadata() as hmd:
             #     hmd.final_url = url
             #     if collect_date:
-                    # convert original date/time (treat as UTC) to a
-                    # timestamp of the time the HTML was fetched,
-                    # to preserve this otherwise unused bit of information.
+            # convert original date/time (treat as UTC) to a
+            # timestamp of the time the HTML was fetched,
+            # to preserve this otherwise unused bit of information.
 
-                    # if len(collect_date) < 20:
-                    #     collect_date += ".0"  # ensure fraction present
+            # if len(collect_date) < 20:
+            #     collect_date += ".0"  # ensure fraction present
 
-                    # fromisoformat wants EXACTLY six digits of fractional
-                    # seconds, but the CSV files omit trailing zeroes, so
-                    # use strptime.  Append UTC timezone offset to prevent
-                    # timestamp method from treating naive datetime as in
-                    # the local time zone.  date/time stuff and time zones
-                    # are always a pain, but somehow, this particular
-                    # corner of Python seems particularly painful.
-                    # collect_dt = dt.datetime.strptime(
-                    #     collect_date + " +00:00", "%Y-%m-%d %H:%M:%S.%f %z"
-                    # )
-                    # hmd.fetch_timestamp = collect_dt.timestamp()
+            # fromisoformat wants EXACTLY six digits of fractional
+            # seconds, but the CSV files omit trailing zeroes, so
+            # use strptime.  Append UTC timezone offset to prevent
+            # timestamp method from treating naive datetime as in
+            # the local time zone.  date/time stuff and time zones
+            # are always a pain, but somehow, this particular
+            # corner of Python seems particularly painful.
+            # collect_dt = dt.datetime.strptime(
+            #     collect_date + " +00:00", "%Y-%m-%d %H:%M:%S.%f %z"
+            # )
+            # hmd.fetch_timestamp = collect_dt.timestamp()
 
             # content_metadata.parsed_date is not set, so parser.py will
             # put in the actual parse time as usual:
