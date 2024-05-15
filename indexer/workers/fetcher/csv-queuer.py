@@ -67,7 +67,7 @@ class CSVQueuer(Queuer):
             with story.rss_entry() as rss:
                 # store downloads_id (used to download HTML from S3)
                 # as the "original" location, for use by hist-fetcher.py
-                rss.link = None
+                rss.link = url
                 rss.fetch_date = fetch_date
                 rss.source_feed_id = None
                 rss.source_source_id = None  # media is legacy name
