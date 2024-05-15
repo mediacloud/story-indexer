@@ -263,7 +263,7 @@ csv-fetcher)
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200
     QUEUER_TYPE='csv-queuer'
-
+    QUEUER_FILES=s3://mediacloud-database-e-files/csv_files/
     ;;
 *)
     echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2

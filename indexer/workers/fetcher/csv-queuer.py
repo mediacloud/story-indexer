@@ -74,6 +74,7 @@ class CSVQueuer(Queuer):
                 rss.via = fname
                 rss.source_url = url
 
+            print(f"RSS for CSV queuer:{rss.source_url}")
             # collect_date = row.get("collect_date", None)
             # with story.http_metadata() as hmd:
             #     hmd.final_url = url
