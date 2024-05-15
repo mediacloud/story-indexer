@@ -344,6 +344,14 @@ services:
    # arch-queuer reads archives directly and queues stories.
    # Hopefully, each archive has enough stories to keep
    # pipeline busy enough not to need parallel fetching.
+{% elif pipeline_type == 'csv-fetcher' %}
+  csv-queuer:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: csv-queuer
 {% endif %}
 
   parser-worker:

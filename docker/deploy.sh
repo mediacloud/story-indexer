@@ -43,7 +43,7 @@ fi
 # capture command line
 DEPLOYMENT_OPTIONS="$*"
 
-PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher, csv-fetcher"
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -258,6 +258,12 @@ queue-fetcher)
     # that remembers what has been queued is indexer.tracker.
     QUEUER_FILES='--days 2'	# check last two days
     QUEUER_TYPE='rss-queuer'	# name of run- script
+    ;;
+csv-fetcher)
+    PIPE_TYPE_PFX='hist-'	# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=200
+    QUEUER_TYPE='csv-queuer'
+
     ;;
 *)
     echo "Unknown pipeline type: $PIPELINE_TYPE" 1>&2
