@@ -44,7 +44,7 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--ilm-max-shard-size",
             dest="ilm_max_shard_size",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "mediacloud-test-elasticsearch-snapshots",
             help="ES ILM policy max shard size",
         )
         # SLM
@@ -75,9 +75,7 @@ class ElasticConf(ElasticConfMixin, App):
         self.replicas = self.args.replicas
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
-        self.es_snapshot_repo = getattr(
-            self.args, "es_snapshot_repo", "mediacloud-test-elasticsearch-snapshots"
-        )
+        self.es_snapshot_repo = self.args.es_snapshot_repo
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()

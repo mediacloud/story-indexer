@@ -61,7 +61,7 @@ usage() {
 PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
 # take command line option? used for input and archive output (if created)
-HIST_YEAR=2022
+HIST_YEAR=2023
 #HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
 
 while getopts B:abdhinT:u OPT; do
@@ -297,7 +297,6 @@ prod)
     # ES index settings are static, prod settings should not change
     ELASTICSEARCH_SHARD_COUNT=30
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
     ELASTICSEARCH_ILM_MAX_AGE="90d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9200,http://woodward.angwin:9200,http://bradley.angwin:9200
@@ -321,7 +320,6 @@ staging)
     ELASTICSEARCH_CONTAINERS=3
     ELASTICSEARCH_SHARD_COUNT=5
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-staging-elasticsearch-snapshots
     ELASTICSEARCH_ILM_MAX_AGE="6h"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="5gb"
 
