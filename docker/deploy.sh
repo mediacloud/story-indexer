@@ -127,7 +127,6 @@ ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
 ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.12.0"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
-ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
 
 FETCHER_CRONJOB_ENABLE=true	# batch fetcher
 FETCHER_NUM_BATCHES=20		# batch fetcher
@@ -297,6 +296,7 @@ prod)
     # ES index settings are static, prod settings should not change
     ELASTICSEARCH_SHARD_COUNT=30
     ELASTICSEARCH_SHARD_REPLICAS=1
+    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-elasticsearch-snapshots
     ELASTICSEARCH_ILM_MAX_AGE="90d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     ELASTICSEARCH_HOSTS=http://ramos.angwin:9200,http://woodward.angwin:9200,http://bradley.angwin:9200
@@ -320,6 +320,7 @@ staging)
     ELASTICSEARCH_CONTAINERS=3
     ELASTICSEARCH_SHARD_COUNT=5
     ELASTICSEARCH_SHARD_REPLICAS=1
+    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-staging-elasticsearch-snapshots
     ELASTICSEARCH_ILM_MAX_AGE="6h"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="5gb"
 
@@ -348,6 +349,7 @@ dev)
     ELASTICSEARCH_CONTAINERS=1
     ELASTICSEARCH_SHARD_COUNT=2
     ELASTICSEARCH_SHARD_REPLICAS=1
+    ELASTICSEARCH_SNAPSHOT_REPO=mediacloud-test-elasticsearch-snapshots
     ELASTICSEARCH_ILM_MAX_AGE="15m"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="100mb"
 

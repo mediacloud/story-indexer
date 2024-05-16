@@ -51,7 +51,7 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--es-snapshot-repo",
             dest="es_snapshot_repo",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "mediacloud-test-elasticsearch-snapshots",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO"),
             help="ES snapshot repository name",
         )
 
