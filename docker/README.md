@@ -157,11 +157,16 @@ options:
   -B BR   dry run for specific branch BR (ie; staging or prod, for testing)
   -d      enable debug output (for template parameters)
   -h      output this help and exit
-  -I INPUTS queuer input files/options
+  -H /HIST_FILE_PREFIX
+          prefix for historical pipeline files (must start with /)
+  -I INPUTS
+          queuer input files/options
   -O OPTS override queuer sampling options
   -T TYPE select pipeline type: batch-fetcher, historical, archive, queue-fetcher
   -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)
   -u      allow running as non-root user
+  -Y HIST_YEAR
+          select year for historical pipeline
 ```
 
 The `-I` and `-O` options apply to "queuer" programs (ie; not the

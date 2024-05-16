@@ -54,31 +54,35 @@ usage() {
     echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
     echo "  -d      enable debug output (for template parameters)"
     echo "  -h      output this help and exit"
-    echo "  -I INPUTS queuer input files/options"
+    echo "  -H /HIST_FILE_PREFIX"
+    echo "          prefix for historical pipeline files (must start with /)"
+    echo "  -I INPUTS"
+    echo "          queuer input files/options"
     echo "  -O OPTS override queuer sampling options"
     echo "  -T TYPE select pipeline type: $PIPELINE_TYPES"
     echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u      allow running as non-root user"
+    echo "  -Y HIST_YEAR"
+    echo "          select year for historical pipeline"
     exit 1
 }
 
 PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
-# take command line option? used for input and archive output (if created)
-HIST_YEAR=2023
-#HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
-
-while getopts B:abdhI:nO:T:u OPT; do
+# if you add an option here, add to usage function above!!!
+while getopts B:abdhH:I:nO:T:uY: OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
    B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
+   H) HIST_FILE_PREFIX=$OPTARG;;
    I) OPT_INPUTS="$OPTARG";;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
    O) OPT_OPTS="$OPTARG";;
    T) PIPELINE_TYPE=$OPTARG;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
+   Y) HIST_YEAR=$OPTARG;;
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
@@ -214,6 +218,15 @@ batch-fetcher)
     QUEUER_TYPE=''
     ;;
 historical)
+    if [ "x$HIST_YEAR" = x ]; then
+	echo "need HIST_YEAR" 1>&2
+	exit 1
+    fi
+    if [ "x$HIST_FILE_PREFIX" != x ] && \
+	   ! expr "$HIST_FILE_PREFIX" : ^/ >/dev/null; then
+	echo "HIST_FILE_PREFIX must begin with /" 1>&2
+	exit 1
+    fi
     # unless archives disabled, prefix will end with:
     ARCH_SUFFIX=hist$HIST_YEAR
     #IMPORTER_ARGS=--no-output	# uncomment to disable archives
