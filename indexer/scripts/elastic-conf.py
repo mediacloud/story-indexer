@@ -44,15 +44,14 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--ilm-max-shard-size",
             dest="ilm_max_shard_size",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE")
-            or "mediacloud-test-elasticsearch-snapshots",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
             help="ES ILM policy max shard size",
         )
         # SLM
         ap.add_argument(
             "--es-snapshot-repo",
             dest="es_snapshot_repo",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "mediacloud-test-elasticsearch-snapshots",
             help="ES snapshot repository name",
         )
 
