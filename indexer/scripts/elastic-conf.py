@@ -44,7 +44,8 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--ilm-max-shard-size",
             dest="ilm_max_shard_size",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "mediacloud-test-elasticsearch-snapshots",
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE")
+            or "mediacloud-test-elasticsearch-snapshots",
             help="ES ILM policy max shard size",
         )
         # SLM
