@@ -45,6 +45,8 @@ DEPLOYMENT_OPTIONS="$*"
 
 PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher"
 usage() {
+    # NOTE! If you change something in this function, run w/ -h
+    # and put updated output into README.md file!!!
     echo "Usage: $SCRIPT [options]"
     echo "options:"
     echo "  -a      allow-dirty; no dirty/push checks; no tags applied (for dev)"
@@ -52,6 +54,8 @@ usage() {
     echo "  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)"
     echo "  -d      enable debug output (for template parameters)"
     echo "  -h      output this help and exit"
+    echo "  -I INPUTS queuer input files/options"
+    echo "  -O OPTS override queuer sampling options"
     echo "  -T TYPE select pipeline type: $PIPELINE_TYPES"
     echo "  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)"
     echo "  -u      allow running as non-root user"
@@ -64,13 +68,15 @@ PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 HIST_YEAR=2023
 #HIST_FILE_PREFIX=/stories_2023-12-06.csv  # can limit to day or month
 
-while getopts B:abdhinT:u OPT; do
+while getopts B:abdhI:nO:T:u OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
    B) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1; BRANCH=$OPTARG;;
    d) DEBUG=1;;
+   I) OPT_INPUTS="$OPTARG";;
    n) NO_ACTION=1; AS_USER=1; INDEXER_ALLOW_DIRTY=1;;
+   O) OPT_OPTS="$OPTARG";;
    T) PIPELINE_TYPE=$OPTARG;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    ?) usage;;		# here on 'h' '?' or unhandled option
@@ -499,8 +505,8 @@ arch-queuer)
     QUEUER_S3_SECRET_ACCESS_KEY=$ARCHIVER_S3_SECRET_ACCESS_KEY
     ;;
 rss-queuer)
-    if [ "x$RSS_FETCHER_URL" != x ]; then
-        # switch to rss-puller if rss-fetcher API URL supplied
+    if [ "x$RSS_FETCHER_URL" != x -a "x$OPT_INPUTS" = x ]; then
+        # switch to rss-puller if rss-fetcher API URL supplied (and no -I)
 	QUEUER_TYPE=rss-puller
 	QUEUER_FILES=
 	# polling too quickly will generate many small archives
@@ -512,11 +518,20 @@ esac
 # construct QUEUER_ARGS for {arch,hist,rss}-queuers
 # after reading PRIVATE_CONF and checking for RSS_FETCHER_xxx params
 if [ "x$QUEUER_TYPE" != x ]; then
-    if [ "x$STORY_LIMIT" != x ]; then
+    # command line -O overrides sampling options
+    if [ "x$OPT_OPTS" != x ]; then
+	QUEUER_OPTS="$OPT_OPTS"
+    elif [ "x$STORY_LIMIT" != x ]; then
 	# pick random sample:
-	QUEUER_ARGS="--force --sample-size $STORY_LIMIT"
+	QUEUER_OPTS="--force --sample-size $STORY_LIMIT"
     fi
-    QUEUER_ARGS="$QUEUER_ARGS $QUEUER_FILES"
+    if [ "x$OPT_INPUTS" != x ]; then
+	# Command line -I overrides default file(s)
+	# [MAY include command line options]
+	QUEUER_FILES="$OPT_INPUTS"
+    fi
+    QUEUER_ARGS="$QUEUER_OPTS $QUEUER_FILES"
+    echo QUEUER_ARGS $QUEUER_ARGS
 else
     QUEUER_ARGS='N/A'
 fi
