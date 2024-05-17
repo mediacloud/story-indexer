@@ -10,7 +10,7 @@ from typing import BinaryIO, Set
 
 from indexer.app import run
 from indexer.queuer import Queuer
-from indexer.story import StoryFactory
+from indexer.story import RSSEntry, StoryFactory
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,8 @@ class CSVQueuer(Queuer):
                 continue  # logged and counted
 
             story = Story()
-            with story.rss_entry() as rss:
+            rss: RSSEntry = story.rss_entry()
+            with rss:
                 rss.link = url
                 rss.fetch_date = fetch_date
                 rss.via = fname
