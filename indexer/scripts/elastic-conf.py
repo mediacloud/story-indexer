@@ -44,14 +44,14 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--ilm-max-shard-size",
             dest="ilm_max_shard_size",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
+            default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "",
             help="ES ILM policy max shard size",
         )
         # SLM
         ap.add_argument(
             "--es-snapshot-repo",
             dest="es_snapshot_repo",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO"),
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
         )
 
@@ -171,7 +171,6 @@ class ElasticConf(ElasticConfMixin, App):
         schedule = json_data["schedule"]
         retention = json_data["retention"]
 
-        # SLM starts automatically when cluster is formed.If SLM stopped start using POST /_slm/start
         response = es.slm.put_lifecycle(
             policy_id=CURRENT_POLICY_ID,
             config=config,
