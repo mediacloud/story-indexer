@@ -3,7 +3,6 @@ Read CSVs of URLS from legacy system in S3, between the dates, 2022 01/25 - 02/1
 """
 
 import csv
-import datetime as dt
 import io
 import logging
 import re
@@ -36,13 +35,6 @@ class CSVQueuer(Queuer):
         else:
             fetch_date = None
 
-        # The legacy system downloaded multiple copies of a story (if
-        # seen in different RSS feeds in different sources?).  Looking
-        # at 2023-11-04/05 CSV files, 49% of URLs in the file appear
-        # more than once.  Since the new system files stories by final
-        # URL, downloading multiple copies is a waste (subsequent
-        # copies rejected as dups), so try to filter them out WITHIN a
-        # single CSV file.
         urls_seen: Set[str] = set()
 
         # only url column
@@ -61,45 +53,15 @@ class CSVQueuer(Queuer):
             if not self.check_story_url(url):
                 continue  # logged and counted
 
-            # let hist-fetcher quarantine if bad
-
             story = Story()
             with story.rss_entry() as rss:
-                # store downloads_id (used to download HTML from S3)
-                # as the "original" location, for use by hist-fetcher.py
                 rss.link = url
                 rss.fetch_date = fetch_date
-                rss.source_feed_id = None
-                rss.source_source_id = None  # media is legacy name
                 rss.via = fname
                 rss.source_url = url
 
-            # collect_date = row.get("collect_date", None)
-            # with story.http_metadata() as hmd:
-            #     hmd.final_url = url
-            #     if collect_date:
-            # convert original date/time (treat as UTC) to a
-            # timestamp of the time the HTML was fetched,
-            # to preserve this otherwise unused bit of information.
-
-            # if len(collect_date) < 20:
-            #     collect_date += ".0"  # ensure fraction present
-
-            # fromisoformat wants EXACTLY six digits of fractional
-            # seconds, but the CSV files omit trailing zeroes, so
-            # use strptime.  Append UTC timezone offset to prevent
-            # timestamp method from treating naive datetime as in
-            # the local time zone.  date/time stuff and time zones
-            # are always a pain, but somehow, this particular
-            # corner of Python seems particularly painful.
-            # collect_dt = dt.datetime.strptime(
-            #     collect_date + " +00:00", "%Y-%m-%d %H:%M:%S.%f %z"
-            # )
-            # hmd.fetch_timestamp = collect_dt.timestamp()
-
-            # content_metadata.parsed_date is not set, so parser.py will
-            # put in the actual parse time as usual:
-            # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
+            with story.http_metadata() as hmd:
+                hmd.final_url = url
 
             self.send_story(story)  # calls incr_story: to increment and log
             urls_seen.add(url)  # mark URL as seen

@@ -375,7 +375,7 @@ class Pipeline(QApp):
 
 
 class MyPipeline(Pipeline):
-    PIPE_TYPES = ["batch-fetcher", "queue-fetcher", "historical", "archive", "csv-fetcher"]
+    PIPE_TYPES = ["batch-fetcher", "queue-fetcher", "historical", "archive", "csv"]
     DEFAULT_TYPE = "batch-fetcher"
 
     def lay_pipe(self) -> None:
@@ -410,7 +410,7 @@ class MyPipeline(Pipeline):
             # output to archiver should be disabled!!
             # (via command line options to importer)
             self.add_producer("arch-queuer", [importer])
-        elif pt == "csv-fetcher":
+        elif pt == "csv":
             self.add_producer("csv-queuer", [self.add_worker("fetcher", [p_i_a])])
 
 

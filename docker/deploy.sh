@@ -43,7 +43,7 @@ fi
 # capture command line
 DEPLOYMENT_OPTIONS="$*"
 
-PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher, csv-fetcher"
+PIPELINE_TYPES="batch-fetcher, historical, archive, queue-fetcher, csv"
 usage() {
     echo "Usage: $SCRIPT [options]"
     echo "options:"
@@ -259,9 +259,10 @@ queue-fetcher)
     QUEUER_FILES='--days 2'	# check last two days
     QUEUER_TYPE='rss-queuer'	# name of run- script
     ;;
-csv-fetcher)
-    PIPE_TYPE_PFX='hist-'	# own stack name/queues
-    PIPE_TYPE_PORT_BIAS=200
+csv)
+    ARCH_SUFFIX=csv
+    PIPE_TYPE_PFX='csv-'	# own stack name/queues
+    PIPE_TYPE_PORT_BIAS=600
     QUEUER_TYPE='csv-queuer'
     QUEUER_FILES=s3://mediacloud-database-e-files/csv_files/
     ;;
