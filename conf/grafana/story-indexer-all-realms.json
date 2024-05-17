@@ -15,32 +15,31 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 7,
-  "iteration": 1705611080186,
+  "id": 10,
+  "iteration": 1715261353823,
   "links": [],
   "panels": [
     {
       "aliasColors": {
-        "stats.counters.mc.prod.story-indexer.fetcher.fetched-stories.status_success.rate": "green",
-        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_http-2xx.rate": "blue",
-        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_non-news.rate": "yellow",
-        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_success.rate": "green"
+        "stats.counters.mc.prod.story-indexer.rss-puller.stories.status_non-news.rate": "super-light-red",
+        "stats.counters.mc.prod.story-indexer.rss-puller.stories.status_queued.rate": "super-light-green",
+        "stats.counters.mc.prod.story-indexer.rss-queuer.stories.status_non-news.rate": "dark-red",
+        "stats.counters.mc.prod.story-indexer.rss-queuer.stories.status_queued.rate": "green"
       },
-      "bars": false,
+      "bars": true,
       "cacheTimeout": "",
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "description": "",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 0,
         "y": 0
       },
-      "id": 2,
+      "id": 38,
       "legend": {
         "avg": false,
         "current": false,
@@ -50,7 +49,104 @@
         "total": false,
         "values": false
       },
-      "lines": true,
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refCount": 0,
+          "refId": "A",
+          "target": "stats.counters.mc.$realm.story-indexer.*queuer.stories.*.rate",
+          "textEditor": false
+        },
+        {
+          "refCount": 0,
+          "refId": "B",
+          "target": "stats.counters.mc.$realm.story-indexer.*puller.stories.*.rate",
+          "textEditor": false
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Queuer counters (stories/second)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "stats.counters.mc.prod.story-indexer.rss-queuer.files.status_skipped.count": "yellow",
+        "stats.counters.mc.prod.story-indexer.rss-queuer.files.status_success.count": "green"
+      },
+      "bars": true,
+      "cacheTimeout": "",
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 40,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -63,6 +159,98 @@
       "seriesOverrides": [],
       "spaceLength": 10,
       "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "refId": "A",
+          "target": "stats.counters.mc.$realm.story-indexer.*queuer.files.*.count"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Files queued (count)",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "stats.counters.mc.prod.story-indexer.fetcher.fetched-stories.status_success.rate": "green",
+        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_http-2xx.rate": "blue",
+        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_non-news.rate": "yellow",
+        "stats.counters.mc.prod.story-indexer.fetcher.stories.status_success.rate": "green"
+      },
+      "bars": true,
+      "cacheTimeout": "",
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "description": "",
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "dataLinks": []
+      },
+      "percentage": false,
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
       "steppedLine": false,
       "targets": [
         {
@@ -128,7 +316,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 8
       },
       "id": 26,
       "legend": {
@@ -158,7 +346,7 @@
         {
           "refCount": 0,
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.*",
+          "target": "stats.gauges.mc.$realm.story-indexer.docker-stats.service.running.*er",
           "textEditor": false
         }
       ],
@@ -166,7 +354,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "containers running",
+      "title": "worker containers running",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -224,7 +412,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "id": 28,
       "legend": {
@@ -315,7 +503,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 17
       },
       "id": 10,
       "legend": {
@@ -393,6 +581,8 @@
       "aliasColors": {
         "stats.counters.mc.prod.story-indexer.importer.imported-stories.status_failed.rate": "red",
         "stats.counters.mc.prod.story-indexer.importer.imported-stories.status_success.rate": "green",
+        "stats.counters.mc.prod.story-indexer.importer.stories.status_dups.rate": "yellow",
+        "stats.counters.mc.prod.story-indexer.importer.stories.status_reqerr.rate": "orange",
         "stats.counters.mc.staging.story-indexer.importer.imported-stories.status_failed.rate": "red"
       },
       "bars": true,
@@ -406,7 +596,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "id": 4,
       "legend": {
@@ -437,12 +627,6 @@
           "refCount": 0,
           "refId": "A",
           "target": "stats.counters.mc.$realm.story-indexer.importer.stories.*.rate",
-          "textEditor": false
-        },
-        {
-          "refCount": 0,
-          "refId": "B",
-          "target": "stats.counters.mc.$realm.story-indexer.importer.imported-stories.*.rate",
           "textEditor": false
         }
       ],
@@ -489,6 +673,9 @@
     },
     {
       "aliasColors": {
+        "scale(stats.timers.mc.prod.story-indexer.importer.message.stat_error.count,0.1)": "red",
+        "scale(stats.timers.mc.prod.story-indexer.importer.message.stat_ok.count,0.1)": "green",
+        "scale(stats.timers.mc.prod.story-indexer.importer.message.stat_retry.count,0.1)": "yellow",
         "scale(stats.timers.mc.staging.story-indexer.importer.message.stat_error.count,0.1)": "red",
         "scale(stats.timers.mc.staging.story-indexer.importer.message.stat_ok.count,0.1)": "green"
       },
@@ -502,7 +689,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 25
       },
       "id": 14,
       "legend": {
@@ -588,7 +775,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "id": 30,
       "legend": {
@@ -673,7 +860,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 33
       },
       "id": 34,
       "legend": {
@@ -760,7 +947,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "id": 12,
       "legend": {
@@ -847,7 +1034,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 41
       },
       "id": 32,
       "legend": {
@@ -933,7 +1120,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 49
       },
       "id": 18,
       "legend": {
@@ -962,15 +1149,15 @@
       "targets": [
         {
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.indices.stats.docs.*",
-          "textEditor": true
+          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.all.primaries.docs.count",
+          "textEditor": false
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Document count by index (1K=1000)",
+      "title": "Document count  (1K=1000)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1019,7 +1206,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 41
+        "y": 49
       },
       "id": 22,
       "legend": {
@@ -1048,15 +1235,15 @@
       "targets": [
         {
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.indices.stats.pri-size.*",
-          "textEditor": false
+          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.all.primaries.store.size_in_bytes",
+          "textEditor": true
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Primary index size in bytes (1K=1024)",
+      "title": "Total primary index bytes (1K=1024)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1106,7 +1293,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 57
       },
       "id": 20,
       "legend": {
@@ -1135,7 +1322,7 @@
       "targets": [
         {
           "refId": "A",
-          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.indices.stats.deleted.*",
+          "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.all.primaries.docs.deleted",
           "textEditor": false
         }
       ],
@@ -1143,7 +1330,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Deleted document count by Index (1K=1000)",
+      "title": "Deleted document count (1K=1000)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1182,18 +1369,18 @@
     },
     {
       "aliasColors": {},
-      "bars": true,
+      "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
       "description": "",
-      "fill": 1,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 57
       },
       "id": 16,
       "legend": {
@@ -1205,7 +1392,7 @@
         "total": false,
         "values": false
       },
-      "lines": false,
+      "lines": true,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -1217,7 +1404,7 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": true,
+      "stack": false,
       "steppedLine": false,
       "targets": [
         {
@@ -1230,7 +1417,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "messages sent per second (stacked)",
+      "title": "messages sent per second",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1287,7 +1474,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 57
+        "y": 65
       },
       "id": 24,
       "legend": {
@@ -1317,7 +1504,7 @@
         {
           "refId": "A",
           "target": "stats.gauges.mc.$realm.story-indexer.elastic-stats.indices.health.*",
-          "textEditor": true
+          "textEditor": false
         }
       ],
       "thresholds": [],
@@ -1370,14 +1557,14 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "description": "max run time in minutes\n",
+      "description": "",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 57
+        "y": 65
       },
       "id": 8,
       "legend": {
@@ -1408,14 +1595,14 @@
       "targets": [
         {
           "refId": "A",
-          "target": "scale(stats.timers.mc.$realm.story-indexer.*.main_loop.upper, 0.001)"
+          "target": "stats.timers.mc.$realm.story-indexer.*.main_loop.upper"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "app max run time (minutes)",
+      "title": "app max run time",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1431,7 +1618,7 @@
       },
       "yaxes": [
         {
-          "format": "dthms",
+          "format": "ms",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1454,17 +1641,18 @@
     },
     {
       "aliasColors": {},
-      "bars": true,
+      "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "fill": 1,
+      "description": "",
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 65
+        "y": 73
       },
       "id": 36,
       "legend": {
@@ -1476,7 +1664,7 @@
         "total": false,
         "values": false
       },
-      "lines": false,
+      "lines": true,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -1488,7 +1676,7 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": true,
+      "stack": false,
       "steppedLine": false,
       "targets": [
         {
@@ -1506,7 +1694,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "parser metadata extract times stacked",
+      "title": "mean parser metadata extract times",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1545,20 +1733,19 @@
     },
     {
       "aliasColors": {},
-      "bars": true,
-      "cacheTimeout": "",
+      "bars": false,
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
-      "fill": 1,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 65
+        "y": 73
       },
-      "id": 38,
+      "id": 42,
       "legend": {
         "avg": false,
         "current": false,
@@ -1568,7 +1755,7 @@
         "total": false,
         "values": false
       },
-      "lines": false,
+      "lines": true,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
@@ -1580,19 +1767,19 @@
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
-      "stack": true,
+      "stack": false,
       "steppedLine": false,
       "targets": [
         {
           "refId": "A",
-          "target": "stats.counters.mc.$realm.story-indexer.*queuer.stories.*.rate"
+          "target": "stats.timers.mc.$realm.story-indexer.*.message.stat_ok.mean"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Queuer counters (stories/second)",
+      "title": "mean processing time per story",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1608,7 +1795,7 @@
       },
       "yaxes": [
         {
-          "format": "short",
+          "format": "ms",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1630,7 +1817,7 @@
       }
     }
   ],
-  "refresh": false,
+  "refresh": "30s",
   "schemaVersion": 20,
   "style": "dark",
   "tags": [],
@@ -1639,7 +1826,7 @@
       {
         "allValue": null,
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "prod",
           "value": "prod"
         },
@@ -1650,9 +1837,14 @@
         "name": "realm",
         "options": [
           {
-            "selected": true,
+            "selected": false,
             "text": "prod",
             "value": "prod"
+          },
+          {
+            "selected": false,
+            "text": "hist-prod",
+            "value": "hist-prod"
           },
           {
             "selected": false,
@@ -1661,6 +1853,11 @@
           },
           {
             "selected": false,
+            "text": "hist-staging",
+            "value": "hist-staging"
+          },
+          {
+            "selected": true,
             "text": "pbudne",
             "value": "pbudne"
           },
@@ -1673,9 +1870,14 @@
             "selected": false,
             "text": "hist-pbudne",
             "value": "hist-pbudne"
+          },
+          {
+            "selected": false,
+            "text": "arch-pbudne",
+            "value": "arch-pbudne"
           }
         ],
-        "query": "prod,staging,pbudne,pgulley,hist-pbudne",
+        "query": "prod,hist-prod,staging,hist-staging,pbudne,pgulley,hist-pbudne,arch-pbudne",
         "skipUrlSync": false,
         "type": "custom"
       }
@@ -1701,6 +1903,6 @@
   },
   "timezone": "",
   "title": "story-indexer (all realms)",
-  "uid": "qeNJ29WSz",
-  "version": 66
+  "uid": "YyR-mfpIk",
+  "version": 28
 }

@@ -35,13 +35,13 @@
             "query": {
               "params": [
                 "A",
-                "5m",
+                "24h",
                 "now"
               ]
             },
             "reducer": {
               "params": [],
-              "type": "avg"
+              "type": "sum"
             },
             "type": "query"
           }
@@ -59,11 +59,12 @@
         ]
       },
       "aliasColors": {},
-      "bars": false,
+      "bars": true,
       "cacheTimeout": "",
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "based on ES document count",
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -82,7 +83,7 @@
         "total": false,
         "values": false
       },
-      "lines": true,
+      "lines": false,
       "linewidth": 1,
       "maxDataPoints": "",
       "nullPointMode": "null",
@@ -99,24 +100,10 @@
       "steppedLine": false,
       "targets": [
         {
-          "hide": true,
-          "refCount": 1,
+          "hide": false,
+          "refCount": -1,
           "refId": "A",
-          "target": "timeShift(sumSeries(stats.gauges.mc.prod.story-indexer.elastic-stats.indices.stats.docs.*), '1d')",
-          "textEditor": true
-        },
-        {
-          "hide": true,
-          "refCount": 1,
-          "refId": "B",
-          "target": "timeShift(sumSeries(stats.gauges.mc.prod.story-indexer.elastic-stats.indices.stats.docs.*), '1m')",
-          "textEditor": true
-        },
-        {
-          "refCount": 0,
-          "refId": "C",
-          "target": "diffSeries(#B, #A)",
-          "targetFull": "diffSeries(timeShift(sumSeries(stats.gauges.mc.prod.story-indexer.elastic-stats.indices.stats.docs.*), '1m'), timeShift(sumSeries(stats.gauges.mc.prod.story-indexer.elastic-stats.indices.stats.docs.*), '1d'))",
+          "target": "summarize(nonNegativeDerivative(stats.gauges.mc.prod.story-indexer.elastic-stats.all.primaries.docs.count), '1h', 'sum', false)",
           "textEditor": false
         }
       ],
@@ -132,7 +119,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Stories Added in last 24 hours",
+      "title": "Stories Added to ES by hour",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -176,7 +163,7 @@
           {
             "evaluator": {
               "params": [
-                2000000
+                50000
               ],
               "type": "gt"
             },
@@ -250,7 +237,8 @@
       "targets": [
         {
           "refId": "A",
-          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in)"
+          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in, stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-delay)",
+          "textEditor": false
         }
       ],
       "thresholds": [
@@ -259,13 +247,13 @@
           "fill": true,
           "line": true,
           "op": "gt",
-          "value": 2000000
+          "value": 50000
         }
       ],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "all input queues",
+      "title": "sum of all input & delay queues",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -357,7 +345,7 @@
         "for": "5m",
         "frequency": "1m",
         "handler": 1,
-        "name": "Panel Title alert",
+        "name": "prod indexer unhealthy indices alert",
         "noDataState": "no_data",
         "notifications": [
           {
@@ -372,6 +360,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -430,7 +419,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "ES Index health",
+      "title": "ES unhealthy indices",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -499,7 +488,7 @@
         "for": "5m",
         "frequency": "1m",
         "handler": 1,
-        "name": "Panel Title alert",
+        "name": "prod indexer quarantine queues alert",
         "noDataState": "no_data",
         "notifications": [
           {
@@ -558,8 +547,7 @@
           "fill": true,
           "line": true,
           "op": "gt",
-          "value": 100000,
-          "yaxis": "left"
+          "value": 100000
         }
       ],
       "timeFrom": null,
@@ -631,5 +619,5 @@
   "timezone": "",
   "title": "story-indexer alerts",
   "uid": "hN1OxidSk",
-  "version": 7
+  "version": 13
 }
