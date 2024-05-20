@@ -42,16 +42,12 @@ class CSVQueuer(Queuer):
             logger.debug("%r", row)
 
             url = row[0]
-            if not isinstance(url, str) or not url:
-                self.incr_stories("bad-url", repr(url))
-                continue
+            if not self.check_story_url(url):
+                continue  # logged and counted
 
             if url in urls_seen:
                 self.incr_stories("dups", url)
                 continue
-
-            if not self.check_story_url(url):
-                continue  # logged and counted
 
             story = Story()
             rss: RSSEntry = story.rss_entry()
@@ -59,7 +55,6 @@ class CSVQueuer(Queuer):
                 rss.link = url
                 rss.fetch_date = fetch_date
                 rss.via = fname
-                rss.source_url = url
 
             with story.http_metadata() as hmd:
                 hmd.final_url = url
@@ -72,5 +67,5 @@ if __name__ == "__main__":
     run(
         CSVQueuer,
         "csv-queuer",
-        "Read CSV of historical stories, queue to hist-fetcher",
+        "Read CSV of historical stories, queue to regular fetcher",
     )
