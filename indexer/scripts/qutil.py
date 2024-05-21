@@ -22,7 +22,7 @@ from pika.spec import Basic
 
 from indexer.story import BaseStory
 from indexer.story_archive_writer import StoryArchiveReader, StoryArchiveWriter
-from indexer.storyapp import StorySender
+from indexer.storyapp import RabbitMQStorySender
 from indexer.worker import DEFAULT_ROUTING_KEY, QApp
 
 logger = getLogger("qutil")
@@ -172,7 +172,7 @@ class QUtil(QApp):
             exchange = ""  # default exchange
             routing_key = q
 
-        sender = StorySender(self, self.get_channel())
+        sender = RabbitMQStorySender(self, self.get_channel())
 
         input_files = self.args.input_files
         if not input_files:

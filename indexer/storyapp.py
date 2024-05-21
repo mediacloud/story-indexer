@@ -78,6 +78,26 @@ class StoryMixin(AppProtocol):
     StoryProducers (output only) and Workers (in/out)
     """
 
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        self.test_file_prefix: str | None = None
+        ap.add_argument(
+            "--test-file-prefix",
+            type=str,
+            default=None,
+            help="read and write WARC files instead of using queues",
+        )
+
+    def process_args(self) -> None:
+        args = self.args
+        assert args
+        self.test_file_prefix = args.test_file_prefix
+        if self.test_file_prefix:
+            # Ouch! overriding a compile-time constant!
+            self.AUTO_CONNECT = False
+            # XXX set something to avoid rabbitmq-url check??
+        super().process_args()  # after wacking AUTO_CONNECT
+
     def incr_stories(
         self, status: str, url: str, log_level: int = logging.INFO
     ) -> None:
@@ -150,7 +170,21 @@ class StoryMixin(AppProtocol):
 
 class StorySender:
     """
-    object to hide channel.
+    Abstract class to hide how Story objects are sent
+    """
+
+    def send_story(
+        self,
+        story: BaseStory,
+        exchange: Optional[str] = None,
+        routing_key: str = DEFAULT_ROUTING_KEY,
+        expiration_ms: Optional[int] = None,
+    ) -> None: ...
+
+
+class RabbitMQStorySender(StorySender):
+    """
+    RabbitMQ based Story Sender -- hides channel.
 
     Stories must be sent on the channel they came in on to make
     transmission of new message and ACK of original atomic with
@@ -175,6 +209,37 @@ class StorySender:
         self.app._send_message(
             self._channel, story.dump(), exchange, routing_key, props
         )
+
+
+class ArchiveStorySender(StorySender):
+    def __init__(self, prefix: str):
+        # not used in production: avoid import unless used:
+        from indexer.story_archive_writer import StoryArchiveWriter
+
+        # will write all stories, regardless of dest queue to one archive.
+        self.writer = StoryArchiveWriter(
+            prefix=prefix,
+            hostname="",  # ignored
+            fqdn="",  # ignored
+            serial=-1,  # ignore hostname, fqdn
+            work_dir="",  # allow prefix to be absolute path
+        )
+
+    def send_story(
+        self,
+        story: BaseStory,
+        exchange: Optional[str] = None,
+        routing_key: str = DEFAULT_ROUTING_KEY,
+        expiration_ms: Optional[int] = None,
+    ) -> None:
+        extra_metadata = {
+            "queue_data": {
+                "exchange": exchange,
+                "routing_key": routing_key,
+                # include expiration_ms?
+            }
+        }
+        self.writer.write_story(story, extra_metadata)
 
 
 class StoryProducer(StoryMixin, Producer):
@@ -254,10 +319,13 @@ class StoryProducer(StoryMixin, Producer):
         """
         MUST be called after qconnect, but before Pika thread running
         """
+        if self.test_file_prefix:
+            return ArchiveStorySender(f"{self.test_file_prefix}-out")
+
         assert self.connection
         # if pika thread running, it owns the connection:
         assert self._pika_thread is None
-        return StorySender(self, self.connection.channel())
+        return RabbitMQStorySender(self, self.connection.channel())
 
     def send_story(self, story: BaseStory, check_html: bool = False) -> None:
         assert self.args
@@ -329,7 +397,7 @@ class StoryWorker(StoryMixin, Worker):
     def _story_sender(self, chan: BlockingChannel) -> StorySender:
         sender = self.senders.get(chan)
         if not sender:
-            sender = self.senders[chan] = StorySender(self, chan)
+            sender = self.senders[chan] = RabbitMQStorySender(self, chan)
         return sender
 
     def process_message(self, im: InputMessage) -> None:
@@ -342,6 +410,33 @@ class StoryWorker(StoryMixin, Worker):
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         raise NotImplementedError("StoryWorker.process_story not overridden")
+
+    def archive_main_loop(self) -> None:
+        """
+        here from main_loop when --test-file-prefix given.
+        """
+        # not used in production: avoid import unless used:
+        from indexer.story_archive_writer import ARCHIVE_EXTENSION, StoryArchiveReader
+
+        input_file = f"{self.test_file_prefix}-in{ARCHIVE_EXTENSION}"
+        output_file = f"{self.test_file_prefix}-out"
+
+        archive = StoryArchiveReader(open(input_file, "rb"))
+        sender = ArchiveStorySender(output_file)
+        stories = 0
+        for story in archive.read_stories():
+            # XXX inside try to handle errors for "retry"?!
+            # (also QuarantineException and RetryException??)
+            # or... force an InputMessage and call _process_one_message??
+            # (would need to make ArchiveStorySender in _story_sender)
+            self.process_story(sender, story)
+            stories += 1
+        logger.info("processed %d stories", stories)
+
+    def main_loop(self) -> None:
+        if self.test_file_prefix:
+            return self.archive_main_loop()
+        super().main_loop()
 
 
 class BatchStoryWorker(StoryWorker):
