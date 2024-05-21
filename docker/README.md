@@ -157,10 +157,26 @@ options:
   -B BR   dry run for specific branch BR (ie; staging or prod, for testing)
   -d      enable debug output (for template parameters)
   -h      output this help and exit
-  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)
+  -H /HIST_FILE_PREFIX
+          prefix for historical pipeline files (must start with /)
+  -I INPUTS
+          queuer input files/options
+  -O OPTS override queuer sampling options
   -T TYPE select pipeline type: batch-fetcher, historical, archive, queue-fetcher
+  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)
   -u      allow running as non-root user
+  -Y HIST_YEAR
+          select year for historical pipeline
 ```
+
+The `-I` and `-O` options apply to "queuer" programs (ie; not the
+batch fetcher), both options can be passed multiple command line
+arguments (by quoting the option argument).
+
+`-I` overrides only the default input file(s), but leaves any sampling
+options (for development and staging) in place.
+
+`-O` overrides only the sampling options (`-O ' '` can be used to turn off sampling).
 
 ## docker-compose.yml.j2 template
 
