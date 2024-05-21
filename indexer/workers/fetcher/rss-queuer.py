@@ -44,6 +44,7 @@ def optional_int(input: str | None) -> int | None:
 
 class RSSQueuer(Queuer):
     HANDLE_GZIP = True  # transparently handle .gz files
+    APP_BLOBSTORE = "RSS"  # http from public bucket typically used
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)

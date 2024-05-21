@@ -66,6 +66,9 @@ class HistFetcher(StoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
+        # NOTE: not using indexer.blobstore.S3.s3_client:
+        # 1. Historical archive is (currently) on S3
+        # 2. This allows defaulting to default keys in ~/.aws/credentials
         for app in ["HIST", "QUEUER"]:
             region = os.environ.get(f"{app}_S3_REGION")
             access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")

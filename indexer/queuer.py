@@ -27,31 +27,33 @@ import logging
 import os
 import sys
 import tempfile
-from typing import TYPE_CHECKING, Any, BinaryIO, Generator, List, Optional, cast
+from typing import BinaryIO, cast
 
-import boto3
 import requests
 
-if TYPE_CHECKING:
-    from mypy_boto3_s3.client import S3Client
-else:
-    S3Client = Any
-
 from indexer.app import AppException
+from indexer.blobstore import blobstore_by_url, is_blobstore_url
 from indexer.storyapp import StoryProducer
 from indexer.tracker import TrackerException, get_tracker
 
 logger = logging.getLogger(__name__)
 
 
-class Queuer(StoryProducer):
-    AWS_PREFIX: str  # prefix for environment vars
+class QueuerException(AppException):
+    """
+    Class for all exceptions raised inside Queuer
+    """
 
+
+class Queuer(StoryProducer):
+    APP_BLOBSTORE: str  # first choice for config
+
+    # will be False when handling WARC files (warcio handles it)
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.s3_client_object: Optional[S3Client] = None
+        self.blobstores = [self.APP_BLOBSTORE.upper(), "QUEUER"]
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -75,48 +77,29 @@ class Queuer(StoryProducer):
         Override, calling "self.queue_story" for each Story
         NOTE! fobj is a binary file!
         Wrap with TextIOWrapper for reading strings
+
+        Remote file could be large (daily RSS file or WARC file) so
+        avoid assuming it's reasonable to read it all into memory
+        (multiple instances of a queuer may be running in parallel)
+
+        Called inside "with tracker", so MUST raise exception on error
         """
         raise NotImplementedError("process_file not overridden")
 
-    def s3_client(self) -> S3Client:
-        """
-        return an S3 client object.
-        """
-        if not self.s3_client_object:
-            # NOTE! None values should default to using ~/.aws/credentials
-            # for command line debug/test.
-            for app in [self.AWS_PREFIX.upper(), "QUEUER"]:
-                region = os.environ.get(f"{app}_S3_REGION")
-                access_key_id = os.environ.get(f"{app}_S3_ACCESS_KEY_ID")
-                secret_access_key = os.environ.get(f"{app}_S3_SECRET_ACCESS_KEY")
-                if region and access_key_id and secret_access_key:
-                    break
-            self.s3_client_object = boto3.client(
-                "s3",
-                region_name=region,
-                aws_access_key_id=access_key_id,
-                aws_secret_access_key=secret_access_key,
-            )
-        return self.s3_client_object
-
-    def split_s3_url(self, objname: str) -> List[str]:
-        """
-        assumes starts with s3://
-        returns [bucket, key]
-        """
-        path = objname[5:]
-        if "/" in path:
-            return path.split("/", 1)
-        return [path, ""]
-
     def open_file(self, fname: str) -> BinaryIO:
         """
-        take local file path or a URL
-        return BinaryIO file object (optionally decompressed)
+        take local file path or a URL (http/https/blobstore)
+        return BinaryIO file object (optionally decompressed).
+
+        Remote file could be large (daily RSS file or WARC file) so
+        avoid assuming it's reasonable to read it all into memory
+        (multiple instances of a queuer may be running in parallel)
+
+        Called inside "with tracker"; MUST raise exception on error!
         """
         if os.path.isfile(fname):
             if self.HANDLE_GZIP and fname.endswith(".gz"):
-                # read/uncompress local gzip'ed file
+                logger.debug("uncompressing local %s on the fly", fname)
                 gzio = gzip.GzipFile(fname, "rb")
                 assert isinstance(gzio, io.IOBase)
                 return cast(BinaryIO, gzio)
@@ -126,25 +109,46 @@ class Queuer(StoryProducer):
         if fname.startswith("http:") or fname.startswith("https:"):
             resp = requests.get(fname, stream=True, timeout=60)
             if not resp or resp.status_code != 200:
-                raise AppException(str(resp))
+                raise QueuerException(str(resp))
             # (resp.raw is urllib3.response.HTTPResponse,
             # which is a subclass of io.IOBase)
             assert isinstance(resp.raw, io.IOBase)
             fobj = cast(BinaryIO, resp.raw)
-        elif fname.startswith("s3://"):  # XXX handle any "blobstore" url?
-            bucket, objname = self.split_s3_url(fname)
-            s3 = self.s3_client()
-            # anonymous temp file: maybe cache in named file?
-            tmpf = tempfile.TemporaryFile()
-            s3.download_fileobj(bucket, objname, tmpf)
-            tmpf.seek(0)  # rewind
-            fobj = cast(BinaryIO, tmpf)
-        else:
-            raise AppException("file not found or unknown URL")
+        elif is_blobstore_url(fname):
+            # look for a complete set of blobstore configuration
+            for store in self.blobstores:
+                try:
+                    bs, schema, objname = blobstore_by_url(store, fname)
+                except KeyError:
+                    logger.debug("no config for blobstore %s for %s", store, fname)
+                    continue
 
-        # uncompress on the fly?
+                try:
+                    # now inside "try" because Backblaze keys are
+                    # either single bucket, or all buckets, and it's
+                    # more likely a queuer might actually need
+                    # multiple keys (eg; reading CSVs from one bucket
+                    # that reference objects in another bucket).
+
+                    # remote object could be large (a WARC file) so download into
+                    # anonymous temp (disk) file: maybe cache in named file?
+                    tmpf = tempfile.TemporaryFile()
+                    bs.download_fileobj(objname, tmpf)
+                    tmpf.seek(0)  # rewind
+                    fobj = cast(BinaryIO, tmpf)
+                    break  # found working config: for store .... loop
+                except tuple(bs.EXCEPTIONS) as e:
+                    logger.debug("blobstore %s for %s: %r", store, fname, e)
+                    continue
+            else:
+                # called inside try w/ Tracker
+                raise QueuerException(f"no blobstore configuration for {fname}")
+
+        else:
+            raise QueuerException(f"{fname} not found or unknown URL schema")
+
         if self.HANDLE_GZIP and fname.endswith(".gz"):
-            logger.debug("zcat ")
+            logger.debug("uncompressing %s on the fly", fname)
             gzio = gzip.GzipFile(filename=fname, mode="rb", fileobj=fobj)
             return cast(BinaryIO, gzio)
 
@@ -165,36 +169,40 @@ class Queuer(StoryProducer):
             # process in reverse sorted/chronological order (back-fill):
             for path in sorted(paths, reverse=True):
                 self.maybe_process_file(path)
-        elif fname.startswith("s3://"):  # XXX handle any blobstore URL?
+        elif is_blobstore_url(fname):
+            # treat command line non-http URLs as prefixes and expand to all matching objects
+            # (impossible to process just one object if its key is a prefix of other keys)
+            # but as long as stores object have extensions (like .csv)
+            # this is unlikely to occur.
+
+            # look for a complete set of blobstore configuration:
+            for store in self.blobstores:
+                try:
+                    bs, scheme, prefix = blobstore_by_url(store, fname)
+                except KeyError:
+                    logger.debug("no config for blobstore %s for %s", store, fname)
+                    continue
+
+                try:
+                    # now inside loop+try because Backblaze keys are
+                    # either single bucket, or all buckets, and it's
+                    # more likely a queuer might actually need
+                    # multiple keys (eg; reading CSVs from one bucket
+                    # that reference objects in another bucket).
+                    for key in sorted(bs.list_objects(prefix), reverse=True):
+                        self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
+                    break  # found working config: for store .... loop
+
+                except tuple(bs.EXCEPTIONS) as e:
+                    logger.debug("blobstore %s for %s: %r", store, fname, e)
+                    continue
+            else:
+                logger.error("no blobstore configuration for %s", fname)
+                # may have already processed some files, so keep going
+                return
             # process in reverse sorted/chronological order (back-fill):
-            for url in sorted(self.s3_prefix_matches(fname), reverse=True):
-                self.maybe_process_file(url)
         else:  # local files, http, https
             self.maybe_process_file(fname)
-
-    def s3_prefix_matches(self, url: str) -> Generator:
-        """
-        generator to enumerate all matching objects
-        (push into blobstore?)
-        """
-        logger.debug("s3_prefix_matches: %s", url)
-        bucket, prefix = self.split_s3_url(url)
-        s3 = self.s3_client()
-        marker = ""
-        while True:
-            res = s3.list_objects(Bucket=bucket, Prefix=prefix, Marker=marker)
-            for item in res["Contents"]:
-                key = item["Key"]
-                # XXX filter based on ending?
-                out = f"s3://{bucket}/{key}"
-                logger.debug("match: %s", out)
-                yield out
-            if not res["IsTruncated"]:
-                break
-            marker = key  # see https://github.com/boto/boto3/issues/470
-            logger.debug("object list truncated; next marker: %s", marker)
-            if not marker:
-                break
 
     def maybe_process_file(self, fname: str) -> None:
         """
@@ -213,7 +221,7 @@ class Queuer(StoryProducer):
 
         queued_before = self.queued_stories
 
-        def incr_files(status: str, exc: Optional[Exception] = None) -> None:
+        def incr_files(status: str, exc: Exception | None = None) -> None:
             self.incr("files", labels=[("status", status)])
 
             queued = self.queued_stories - queued_before
@@ -263,7 +271,7 @@ if __name__ == "__main__":
     from indexer.app import run
 
     class TestQueuer(Queuer):
-        AWS_PREFIX = "FOO"
+        APP_BLOBSTORE = "FOO"
         HANDLE_GZIP = True
 
         def process_file(self, fname: str, fobj: BinaryIO) -> None:

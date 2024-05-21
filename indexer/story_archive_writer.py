@@ -327,6 +327,9 @@ class StoryArchiveWriter:
         )
         self.writer.write_record(metadata_record)
 
+        # make what archive a story ended up in visible
+        logger.info("%s -> %s", url, self.filename)
+
         return True  # written
 
     def finish(self) -> None:

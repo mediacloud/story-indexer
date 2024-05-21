@@ -26,7 +26,7 @@ DATE_RE = re.compile(r"(\d\d\d\d)[_-](\d\d)[_-](\d\d)")
 
 
 class HistQueuer(Queuer):
-    AWS_PREFIX = "HIST"  # S3 env var prefix
+    APP_BLOBSTORE = "HIST"  # first choice for blobstore/keys
     HANDLE_GZIP = True  # just in case
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
