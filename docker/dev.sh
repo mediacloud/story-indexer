@@ -15,6 +15,7 @@ ARCHIVER_S3_BUCKET=NO_ARCHIVE	# magical: leave temp files in place
 ARCHIVER_S3_REGION=  # MUST be empty to disable S3 / check for "NO_ARCHIVE" bucket
 ARCHIVER_S3_SECRET_ACCESS_KEY=..........
 #
+ELASTICSEARCH_SNAPSHOT_REPO=
 # used by {arch,hist,rss}-queuer.py (read only)
 QUEUER_S3_ACCESS_KEY_ID=AKxxxxxx
 QUEUER_S3_REGION=us-east-1

@@ -83,8 +83,14 @@ class ElasticConf(ElasticConfMixin, App):
         index_template_created = self.create_index_template(es)
         ilm_policy_created = self.create_ilm_policy(es)
         alias_created = self.create_initial_index(es)
+        slm_policy_created = self.create_slm_policy(es)
 
-        if index_template_created and ilm_policy_created and alias_created:
+        if (
+            index_template_created
+            and ilm_policy_created
+            and alias_created
+            and slm_policy_created
+        ):
             logger.info("All ES configurations applied successfully.")
         else:
             logger.error("One or more configurations failed. Check logs for details.")
@@ -165,7 +171,6 @@ class ElasticConf(ElasticConfMixin, App):
         schedule = json_data["schedule"]
         retention = json_data["retention"]
 
-        # SLM starts automatically when clusture is formed.If SLM stopped start using POST /_slm/start
         response = es.slm.put_lifecycle(
             policy_id=CURRENT_POLICY_ID,
             config=config,
