@@ -290,6 +290,14 @@ csv)
     ;;
 esac
 
+# If explicit input files supplied for "normal" (RSS/puller) pipeline,
+# change stack/stats prefix from empty to "rss-" to distinguish from
+# regular/prod stack.  NOTE: rss-puller only run if OPT_INPUTS is
+# empty, so will always be processing rss files.
+if [ "x$OPT_INPUTS" != x -a "x$PIPE_TYPE_PFX" = x ]; then
+    PIPE_TYPE_PFX=rss-
+fi
+
 # prefix stack name, stats realm with pipeline type:
 BASE_STACK_NAME=$PIPE_TYPE_PFX$BASE_STACK_NAME
 STATSD_REALM=$PIPE_TYPE_PFX$STATSD_REALM
@@ -555,6 +563,9 @@ if [ "x$QUEUER_TYPE" != x ]; then
 else
     QUEUER_ARGS='N/A'
 fi
+
+echo STACK_NAME $STACK_NAME
+echo STATSD_REALM $STATSD_REALM
 
 # function to add a parameter to JSON CONFIG file
 add() {
