@@ -51,6 +51,8 @@ class Queuer(StoryProducer):
     # will be False when handling WARC files (warcio handles it)
     HANDLE_GZIP: bool  # True to intervene if .gz present
 
+    SHUFFLE_BATCH_SIZE = 2500
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self.blobstores = [self.APP_BLOBSTORE.upper(), "QUEUER"]
@@ -244,6 +246,7 @@ class Queuer(StoryProducer):
                 logger.info("process_file %s", fname)
                 with self.timer("process_file"):  # report elapsed time
                     self.process_file(fname, f)
+                self.flush_shuffle_batch()
                 incr_files("success")
         except TrackerException as exc:
             # here if file not startable

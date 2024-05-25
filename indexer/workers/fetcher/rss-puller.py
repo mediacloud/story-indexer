@@ -12,7 +12,6 @@ import email.utils
 import json
 import logging
 import os
-import random
 import sys
 import time
 from typing import TypedDict, cast
@@ -97,9 +96,6 @@ class RSSPuller(StoryProducer):
 
         # small batches more likely to have all stories from one source
         # (which thawrts the goal of the "shuffle" to make queue more varied).
-        # COULD have two params (one for API, and a (possibly larger) one for
-        # how many to collect before queuing (to avoid making rss-fetcher API
-        # web server from needing to serialize large JSON strings).
         default_batch_size = int(os.environ.get("RSS_FETCHER_BATCH_SIZE", 2500))
         ap.add_argument(
             "--rss-fetcher-batch-size",
@@ -196,11 +192,6 @@ class RSSPuller(StoryProducer):
             new_last = last
         logger.info("got %d new_last: %s", got, new_last)
 
-        # randomizing order to break up blocks of URL from same source
-        # (original RSS file) which slows down queue fetcher
-        # (or causes it to requeue stories to prevent slowdown)
-        random.shuffle(stories)
-
         for s in stories:
             id_ = s.get("id")
             if not isinstance(id_, int):
@@ -247,6 +238,7 @@ class RSSPuller(StoryProducer):
                 rss.fetch_date = s.get("fetched_at")
             self.send_story(story)
         # end for s in stories:
+        self.flush_shuffle_batch()
         return (got, new_last)
 
     def main_loop(self) -> None:

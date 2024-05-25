@@ -28,6 +28,7 @@ DATE_RE = re.compile(r"(\d\d\d\d)[_-](\d\d)[_-](\d\d)")
 class HistQueuer(Queuer):
     APP_BLOBSTORE = "HIST"  # first choice for blobstore/keys
     HANDLE_GZIP = True  # just in case
+    SHUFFLE_BATCH_SIZE = 0  # uses hist-fetcher no shuffling needed
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
