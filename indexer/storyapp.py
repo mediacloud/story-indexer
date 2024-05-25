@@ -289,10 +289,6 @@ class StoryProducer(StoryMixin, Producer):
     Producer that queues new Story objects (w/o receiving any)
     """
 
-    # number of stories to batch and shuffle (zero to disable)
-    # set in subclasses (Queuer, RSSPuller)
-    SHUFFLE_BATCH_SIZE = 0
-
     SAMPLE_PERCENT = 10.0  # for --sample-size
 
     def __init__(self, process_name: str, descr: str):
@@ -339,14 +335,6 @@ class StoryProducer(StoryMixin, Producer):
             metavar="N",
             help=f"Implies --max-stories N --random-sample {self.SAMPLE_PERCENT}",
         )
-        if self.SHUFFLE_BATCH_SIZE > 0:
-            # exists to help tqfetcher: not useful for hist-queuer
-            ap.add_argument(
-                "--shuffle-batch-size",
-                type=int,
-                default=self.SHUFFLE_BATCH_SIZE,
-                help="number of stories to batch and shuffle before sending",
-            )
 
     def process_args(self) -> None:
         super().process_args()
@@ -379,12 +367,7 @@ class StoryProducer(StoryMixin, Producer):
         assert self.connection
         # if pika thread running, it owns the connection:
         assert self._pika_thread is None
-
-        if self.SHUFFLE_BATCH_SIZE > 0:
-            assert self.args
-            batch_size = int(self.args.shuffle_batch_size)
-        else:
-            batch_size = 0
+        batch_size = self._batch_size()
         return RabbitMQStorySender(self, self.connection.channel(), batch_size)
 
     def send_story(self, story: BaseStory, check_html: bool = False) -> None:
@@ -428,8 +411,41 @@ class StoryProducer(StoryMixin, Producer):
             and self.queued_stories >= self.args.max_stories
         ):
             logger.info("%s %s stories; quitting", status, self.queued_stories)
-            self.flush_shuffle_batch()
-            sys.exit(0)
+            self.quit(0)
+
+    def quit(self, status: int) -> None:
+        sys.exit(status)
+
+    def _batch_size(self) -> int:
+        """
+        return shuffle batch size to pass to RabbitMQStorySender
+        """
+        return 0  # no batching
+
+
+class ShufflingStoryProducer(StoryProducer):
+    """
+    StoryProducer that enables batches up and shuffling new stories to queue.
+    App should probably not sleep without calling flush_shuffle_batch()!
+    """
+
+    # number of stories to batch and shuffle (zero to disable)
+    SHUFFLE_BATCH_SIZE = 2500
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+
+        # will be zero in {arch,hist}-queuer (no reason to shuffle)
+        if self.SHUFFLE_BATCH_SIZE > 0:
+            default_shuffle_batch_size = int(
+                os.environ.get("SHUFFLE_BATCH_SIZE", self.SHUFFLE_BATCH_SIZE)
+            )
+            ap.add_argument(
+                "--shuffle-batch-size",
+                type=int,
+                default=default_shuffle_batch_size,
+                help=f"number of stories to batch and shuffle before sending (default: {default_shuffle_batch_size})",
+            )
 
     def flush_shuffle_batch(self) -> None:
         """
@@ -437,6 +453,24 @@ class StoryProducer(StoryMixin, Producer):
         """
         if self.sender is not None:
             self.sender.flush()
+
+    def quit(self, status: int) -> None:
+        """
+        here when queuing limit reached (testing)
+        """
+        self.flush_shuffle_batch()
+        super().quit(status)
+
+    def _batch_size(self) -> int:
+        """
+        return shuffle batch size to pass to RabbitMQStorySender
+        """
+        # will be zero in {arch,hist}-queuer (no reason to shuffle)
+        if self.SHUFFLE_BATCH_SIZE == 0:
+            return 0  # no batching
+
+        assert self.args
+        return int(self.args.shuffle_batch_size)
 
 
 class StoryWorker(StoryMixin, Worker):

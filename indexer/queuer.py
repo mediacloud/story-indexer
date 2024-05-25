@@ -33,7 +33,7 @@ import requests
 
 from indexer.app import AppException
 from indexer.blobstore import blobstore_by_url, is_blobstore_url
-from indexer.storyapp import StoryProducer
+from indexer.storyapp import ShufflingStoryProducer
 from indexer.tracker import TrackerException, get_tracker
 
 logger = logging.getLogger(__name__)
@@ -45,13 +45,11 @@ class QueuerException(AppException):
     """
 
 
-class Queuer(StoryProducer):
+class Queuer(ShufflingStoryProducer):
     APP_BLOBSTORE: str  # first choice for config
 
     # will be False when handling WARC files (warcio handles it)
     HANDLE_GZIP: bool  # True to intervene if .gz present
-
-    SHUFFLE_BATCH_SIZE = 2500
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)

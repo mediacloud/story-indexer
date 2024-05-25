@@ -22,7 +22,7 @@ import requests
 from indexer.app import AppException, run
 from indexer.cookiejar import CookieJar
 from indexer.story import RSSEntry, StoryFactory
-from indexer.storyapp import StoryProducer
+from indexer.storyapp import ShufflingStoryProducer
 
 Story = StoryFactory()
 
@@ -71,7 +71,7 @@ class StoryJSON(TypedDict):
     fetched_at: str | None  # UTC in DB/ISO format w/o TZ
 
 
-class RSSPuller(StoryProducer):
+class RSSPuller(ShufflingStoryProducer):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
