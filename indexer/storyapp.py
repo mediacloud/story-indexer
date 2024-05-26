@@ -247,6 +247,7 @@ class RabbitMQStorySender(StorySender):
         )
 
     def flush(self) -> None:
+        logger.info("shuffling %d stories", len(self._batch))
         random.shuffle(self._batch)  # randomize order in place
         for bi in self._batch:
             self._send(**bi)
@@ -398,7 +399,7 @@ class StoryProducer(StoryMixin, Producer):
             if self.sender is None:
                 self.sender = self.story_sender()
             self.sender.send_story(story)
-            status = "queued"
+            status = "queuing"  # may be held for shuffling
 
         self.incr_stories(status, url, log_level=level)
 
