@@ -135,20 +135,6 @@ x-worker-service-settings: &worker-service-settings
   volumes:
     - worker_data:/app/data/
 
-################ news-search-{api,ui} settings
-
-x-news-search-service-settings: &news-search-service-settings
-  environment: &news-search-environment-vars
-    <<: *base-environment-vars
-    # INDEXES is obsolete, no common vars right now
-  image: {{news_search_image}}
-  deploy: &news-search-deploy-settings
-    placement:
-      constraints:
-        - {{worker_placement_constraint}}
-    restart_policy:
-      condition: on-failure
-
 # end of aliases
 ################################################################
 
@@ -434,32 +420,6 @@ services:
 
   # NOTE! Not building Docker image here (yet)
   # until version/revision control issues worked out.
-
-  news-search-api:
-    <<: *news-search-service-settings
-    deploy:
-      <<: *news-search-deploy-settings
-      replicas: 8
-    environment:
-      <<: *news-search-environment-vars
-      DESCRIPTION: "Descriptive text here"
-      ELASTICSEARCH_INDEX_NAME_PREFIX: mc_search
-      ESHOSTS: {{elasticsearch_hosts}}
-      ESOPTS: '{"timeout": 60, "max_retries": 3}' # 'timeout' parameter is deprecated
-      TERMAGGRS: top,significant,rare
-      TERMFIELDS: article_title,text_content
-    ports:
-      - {{news_search_api_port_exported}}:{{news_search_api_port}}
-
-  news-search-ui:
-    <<: *news-search-service-settings
-    command: streamlit run ui.py
-    environment:
-      <<: *news-search-environment-vars
-      APIURL: http://news-search-api:8000/v1
-      TITLE: {{news_search_ui_title}}
-    ports:
-      - {{news_search_ui_port_exported}}:{{news_search_ui_port}}
 
   # run to apply ILM ES
   elastic-conf:
