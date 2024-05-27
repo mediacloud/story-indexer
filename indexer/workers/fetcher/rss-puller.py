@@ -96,12 +96,16 @@ class RSSPuller(ShufflingStoryProducer):
 
         # small batches more likely to have all stories from one source
         # (which thawrts the goal of the "shuffle" to make queue more varied).
-        default_batch_size = int(os.environ.get("RSS_FETCHER_BATCH_SIZE", 2500))
+        default_batch_size = (
+            int(os.environ.get("RSS_FETCHER_BATCH_SIZE", "0").strip())
+            or self.SHUFFLE_BATCH_SIZE
+            or 2500
+        )
         ap.add_argument(
             "--rss-fetcher-batch-size",
             type=int,
             default=default_batch_size,
-            help=f"Use rss-fetcher API to fetch stories (default: {default_batch_size})",
+            help=f"Number of stories to fetch at once (default: {default_batch_size})",
         )
 
     def _get_rss_fetcher_value(self, name: str) -> None:

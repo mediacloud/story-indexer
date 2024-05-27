@@ -244,7 +244,7 @@ class Queuer(ShufflingStoryProducer):
                 logger.info("process_file %s", fname)
                 with self.timer("process_file"):  # report elapsed time
                     self.process_file(fname, f)
-                self.flush_shuffle_batch()
+                    self.flush_shuffle_batch()
                 incr_files("success")
         except TrackerException as exc:
             # here if file not startable

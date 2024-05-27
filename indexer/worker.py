@@ -425,16 +425,18 @@ class QApp(App):
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
+        # XXX only acceptable _states RUNNING and NOT_STARTED?
         if self._state == PikaThreadState.NOT_STARTED:
             # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
-            self.start_pika_thread()
-            # XXX wait for thread startup (connection object available)!?
+            self.start_pika_thread()  # returns with _state == RUNNING
         elif not self._pika_thread or not self._pika_thread.is_alive():
+            # XXX fatal error??
             logger.info("Pika thread not running: %s", cb.__name__)
             return
         elif not (self.connection and self.connection.is_open):
+            # XXX fatal error??
             logger.info("No Pika connection: %s", cb.__name__)
             return
         # RACE HERE, but only on shutdown?

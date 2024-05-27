@@ -203,7 +203,15 @@ class RabbitMQStorySender(StorySender):
     tx_commit.
     """
 
-    def __init__(self, app: QApp, channel: BlockingChannel, batch_size: int = 1):
+    def __init__(self, app: QApp, channel: BlockingChannel, batch_size: int = 0):
+        """
+        If batch_size is greater than one, stories will be collected into
+        batches and shuffled (order randomized) to try to maximize
+        throughput in the queue-based fetcher; In this case the flush
+        method MUST be called BEFORE each work unit (file, API
+        response) of stories is marked as "done".
+        """
+
         self.app = app
         self._channel = channel
         self._batch_size = batch_size
@@ -247,11 +255,32 @@ class RabbitMQStorySender(StorySender):
         )
 
     def flush(self) -> None:
+        """
+        shuffle (randomize order) of any saved stories and send them.
+        """
         logger.info("shuffling %d stories", len(self._batch))
         random.shuffle(self._batch)  # randomize order in place
         for bi in self._batch:
             self._send(**bi)
         self._batch = []
+
+        # XXX NOTE!!! should block here here until pika thread has
+        # queued msgs to TabbitMQ so that queuer work is not marked
+        # "done" prematurely!!!!  Using a threading.Condition is
+        # tempting but would render the calling thread insensitive to
+        # death of the Pika thread, so perhaps add a method to the
+        # Worker class:
+        #
+        #     def synchronize_with_pika_thread(self):
+        #         done = False
+        #         def sync() -> None:
+        #             global done
+        #             done = True
+        #         self._call_in_pika_thread(sync)
+        #         while self._state == PikaThreadState.RUNNING and not done:
+        #             time.sleep(0.1)
+        #
+        # and call it here via self.app.synchronize_with_pika_thread()
 
 
 class ArchiveStorySender(StorySender):
@@ -426,11 +455,12 @@ class StoryProducer(StoryMixin, Producer):
 
 class ShufflingStoryProducer(StoryProducer):
     """
-    StoryProducer that enables batches up and shuffling new stories to queue.
-    App should probably not sleep without calling flush_shuffle_batch()!
+    StoryProducer App that batches up and shufflles new stories to
+    queue to try to maximize queue-based HTTP fetcher throughput.
     """
 
     # number of stories to batch and shuffle (zero to disable)
+    # NOTE! Used as default rss-puller RSS_FETCHER_BATCH_SIZE.
     SHUFFLE_BATCH_SIZE = 2500
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
@@ -450,14 +480,18 @@ class ShufflingStoryProducer(StoryProducer):
 
     def flush_shuffle_batch(self) -> None:
         """
-        shuffle and send accumulated stories, if any
+        shuffle and send accumulated stories, if any.
+
+        MUST be called before work a unit of stories
+        (a single file, or the results of an API call)
+        is recorded as done.
         """
         if self.sender is not None:
             self.sender.flush()
 
     def quit(self, status: int) -> None:
         """
-        here when queuing limit reached (testing)
+        here when queuing limit reached (when testing)
         """
         self.flush_shuffle_batch()
         super().quit(status)
