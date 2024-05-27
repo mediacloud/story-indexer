@@ -257,6 +257,9 @@ class RabbitMQStorySender(StorySender):
     def flush(self) -> None:
         """
         shuffle (randomize order) of any saved stories and send them.
+
+        This method MUST be called BEFORE each work unit (file, API
+        response) of stories is marked as "done".
         """
         logger.info("shuffling %d stories", len(self._batch))
         random.shuffle(self._batch)  # randomize order in place
@@ -265,7 +268,7 @@ class RabbitMQStorySender(StorySender):
         self._batch = []
 
         # XXX NOTE!!! should block here here until pika thread has
-        # queued msgs to TabbitMQ so that queuer work is not marked
+        # queued msgs to RabbitMQ so that queuer work is not marked
         # "done" prematurely!!!!  Using a threading.Condition is
         # tempting but would render the calling thread insensitive to
         # death of the Pika thread, so perhaps add a method to the
