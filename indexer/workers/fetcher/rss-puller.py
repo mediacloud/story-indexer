@@ -12,7 +12,6 @@ import email.utils
 import json
 import logging
 import os
-import random
 import sys
 import time
 from typing import TypedDict, cast
@@ -23,7 +22,7 @@ import requests
 from indexer.app import AppException, run
 from indexer.cookiejar import CookieJar
 from indexer.story import RSSEntry, StoryFactory
-from indexer.storyapp import StoryProducer
+from indexer.storyapp import ShufflingStoryProducer
 
 Story = StoryFactory()
 
@@ -72,7 +71,7 @@ class StoryJSON(TypedDict):
     fetched_at: str | None  # UTC in DB/ISO format w/o TZ
 
 
-class RSSPuller(StoryProducer):
+class RSSPuller(ShufflingStoryProducer):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -97,15 +96,16 @@ class RSSPuller(StoryProducer):
 
         # small batches more likely to have all stories from one source
         # (which thawrts the goal of the "shuffle" to make queue more varied).
-        # COULD have two params (one for API, and a (possibly larger) one for
-        # how many to collect before queuing (to avoid making rss-fetcher API
-        # web server from needing to serialize large JSON strings).
-        default_batch_size = int(os.environ.get("RSS_FETCHER_BATCH_SIZE", 2500))
+        default_batch_size = (
+            int(os.environ.get("RSS_FETCHER_BATCH_SIZE", "0").strip())
+            or self.SHUFFLE_BATCH_SIZE
+            or 2500
+        )
         ap.add_argument(
             "--rss-fetcher-batch-size",
             type=int,
             default=default_batch_size,
-            help=f"Use rss-fetcher API to fetch stories (default: {default_batch_size})",
+            help=f"Number of stories to fetch at once (default: {default_batch_size})",
         )
 
     def _get_rss_fetcher_value(self, name: str) -> None:
@@ -196,11 +196,6 @@ class RSSPuller(StoryProducer):
             new_last = last
         logger.info("got %d new_last: %s", got, new_last)
 
-        # randomizing order to break up blocks of URL from same source
-        # (original RSS file) which slows down queue fetcher
-        # (or causes it to requeue stories to prevent slowdown)
-        random.shuffle(stories)
-
         for s in stories:
             id_ = s.get("id")
             if not isinstance(id_, int):
@@ -247,6 +242,7 @@ class RSSPuller(StoryProducer):
                 rss.fetch_date = s.get("fetched_at")
             self.send_story(story)
         # end for s in stories:
+        self.flush_shuffle_batch()
         return (got, new_last)
 
     def main_loop(self) -> None:

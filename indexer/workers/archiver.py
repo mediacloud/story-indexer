@@ -5,9 +5,7 @@ Media Cloud Archiver Worker
 import logging
 import os
 import socket
-import sys
 import time
-from typing import Optional
 
 import indexer.blobstore
 from indexer.app import run
@@ -27,7 +25,7 @@ class Archiver(BatchStoryWorker):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
-        self.archive: Optional[StoryArchiveWriter] = None
+        self.archive: StoryArchiveWriter | None = None
         self.archive_prefix = os.environ.get("ARCHIVER_PREFIX", "mc")
         self.blobstores: list[indexer.blobstore.BlobStore] = []
 
@@ -47,9 +45,6 @@ class Archiver(BatchStoryWorker):
 
         # returns list of 0 or more BlobStore provider objects
         self.blobstores = indexer.blobstore.blobstores("ARCHIVER")
-        if len(self.blobstores) == 0:
-            logger.error("no blobstores found")
-            sys.exit(0)  # happy exit (for developers w/o keys)
         logger.info(
             "blobstores configured: %s",
             ", ".join(bs.PROVIDER for bs in self.blobstores),

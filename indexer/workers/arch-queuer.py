@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class ArchiveQueuer(Queuer):
     APP_BLOBSTORE = "ARCHIVER"  # same as archiver.py
     HANDLE_GZIP = False  # handled by warcio
+    SHUFFLE_BATCH_SIZE = 0  # no fetcher involved!
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         reader = StoryArchiveReader(fobj)

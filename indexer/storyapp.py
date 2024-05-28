@@ -17,7 +17,7 @@ import random
 import sys
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlsplit
 
 from mcmetadata.urls import NON_NEWS_DOMAINS
@@ -181,6 +181,18 @@ class StorySender:
         expiration_ms: Optional[int] = None,
     ) -> None: ...
 
+    def flush(self) -> None:
+        """
+        noop unless batching
+        """
+
+
+class _BatchItem(TypedDict):
+    story: BaseStory
+    exchange: Optional[str]
+    routing_key: str
+    expiration_ms: Optional[int]
+
 
 class RabbitMQStorySender(StorySender):
     """
@@ -191,9 +203,19 @@ class RabbitMQStorySender(StorySender):
     tx_commit.
     """
 
-    def __init__(self, app: QApp, channel: BlockingChannel):
+    def __init__(self, app: QApp, channel: BlockingChannel, batch_size: int = 0):
+        """
+        If batch_size is greater than one, stories will be collected into
+        batches and shuffled (order randomized) to try to maximize
+        throughput in the queue-based fetcher; In this case the flush
+        method MUST be called BEFORE each work unit (file, API
+        response) of stories is marked as "done".
+        """
+
         self.app = app
         self._channel = channel
+        self._batch_size = batch_size
+        self._batch: list[_BatchItem] = []
 
     def send_story(
         self,
@@ -202,6 +224,28 @@ class RabbitMQStorySender(StorySender):
         routing_key: str = DEFAULT_ROUTING_KEY,
         expiration_ms: Optional[int] = None,
     ) -> None:
+        if self._batch_size <= 1:
+            # avoid overhead if not batching
+            self._send(story, exchange, routing_key, expiration_ms)
+        else:
+            self._batch.append(
+                _BatchItem(
+                    story=story,
+                    exchange=exchange,
+                    routing_key=routing_key,
+                    expiration_ms=expiration_ms,
+                )
+            )
+            if len(self._batch) >= self._batch_size:
+                self.flush()
+
+    def _send(
+        self,
+        story: BaseStory,
+        exchange: Optional[str],
+        routing_key: str,
+        expiration_ms: Optional[int],
+    ) -> None:
         if expiration_ms is not None:
             props = BasicProperties(expiration=str(expiration_ms))
         else:
@@ -209,6 +253,37 @@ class RabbitMQStorySender(StorySender):
         self.app._send_message(
             self._channel, story.dump(), exchange, routing_key, props
         )
+
+    def flush(self) -> None:
+        """
+        shuffle (randomize order) of any saved stories and send them.
+
+        This method MUST be called BEFORE each work unit (file, API
+        response) of stories is marked as "done".
+        """
+        logger.info("shuffling %d stories", len(self._batch))
+        random.shuffle(self._batch)  # randomize order in place
+        for bi in self._batch:
+            self._send(**bi)
+        self._batch = []
+
+        # XXX NOTE!!! should block here here until pika thread has
+        # queued msgs to RabbitMQ so that queuer work is not marked
+        # "done" prematurely!!!!  Using a threading.Condition is
+        # tempting but would render the calling thread insensitive to
+        # death of the Pika thread, so perhaps add a method to the
+        # Worker class:
+        #
+        #     def synchronize_with_pika_thread(self):
+        #         done = False
+        #         def sync() -> None:
+        #             global done
+        #             done = True
+        #         self._call_in_pika_thread(sync)
+        #         while self._state == PikaThreadState.RUNNING and not done:
+        #             time.sleep(0.1)
+        #
+        # and call it here via self.app.synchronize_with_pika_thread()
 
 
 class ArchiveStorySender(StorySender):
@@ -325,7 +400,8 @@ class StoryProducer(StoryMixin, Producer):
         assert self.connection
         # if pika thread running, it owns the connection:
         assert self._pika_thread is None
-        return RabbitMQStorySender(self, self.connection.channel())
+        batch_size = self._batch_size()
+        return RabbitMQStorySender(self, self.connection.channel(), batch_size)
 
     def send_story(self, story: BaseStory, check_html: bool = False) -> None:
         assert self.args
@@ -355,7 +431,7 @@ class StoryProducer(StoryMixin, Producer):
             if self.sender is None:
                 self.sender = self.story_sender()
             self.sender.send_story(story)
-            status = "queued"
+            status = "queuing"  # may be held for shuffling
 
         self.incr_stories(status, url, log_level=level)
 
@@ -368,7 +444,71 @@ class StoryProducer(StoryMixin, Producer):
             and self.queued_stories >= self.args.max_stories
         ):
             logger.info("%s %s stories; quitting", status, self.queued_stories)
-            sys.exit(0)
+            self.quit(0)
+
+    def quit(self, status: int) -> None:
+        sys.exit(status)
+
+    def _batch_size(self) -> int:
+        """
+        return shuffle batch size to pass to RabbitMQStorySender
+        """
+        return 0  # no batching
+
+
+class ShufflingStoryProducer(StoryProducer):
+    """
+    StoryProducer App that batches up and shufflles new stories to
+    queue to try to maximize queue-based HTTP fetcher throughput.
+    """
+
+    # number of stories to batch and shuffle (zero to disable)
+    # NOTE! Used as default rss-puller RSS_FETCHER_BATCH_SIZE.
+    SHUFFLE_BATCH_SIZE = 2500
+
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+
+        # will be zero in {arch,hist}-queuer (no reason to shuffle)
+        if self.SHUFFLE_BATCH_SIZE > 0:
+            default_shuffle_batch_size = int(
+                os.environ.get("SHUFFLE_BATCH_SIZE", self.SHUFFLE_BATCH_SIZE)
+            )
+            ap.add_argument(
+                "--shuffle-batch-size",
+                type=int,
+                default=default_shuffle_batch_size,
+                help=f"number of stories to batch and shuffle before sending (default: {default_shuffle_batch_size})",
+            )
+
+    def flush_shuffle_batch(self) -> None:
+        """
+        shuffle and send accumulated stories, if any.
+
+        MUST be called before work a unit of stories
+        (a single file, or the results of an API call)
+        is recorded as done.
+        """
+        if self.sender is not None:
+            self.sender.flush()
+
+    def quit(self, status: int) -> None:
+        """
+        here when queuing limit reached (when testing)
+        """
+        self.flush_shuffle_batch()
+        super().quit(status)
+
+    def _batch_size(self) -> int:
+        """
+        return shuffle batch size to pass to RabbitMQStorySender
+        """
+        # will be zero in {arch,hist}-queuer (no reason to shuffle)
+        if self.SHUFFLE_BATCH_SIZE == 0:
+            return 0  # no batching
+
+        assert self.args
+        return int(self.args.shuffle_batch_size)
 
 
 class StoryWorker(StoryMixin, Worker):

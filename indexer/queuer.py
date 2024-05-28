@@ -33,7 +33,7 @@ import requests
 
 from indexer.app import AppException
 from indexer.blobstore import blobstore_by_url, is_blobstore_url
-from indexer.storyapp import StoryProducer
+from indexer.storyapp import ShufflingStoryProducer
 from indexer.tracker import TrackerException, get_tracker
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class QueuerException(AppException):
     """
 
 
-class Queuer(StoryProducer):
+class Queuer(ShufflingStoryProducer):
     APP_BLOBSTORE: str  # first choice for config
 
     # will be False when handling WARC files (warcio handles it)
@@ -244,6 +244,7 @@ class Queuer(StoryProducer):
                 logger.info("process_file %s", fname)
                 with self.timer("process_file"):  # report elapsed time
                     self.process_file(fname, f)
+                    self.flush_shuffle_batch()
                 incr_files("success")
         except TrackerException as exc:
             # here if file not startable
