@@ -379,6 +379,10 @@ services:
     environment:
       <<: *worker-environment-vars
       RUN: archiver
+      ARCHIVER_B2_BUCKET: {{archiver_b2_bucket}}
+      ARCHIVER_B2_REGION: {{archiver_b2_region}}
+      ARCHIVER_B2_ACCESS_KEY_ID: {{archiver_b2_access_key_id}}
+      ARCHIVER_B2_SECRET_ACCESS_KEY: {{archiver_b2_secret_access_key}}
       ARCHIVER_PREFIX: {{archiver_prefix}}
       ARCHIVER_REMOVE_LOCAL: "non-empty-to-remove-after-upload"
       ARCHIVER_S3_BUCKET: {{archiver_s3_bucket}}

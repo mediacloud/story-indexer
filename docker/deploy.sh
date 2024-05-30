@@ -620,6 +620,10 @@ echo '{' > $CONFIG
 # When adding a new variable, you almost certainly need to add an
 # environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
 
+add ARCHIVER_B2_BUCKET		   # private
+add ARCHIVER_B2_REGION allow-empty # private: empty to disable
+add ARCHIVER_B2_SECRET_ACCESS_KEY  # private
+add ARCHIVER_B2_ACCESS_KEY_ID	   # private
 add ARCHIVER_PREFIX
 add ARCHIVER_REPLICAS int
 add ARCHIVER_S3_BUCKET		   # private
