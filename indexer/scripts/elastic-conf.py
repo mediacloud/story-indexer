@@ -6,6 +6,7 @@ Should exit gracefully if configurations already exists in Elasticsearch
 
 import argparse
 import os
+import subprocess
 import sys
 from logging import getLogger
 from typing import Any
@@ -54,6 +55,19 @@ class ElasticConf(ElasticConfMixin, App):
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
         )
+        # S3 Credentials
+        ap.add_argument(
+            "--s3-access-key",
+            dest="s3_access_key",
+            default=os.environ.get("ELASTICSEARCH_S3_ACCESS_KEY") or "",
+            help="Elasticsearch S3 access key",
+        )
+        ap.add_argument(
+            "--s3-secret-key",
+            dest="s3_secret_key",
+            default=os.environ.get("ELASTICSEARCH_S3_SECRET_KEY") or "",
+            help="Elasticsearch S3 secret key",
+        )
 
     def process_args(self) -> None:
         super().process_args()
@@ -64,6 +78,8 @@ class ElasticConf(ElasticConfMixin, App):
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
+            ("s3_access_key", "ELASTICSEARCH_S3_ACCESS_KEY"),
+            ("s3_secret_key", "ELASTICSEARCH_S3_SECRET_KEY"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -76,10 +92,15 @@ class ElasticConf(ElasticConfMixin, App):
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
+        self.s3_access_key = self.args.s3_access_key
+        self.s3_secret_key = self.args.s3_secret_key
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
         assert es.ping(), "Failed to connect to Elasticsearch"
+        if not self.check_s3_credentials(es):
+            self.set_s3_credentials(es)
+            self.reload_secure_settings(es)
         index_template_created = self.create_index_template(es)
         ilm_policy_created = self.create_ilm_policy(es)
         alias_created = self.create_initial_index(es)
@@ -95,6 +116,62 @@ class ElasticConf(ElasticConfMixin, App):
         else:
             logger.error("One or more configurations failed. Check logs for details.")
             return
+
+    def check_s3_credentials(self, es: Elasticsearch) -> bool:
+        try:
+            response = es.transport.perform_request("GET", "/_nodes/secure_settings")
+            nodes = response.get("nodes", {})
+            for node_id, node_data in nodes.items():
+                settings = node_data.get("secure_settings", {})
+                if (
+                    "s3.client.default.access_key" in settings
+                    and "s3.client.default.secret_key" in settings
+                ):
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking S3 credentials: {e}")
+            return False
+
+    def set_s3_credentials(self, es: Elasticsearch) -> None:
+        commands = [
+            ("s3.client.default.access_key", self.s3_access_key),
+            ("s3.client.default.secret_key", self.s3_secret_key),
+        ]
+        for key, value in commands:
+            result = subprocess.run(
+                ["elasticsearch-keystore", "add", "--force", "--stdin", key],
+                input=value.encode(),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logger.error(f"Failed to set keystore value for {key}: {result.stderr}")
+                sys.exit(1)
+
+    def reload_secure_settings(self, es: Elasticsearch) -> None:
+        response = es.nodes.reload_secure_settings()
+        if response.get("acknowledged", False):
+            logger.info("Secure settings reloaded successfully.")
+        else:
+            logger.error("Failed to reload secure settings.")
+            sys.exit(1)
+
+    def check_s3_repository(self, es: Elasticsearch) -> bool:
+        response = es.snapshot.get_repository()
+        return self.es_snapshot_repo in response
+
+    def register_s3_repository(self, es: Elasticsearch) -> None:
+        response = es.snapshot.create_repository(
+            name=self.es_snapshot_repo,
+            type="s3",
+            settings={"bucket": self.es_snapshot_repo, "client": "default"},
+        )
+        if response and response.get("acknowledged", False):
+            logger.info("S3 repository registered successfully.")
+        else:
+            logger.error("Failed to register S3 repository.")
+            sys.exit(1)
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
