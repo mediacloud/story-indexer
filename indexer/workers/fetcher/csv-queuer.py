@@ -21,8 +21,8 @@ DATE_RE = re.compile(r"(\d\d\d\d)[_-](\d\d)[_-](\d\d)")
 
 
 class CSVQueuer(Queuer):
-    AWS_PREFIX = "HIST"  # S3 env var prefix
     HANDLE_GZIP = True  # just in case
+    APP_BLOBSTORE = "CSV"
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
