@@ -290,6 +290,7 @@ esac
 # empty, so will always be processing rss files.
 if [ "x$OPT_INPUTS" != x -a "x$PIPE_TYPE_PFX" = x ]; then
     PIPE_TYPE_PFX=rss-
+    ARCH_SUFFIX=rss
 fi
 
 # prefix stack name, stats realm with pipeline type:
@@ -550,11 +551,14 @@ if [ "x$QUEUER_TYPE" != x ]; then
     QUEUER_ARGS="$QUEUER_OPTS $QUEUER_FILES"
     echo QUEUER_ARGS $QUEUER_ARGS
 else
+    # not applicable for batch fetcher
     QUEUER_ARGS='N/A'
 fi
 
+# things that vary by stack type, from most to least interesting
 echo STACK_NAME $STACK_NAME
 echo STATSD_REALM $STATSD_REALM
+echo ARCHIVER_PREFIX $ARCHIVER_PREFIX
 
 # function to add a parameter to JSON CONFIG file
 add() {
