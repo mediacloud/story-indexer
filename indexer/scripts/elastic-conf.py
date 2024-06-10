@@ -51,7 +51,7 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--es-snapshot-s3-bucket",
             dest="es_snapshot_s3_bucket",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_BUCKET") or "",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_SETTINGS_BUCKET") or "",
             help="ES snapshot S3 bucket",
         )
         ap.add_argument(
@@ -61,10 +61,16 @@ class ElasticConf(ElasticConfMixin, App):
             help="ES snapshot repository name",
         )
         ap.add_argument(
-            "--es-snapshot-location",
-            dest="es_snapshot_location",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_LOCATION") or "fs",
-            help="ES snapshots upload location, default fs",
+            "--es-snapshot-type",
+            dest="es_snapshot_type",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_TYPE") or "fs",
+            help="ES snapshots type, default fs",
+        )
+        ap.add_argument(
+            "--es-snapshot-fs-location",
+            dest="es_snapshot_fs_location",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_SETTINGS_LOCATION"),
+            help="ES path for filesystem backup",
         )
 
     def process_args(self) -> None:
@@ -75,9 +81,8 @@ class ElasticConf(ElasticConfMixin, App):
             ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
-            ("es_snapshot_s3_bucket", "ELASTICSEARCH_SNAPSHOT_BUCKET"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
-            ("es_snapshot_location", "ELASTICSEARCH_SNAPSHOT_LOCATION"),
+            ("es_snapshot_type", "ELASTICSEARCH_SNAPSHOT_TYPE"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -90,8 +95,14 @@ class ElasticConf(ElasticConfMixin, App):
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
-        self.es_snapshot_location = self.args.es_snapshot_location
+        self.es_snapshot_type = self.args.es_snapshot_type
         self.es_snapshot_s3_bucket = self.args.es_snapshot_s3_bucket
+        self.es_snapshot_fs_location = self.args.es_snapshot_fs_location
+
+        if not self.es_snapshot_s3_bucket:
+            logger.warning(
+                "--es-snapshot-s3-bucket or ELASTICSEARCH_SNAPSHOT_SETTINGS_BUCKET not set"
+            )
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -125,7 +136,7 @@ class ElasticConf(ElasticConfMixin, App):
             response = es.snapshot.create_repository(
                 name=self.es_snapshot_repo,
                 type="fs",
-                settings={"location": "/var/backups/elasticsearch", "compress": True},
+                settings={"location": self.es_snapshot_fs_location, "compress": True},
             )
             if response and response.get("acknowledged", False):
                 logger.info("Filesystem repository registered successfully.")
@@ -215,13 +226,13 @@ class ElasticConf(ElasticConfMixin, App):
         CURRENT_POLICY_ID = "bi_weekly_slm"
         repository = self.es_snapshot_repo
 
-        if self.es_snapshot_location == "fs":
+        if self.es_snapshot_type == "fs":
             self.register_fs_repository(es)
-        elif self.es_snapshot_location == "s3":
+        elif self.es_snapshot_type == "s3":
             self.register_s3_repository(es)
         # To Add Backblaze support
         else:
-            logger.error("Unsupported snapshot location: %s", self.es_snapshot_location)
+            logger.error("Unsupported snapshot location: %s", self.es_snapshot_type)
             return False
 
         json_data = self.load_slm_policy_template(CURRENT_POLICY_ID)
