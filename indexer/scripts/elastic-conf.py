@@ -49,6 +49,12 @@ class ElasticConf(ElasticConfMixin, App):
         )
         # SLM
         ap.add_argument(
+            "--es-snapshot-s3-bucket",
+            dest="es_snapshot_s3_bucket",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_BUCKET") or "",
+            help="ES snapshot S3 bucket",
+        )
+        ap.add_argument(
             "--es-snapshot-repo",
             dest="es_snapshot_repo",
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
@@ -69,6 +75,7 @@ class ElasticConf(ElasticConfMixin, App):
             ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
+            ("es_snapshot_s3_bucket", "ELASTICSEARCH_SNAPSHOT_BUCKET"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
             ("es_snapshot_location", "ELASTICSEARCH_SNAPSHOT_LOCATION"),
         ]
@@ -84,6 +91,7 @@ class ElasticConf(ElasticConfMixin, App):
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
         self.es_snapshot_location = self.args.es_snapshot_location
+        self.es_snapshot_s3_bucket = self.args.es_snapshot_s3_bucket
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -131,7 +139,7 @@ class ElasticConf(ElasticConfMixin, App):
             response = es.snapshot.create_repository(
                 name=self.es_snapshot_repo,
                 type="s3",
-                settings={"bucket": self.es_snapshot_repo, "client": "default"},
+                settings={"bucket": self.es_snapshot_s3_bucket, "client": "default"},
             )
             if response and response.get("acknowledged", False):
                 logger.info("S3 repository registered successfully.")
