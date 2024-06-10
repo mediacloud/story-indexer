@@ -434,10 +434,11 @@ services:
       ELASTICSEARCH_ILM_MAX_SHARD_SIZE: {{elasticsearch_ilm_max_shard_size}}
       ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
       ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
+      ELASTICSEARCH_SNAPSHOT_LOCATION: {{elasticsearch_snapshot_location}}
       ELASTICSEARCH_SNAPSHOT_REPO: {{elasticsearch_snapshot_repo}}
-      ELASTICSEARCH_S3_ACCESS_KEY: {{elasticsearch_s3_access_key}}
-      ELASTICSEARCH_S3_SECRET_KEY: {{elasticsearch_s3_secret_key}}
       RUN: elastic-conf
+    volumes:
+      - *es-backup-volume
 
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
