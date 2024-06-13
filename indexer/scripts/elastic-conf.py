@@ -117,14 +117,17 @@ class ElasticConf(ElasticConfMixin, App):
             return
 
     def repository_exists(self, es: Elasticsearch, repo_name: str) -> bool:
+        status = False
         try:
             response = es.snapshot.get_repository(name=repo_name)
-            return repo_name in response
+            if repo_name in response:
+                status = True
         except Exception as e:
-            logger.error("Error checking if repository exists: %s", e)
-            return False
+            logger.error("Error validating repository: %s", e)
+        return status
 
     def register_repository(self, es: Elasticsearch, repo_type: str) -> bool:
+        status = False
         if not self.repository_exists(es, self.es_snapshot_repo):
             settings = {"location": self.es_snapshot_fs_location, "compress": True}
             if repo_type == "s3":
@@ -133,23 +136,29 @@ class ElasticConf(ElasticConfMixin, App):
                     "endpoint": self.es_snapshot_s3_endpoint,
                 }
 
-            response = es.snapshot.create_repository(
-                name=self.es_snapshot_repo,
-                type=repo_type,
-                settings=settings,
-            )
-
-            if response and response.get("acknowledged", False):
-                logger.info(
-                    f"{repo_type.capitalize()} repository registered successfully."
+            try:
+                response = es.snapshot.create_repository(
+                    name=self.es_snapshot_repo,
+                    type=repo_type,
+                    settings=settings,
                 )
-                return True
-            else:
-                logger.error(f"Failed to register {repo_type} repository.")
-                return False
+
+                if response and response.get("acknowledged", False):
+                    logger.info(
+                        f"{repo_type.capitalize()} repository registered successfully."
+                    )
+                    status = True
+                else:
+                    logger.error(f"Failed to register {repo_type} repository.")
+            except Exception as e:
+                logger.error(
+                    f"Exception occurred while registering {repo_type} repository: %s",
+                    e,
+                )
         else:
             logger.info(f"{repo_type.capitalize()} repository already exists.")
-            return True
+            status = True
+        return status
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
