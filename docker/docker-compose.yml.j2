@@ -87,7 +87,7 @@ x-es-service-settings: &es-service-settings
     ES_JAVA_OPTS: "-Xms1g -Xmx1g"
     discovery.type: single-node
 {% endif %}
-    path.repo: {{elasticsearch_snapshot_settings_location}}
+    path.repo: "/var/backups/elasticsearch"
     xpack.security.enabled: "false"
 
   image: {{elasticsearch_image}}

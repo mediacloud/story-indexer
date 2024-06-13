@@ -19,6 +19,18 @@ logger = getLogger("elastic-conf")
 
 
 class ElasticConf(ElasticConfMixin, App):
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+        self.es_snapshot_s3_bucket = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET"
+        )
+        self.es_snapshot_fs_location = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION"
+        )
+        self.es_snapshot_s3_endpoint = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT"
+        )
+
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         # Index template args
@@ -49,12 +61,6 @@ class ElasticConf(ElasticConfMixin, App):
         )
         # SLM
         ap.add_argument(
-            "--es-snapshot-s3-bucket",
-            dest="es_snapshot_s3_bucket",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_SETTINGS_BUCKET") or "",
-            help="ES snapshot S3 bucket",
-        )
-        ap.add_argument(
             "--es-snapshot-repo",
             dest="es_snapshot_repo",
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
@@ -63,14 +69,8 @@ class ElasticConf(ElasticConfMixin, App):
         ap.add_argument(
             "--es-snapshot-type",
             dest="es_snapshot_type",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_TYPE") or "fs",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO_TYPE") or "fs",
             help="ES snapshots type, default fs",
-        )
-        ap.add_argument(
-            "--es-snapshot-fs-location",
-            dest="es_snapshot_fs_location",
-            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_SETTINGS_LOCATION"),
-            help="ES path for filesystem backup",
         )
 
     def process_args(self) -> None:
@@ -82,7 +82,7 @@ class ElasticConf(ElasticConfMixin, App):
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
-            ("es_snapshot_type", "ELASTICSEARCH_SNAPSHOT_TYPE"),
+            ("es_snapshot_type", "ELASTICSEARCH_SNAPSHOT_REPO_TYPE"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -96,13 +96,6 @@ class ElasticConf(ElasticConfMixin, App):
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
         self.es_snapshot_type = self.args.es_snapshot_type
-        self.es_snapshot_s3_bucket = self.args.es_snapshot_s3_bucket
-        self.es_snapshot_fs_location = self.args.es_snapshot_fs_location
-
-        if not self.es_snapshot_s3_bucket:
-            logger.warning(
-                "--es-snapshot-s3-bucket or ELASTICSEARCH_SNAPSHOT_SETTINGS_BUCKET not set"
-            )
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -131,33 +124,32 @@ class ElasticConf(ElasticConfMixin, App):
             logger.error("Error checking if repository exists: %s", e)
             return False
 
-    def register_fs_repository(self, es: Elasticsearch) -> None:
+    def register_repository(self, es: Elasticsearch, repo_type: str) -> bool:
         if not self.repository_exists(es, self.es_snapshot_repo):
-            response = es.snapshot.create_repository(
-                name=self.es_snapshot_repo,
-                type="fs",
-                settings={"location": self.es_snapshot_fs_location, "compress": True},
-            )
-            if response and response.get("acknowledged", False):
-                logger.info("Filesystem repository registered successfully.")
-            else:
-                logger.error("Failed to register filesystem repository.")
-        else:
-            logger.info("Filesystem repository already exists.")
+            settings = {"location": self.es_snapshot_fs_location, "compress": True}
+            if repo_type == "s3":
+                settings = {
+                    "bucket": self.es_snapshot_s3_bucket,
+                    "endpoint": self.es_snapshot_s3_endpoint,
+                }
 
-    def register_s3_repository(self, es: Elasticsearch) -> None:
-        if not self.repository_exists(es, self.es_snapshot_repo):
             response = es.snapshot.create_repository(
                 name=self.es_snapshot_repo,
-                type="s3",
-                settings={"bucket": self.es_snapshot_s3_bucket, "client": "default"},
+                type=repo_type,
+                settings=settings,
             )
+
             if response and response.get("acknowledged", False):
-                logger.info("S3 repository registered successfully.")
+                logger.info(
+                    f"{repo_type.capitalize()} repository registered successfully."
+                )
+                return True
             else:
-                logger.error("Failed to register S3 repository.")
+                logger.error(f"Failed to register {repo_type} repository.")
+                return False
         else:
-            logger.info("S3 repository already exists.")
+            logger.info(f"{repo_type.capitalize()} repository already exists.")
+            return True
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
@@ -226,14 +218,12 @@ class ElasticConf(ElasticConfMixin, App):
         CURRENT_POLICY_ID = "bi_weekly_slm"
         repository = self.es_snapshot_repo
 
-        if self.es_snapshot_type == "fs":
-            self.register_fs_repository(es)
-        elif self.es_snapshot_type == "s3":
-            self.register_s3_repository(es)
-        # To Add Backblaze support
-        else:
-            logger.error("Unsupported snapshot location: %s", self.es_snapshot_type)
-            return False
+        if not self.register_repository(es, self.es_snapshot_type):
+            logger.error(
+                "Elasticsearch snapshot repository does not exist: %s",
+                self.es_snapshot_type,
+            )
+            sys.exit(1)
 
         json_data = self.load_slm_policy_template(CURRENT_POLICY_ID)
         if not json_data:
