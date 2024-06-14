@@ -154,11 +154,14 @@ class ElasticConf(ElasticConfMixin, App):
                 settings=settings,
             )
 
-            if response and response.get("acknowledged", False):
-                logger.info("%s repository registered successfully.", repo_type)
-                status = True
+            acknowledged = False
+            if response:
+                acknowledged = response.get("acknowledged", False)
+            if acknowledged:
+                logger.info("Successfully registered repository: %s", self.es_snapshot_repo)
             else:
-                logger.error("Failed to register %s repository.", repo_type)
+                logger.error("Failed to register repository: %s", self.es_snapshot_repo)
+            return acknowledged
         except Exception:
             logger.exception(
                 "Failed to register repository: %s", self.es_snapshot_repo
