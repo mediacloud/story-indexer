@@ -235,7 +235,7 @@ class ElasticConf(ElasticConfMixin, App):
         if not self.register_repository(es):
             logger.error(
                 "Elasticsearch snapshot repository does not exist: %s",
-                self.es_snapshot_repo_type,
+                self.es_snapshot_repo,
             )
             return False
 
