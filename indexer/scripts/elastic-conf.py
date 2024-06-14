@@ -161,9 +161,9 @@ class ElasticConf(ElasticConfMixin, App):
                 logger.error("Failed to register %s repository.", repo_type)
         except Exception:
             logger.exception(
-                "Exception occurred while registering %s repository", repo_type
+                "Failed to register repository: %s", self.es_snapshot_repo
             )
-        return status
+        return False
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
