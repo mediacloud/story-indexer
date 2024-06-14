@@ -128,7 +128,10 @@ class ElasticConf(ElasticConfMixin, App):
     def register_repository(self, es: Elasticsearch) -> bool:
         repo_type = self.es_snapshot_repo_type
         if repo_type not in ["fs", "s3"]:
-            logger.error("Unsupported repository type: '%s'. Must be either 'fs' or 's3'", repo_type)
+            logger.error(
+                "Unsupported repository type: '%s'. Must be either 'fs' or 's3'",
+                repo_type,
+            )
             return False
 
         if self.repository_exists(es):
@@ -144,7 +147,6 @@ class ElasticConf(ElasticConfMixin, App):
             settings = {"location": self.es_snapshot_fs_location}
         else:
             logger.error("Unsupported repository type: %s", repo_type)
-            return status
 
         try:
             response = es.snapshot.create_repository(
@@ -157,14 +159,14 @@ class ElasticConf(ElasticConfMixin, App):
             if response:
                 acknowledged = response.get("acknowledged", False)
             if acknowledged:
-                logger.info("Successfully registered repository: %s", self.es_snapshot_repo)
+                logger.info(
+                    "Successfully registered repository: %s", self.es_snapshot_repo
+                )
             else:
                 logger.error("Failed to register repository: %s", self.es_snapshot_repo)
             return acknowledged
         except Exception:
-            logger.exception(
-                "Failed to register repository: %s", self.es_snapshot_repo
-            )
+            logger.exception("Failed to register repository: %s", self.es_snapshot_repo)
         return False
 
     def create_index_template(self, es: Elasticsearch) -> Any:
