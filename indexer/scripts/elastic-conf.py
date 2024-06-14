@@ -126,11 +126,10 @@ class ElasticConf(ElasticConfMixin, App):
         return False
 
     def register_repository(self, es: Elasticsearch) -> bool:
-        status = False
         repo_type = self.es_snapshot_repo_type
-        if not repo_type:
-            logger.error("Repository type must be either 'fs' or 's3'")
-            return status
+        if repo_type not in ["fs", "s3"]:
+            logger.error("Unsupported repository type: '%s'. Must be either 'fs' or 's3'", repo_type)
+            return False
 
         if self.repository_exists(es):
             logger.info("%s repository already exists.", repo_type)
