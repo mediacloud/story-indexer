@@ -133,7 +133,7 @@ class ElasticConf(ElasticConfMixin, App):
             return status
 
         if self.repository_exists(es):
-            logger.info("%s repository already exists." % repo_type)
+            logger.info("%s repository already exists.", repo_type)
             return True
 
         if repo_type == "s3":
@@ -141,8 +141,11 @@ class ElasticConf(ElasticConfMixin, App):
                 "bucket": self.es_snapshot_s3_bucket,
                 "endpoint": self.es_snapshot_s3_endpoint,
             }
-        else:
+        elif repo_type == "fs":
             settings = {"location": self.es_snapshot_fs_location}
+        else:
+            logger.error("Unsupported repository type: %s", repo_type)
+            return status
 
         try:
             response = es.snapshot.create_repository(
@@ -152,13 +155,13 @@ class ElasticConf(ElasticConfMixin, App):
             )
 
             if response and response.get("acknowledged", False):
-                logger.info("%s repository registered successfully." % repo_type)
+                logger.info("%s repository registered successfully.", repo_type)
                 status = True
             else:
-                logger.error("Failed to register %s repository." % repo_type)
+                logger.error("Failed to register %s repository.", repo_type)
         except Exception:
             logger.exception(
-                "Exception occurred while registering %s repository" % repo_type
+                "Exception occurred while registering %s repository", repo_type
             )
         return status
 
