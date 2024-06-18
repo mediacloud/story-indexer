@@ -4,8 +4,6 @@
 #
 #    pip-compile --allow-unsafe --strip-extras pyproject.toml
 #
-annotated-types==0.7.0
-    # via pydantic
 attrs==23.2.0
     # via
     #   automat
@@ -100,8 +98,6 @@ idna==3.7
     #   tldextract
 incremental==22.10.0
     # via twisted
-inflection==0.5.1
-    # via pyairtable
 itemadapter==0.9.0
     # via
     #   itemloaders
@@ -163,8 +159,6 @@ py3langid==0.2.2
     # via mediacloud-metadata
 pyahocorasick==2.1.0
     # via goose3
-pyairtable==2.3.3
-    # via story-indexer (pyproject.toml)
 pyasn1==0.6.0
     # via
     #   pyasn1-modules
@@ -173,10 +167,6 @@ pyasn1-modules==0.4.0
     # via service-identity
 pycparser==2.22
     # via cffi
-pydantic==2.7.4
-    # via pyairtable
-pydantic-core==2.18.4
-    # via pydantic
 pydispatcher==2.0.7
     # via scrapy
 pyopenssl==24.1.0
@@ -209,7 +199,6 @@ requests==2.32.3
     #   goose3
     #   mediacloud-metadata
     #   newspaper3k
-    #   pyairtable
     #   rabbitmq-admin
     #   requests-file
     #   tldextract
@@ -262,11 +251,7 @@ trafilatura==1.6.4
 twisted==24.3.0
     # via scrapy
 typing-extensions==4.12.2
-    # via
-    #   pyairtable
-    #   pydantic
-    #   pydantic-core
-    #   twisted
+    # via twisted
 tzlocal==5.2
     # via dateparser
 url-normalize==1.4.3
@@ -278,7 +263,6 @@ urllib3==2.0.7
     #   docker
     #   elastic-transport
     #   htmldate
-    #   pyairtable
     #   requests
     #   sentry-sdk
     #   trafilatura

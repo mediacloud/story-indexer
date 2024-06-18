@@ -1,107 +1,91 @@
 import argparse
+import datetime as dt
 import os
-from datetime import datetime, timezone
 
 from pyairtable import Api
 from pyairtable.formulas import match
 
-from indexer.app import App
-
 
 # A utility to report new deployments to the central MEAG airtable record.
-class AirtableInterface(App):
+def create_deployment(
+    codebase_name: str,
+    deployment_name: str | None,
+    environment: str,
+    version_info: str,
+    hardware_names: list[str],
+) -> None:
+    # The base id is not secret, but the api key is.
+    api = Api(os.environ["AIRTABLE_API_KEY"])
+    MEAG_BASE_ID = os.environ["MEAG_BASE_ID"]
 
-    def define_options(self, ap: argparse.ArgumentParser) -> None:
-        ap.add_argument("--name", help="additional deployment name")
-        ap.add_argument(
-            "--env",
-            choices=["production", "staging", "other"],
-            help="Formal environment name",
-        )
-        ap.add_argument("--version", help="A descriptive version string")
-        ap.add_argument(
-            "--hardware",
-            nargs="+",
-            help="The names of one or more machines being deployed to",
-        )
+    # Get codebases id:
+    codebase_table = api.table(MEAG_BASE_ID, table_name="Software - Codebases")
+    codebase_res = codebase_table.first(formula=match({"name": codebase_name}))
+    if codebase_res is None:
+        names = [c["fields"]["Name"] for c in codebase_table.all()]
+        raise ValueError(f"codebase must be one of {names}")
+    else:
+        codebase = codebase_res["id"]
 
-    def main_loop(self) -> None:
-        assert self.args
-        self.create_deployment(
-            "story-indexer",
-            self.args.name,
-            self.args.env,
-            self.args.version,
-            self.args.hardware,
-        )
+    # Get hardware ids:
+    hardware_table = api.table(MEAG_BASE_ID, table_name="Hardware - Angwin Cluster")
 
-    # This function ideally will be re-used over a few other system repositories, so I'm breaking it out like this for now
-    def create_deployment(
-        self,
-        codebase_name: str,
-        deployment_name: str | None,
-        environment: str,
-        version_info: str,
-        hardware_names: list[str],
-    ) -> None:
-        # The base id is not secret, but the api key is
-        api = Api(os.environ["AIRTABLE_API_KEY"])
+    hardware_res = [
+        hardware_table.first(formula=match({"name": hardware_name}))
+        for hardware_name in hardware_names
+    ]
+    if None in hardware_res:
+        # The names of the machines in the angwin cluster are all valid options.
+        names = [h["fields"]["name"] for h in hardware_table.all()]
+        raise ValueError(f"hardware must be at least one of {names}")
 
-        # maybe move this to external config?
-        MEAG_BASE_ID = "appuh6zjiSqCFCcT6"
+    hardware = [h["id"] for h in hardware_res]  # type: ignore[index]
 
-        # Get codebases id:
-        codebase_table = api.table(MEAG_BASE_ID, table_name="Software - Codebases")
-        codebase_res = codebase_table.first(formula=match({"name": codebase_name}))
-        if codebase_res is None:
-            names = [c["fields"]["Name"] for c in codebase_table.all()]
-            raise ValueError(f"codebase must be one of {names}")
-        else:
-            codebase = codebase_res["id"]
+    deployment_table = api.table(MEAG_BASE_ID, table_name="Software - Deployments")
 
-        # Get hardware ids (there may be multiple hardwares):
-        hardware_table = api.table(MEAG_BASE_ID, table_name="Hardware - Angwin Cluster")
+    if deployment_name is None:
+        deployment_name = environment
 
-        hardware_res = [
-            hardware_table.first(formula=match({"name": hardware_name}))
-            for hardware_name in hardware_names
-        ]
-        if None in hardware_res:
-            # The names of the machines in the angwin cluster are all valid options.
-            names = [h["fields"]["name"] for h in hardware_table.all()]
-            raise ValueError(f"hardware must be at least one of {names}")
+    name = ":".join([codebase_name, deployment_name])
 
-        hardware = [h["id"] for h in hardware_res]  # type: ignore[index]
+    # Get the current time in UTC
+    iso_timestamp = dt.datetime.utcnow().isoformat()
 
-        deployment_table = api.table(MEAG_BASE_ID, table_name="Software - Deployments")
-
-        if deployment_name is None:
-            deployment_name = environment
-
-        name = ":".join([codebase_name, deployment_name])
-
-        # Get the current time in UTC
-        utc_now = datetime.now(timezone.utc)
-        iso_timestamp = utc_now.isoformat()
-
-        resp = deployment_table.batch_upsert(
-            [
-                {
-                    "fields": {
-                        "Name": name,
-                        "Software - Codebases": [codebase],
-                        "Environment": environment,
-                        "Hardware": hardware,
-                        "Version": version_info,
-                        "Deploy Time": iso_timestamp,
-                    }
+    resp = deployment_table.batch_upsert(
+        [
+            {
+                "fields": {
+                    "Name": name,
+                    "Software - Codebases": [codebase],
+                    "Environment": environment,
+                    "Hardware": hardware,
+                    "Version": version_info,
+                    "Deploy Time": iso_timestamp,
                 }
-            ],
-            key_fields=["Name"],
-        )
-        print(resp)
+            }
+        ],
+        key_fields=["Name"],
+    )
+    print(resp)
 
 
 if __name__ == "__main__":
-    app = AirtableInterface("airtable-update", "update deployment records on airtable")
-    app.main()
+
+    parser = argparse.ArgumentParser(
+        description="A utility for updating an airtable deployment record"
+    )
+
+    parser.add_argument("--name", help="additional deployment name")
+    parser.add_argument(
+        "--env",
+        choices=["production", "staging", "other"],
+        help="Formal environment name",
+    )
+    parser.add_argument("--version", help="A descriptive version string")
+    parser.add_argument(
+        "--hardware", nargs="+", help="The names of one or more machines"
+    )
+
+    args = parser.parse_args()
+
+    create_deployment("story-indexer", args.name, args.env, args.version, args.hardware)
