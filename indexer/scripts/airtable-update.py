@@ -45,8 +45,9 @@ class AirtableInterface(App):
         hardware_names: list[str],
     ) -> None:
         # The base id is not secret, but the api key is
-
         api = Api(os.environ["AIRTABLE_API_KEY"])
+
+        # maybe move this to external config?
         MEAG_BASE_ID = "appuh6zjiSqCFCcT6"
 
         # Get codebases id:

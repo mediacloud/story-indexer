@@ -833,3 +833,9 @@ echo "$DATE_TIME $HOSTNAME $STACK_NAME $NOTE" >> deploy.log
 # XXX chown to LOGIN_USER?
 
 # optionally prune old images?
+
+#report deployment to airtable
+if [ "x$AIRTABLE_API_KEY" != x ]; then
+    ##Is DEPLOYMENT_HOST always right here? as far as I can tell all the stacks get thrown onto ramos regardless.
+    python3 $SCRIPT_DIR/airtable-update.py --name $STACK_NAME --env $DEPLOY_TYPE --version $DEPLOYMENT_GIT_HASH --hardware $DEPLOYMENT_HOST
+fi
