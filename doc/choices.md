@@ -1,5 +1,8 @@
 # story-indexer choices
 
+NOTE!  This started as Phil's attempt to braindump design choices.
+It should not be taken as authoritative.
+
 ## Requirements
 
 The original requirements for the project are documented at
