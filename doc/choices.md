@@ -8,6 +8,33 @@ It should not be taken as authoritative.
 The original requirements for the project are documented at
 https://docs.google.com/document/d/1cMYBqpeRXiXX8B3t_2Wq5FV1aZKEX8FSjSjoHJRR0-c/edit?usp=sharing
 
+### Open
+
+* Use and build open source tools, not proprietary ones
+* Can run anywhere (dedicated hardware or the cloud)
+* Use standard file formats (WARC file)
+* BUT, use available services (like sentry) to avoid excessive infrastructure
+
+### Observable
+
+* Visible statistics for monitoring
+* Alerts
+
+### Scalability
+
+* Use queues not databases or files to represent system state
+* Avoid SQL databases in processing path
+
+### Reduce spin-up and ongoing costs
+
+### Reduce data maintenance needs
+
+* keep data in one place, not two or more
+
+### Split off different tasks to separate projects that could be owned by different organizations
+
+Rahul: this was an original requirement, which hasn't worked out for social-technical reasons but definitely drove engineering architecture decisions.
+
 ### Package choices
 
 #### Queuing
@@ -56,7 +83,7 @@ Three layers:
 2. Rotating indices
 
    Using ES Index Lifetime Management to close the currently active index
-   every three months, so processed data can be dumped and archived off-site.
+   every three months, so static/past processed data can be dumped and archived off-site.
 
 3. Story Archive Files
 
@@ -76,6 +103,8 @@ multiple configurations.
 The basic structure for the three current flavors of pipeline is:
 
   queuer[1] -> fetcher -> parser -> importer -> archiver[2]
+
+As shown in (system-diagram.pdf).
 
 NOTES:
 1. With batch based fetching there is no queuer
