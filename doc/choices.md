@@ -2,33 +2,10 @@
 
 ## Requirements
 
-The original requirements for the project were:
+The original requirements for the project are documented at
+https://docs.google.com/document/d/1cMYBqpeRXiXX8B3t_2Wq5FV1aZKEX8FSjSjoHJRR0-c/edit?usp=sharing
 
-[PB: I may not have the right/original terms]
-
-### Open
-
-* Use open source tools, not proprietary ones
-* Can run anywhere (dedicated hardware or the cloud)
-* Use standard file formats (WARC file)
-
-### Observable
-
-* Visible statistics for monitoring
-* Alerts
-
-### I don't remember
-
-* In the words of Rick Perry: "Ooops!"
-
-## Engineering decisions
-
-### Scalability
-
-* Use queues to separate CPU and network bound processing
-* Avoid SQL databases
-
-### Packages used
+### Package choices
 
 #### Queuing
 
@@ -58,7 +35,7 @@ assumption.
 
 * Worker/Queuer classes
 
-  Pipeline process are unaware of how and where stories move.
+  + Pipeline process are unaware of how and where stories move.
 
 ### Simplicity
 
