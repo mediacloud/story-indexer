@@ -18,28 +18,33 @@ def create_deployment(
     api = Api(os.environ["AIRTABLE_API_KEY"])
     MEAG_BASE_ID = os.environ["MEAG_BASE_ID"]
 
+    info = "Automatic deployment record"
+
     # Get codebases id:
     codebase_table = api.table(MEAG_BASE_ID, table_name="Software - Codebases")
-    codebase_res = codebase_table.first(formula=match({"name": codebase_name}))
+    codebase_res = codebase_table.first(formula=match({"Name": codebase_name}))
+
     if codebase_res is None:
-        names = [c["fields"]["Name"] for c in codebase_table.all()]
-        raise ValueError(f"codebase must be one of {names}")
+        # in the case where the value for codebase isn't in airtable, still record the name as free text.
+        info += f" - Codebase: {codebase_name}"
+        codebase = []
     else:
-        codebase = codebase_res["id"]
+        codebase = [codebase_res["id"]]
 
     # Get hardware ids:
     hardware_table = api.table(MEAG_BASE_ID, table_name="Hardware - Angwin Cluster")
 
     hardware_res = [
-        hardware_table.first(formula=match({"name": hardware_name}))
+        hardware_table.first(formula=match({"Name": hardware_name}))
         for hardware_name in hardware_names
     ]
     if None in hardware_res:
-        # The names of the machines in the angwin cluster are all valid options.
-        names = [h["fields"]["name"] for h in hardware_table.all()]
-        raise ValueError(f"hardware must be at least one of {names}")
-
-    hardware = [h["id"] for h in hardware_res]  # type: ignore[index]
+        # The names of the machines in the angwin cluster are all valid options,
+        # but if a given value isn't among those names, put it in the message
+        info += f" - Hardware: {hardware_names}"
+        hardware = [h["id"] for h in hardware_res if h is not None]
+    else:
+        hardware = [h["id"] for h in hardware_res]  # type: ignore[index]
 
     deployment_table = api.table(MEAG_BASE_ID, table_name="Software - Deployments")
 
@@ -56,11 +61,12 @@ def create_deployment(
             {
                 "fields": {
                     "Name": name,
-                    "Software - Codebases": [codebase],
+                    "Software - Codebases": codebase,
                     "Environment": environment,
                     "Hardware": hardware,
                     "Version": version_info,
                     "Deploy Time": iso_timestamp,
+                    "Info": info,
                 }
             }
         ],
