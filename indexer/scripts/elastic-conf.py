@@ -139,14 +139,20 @@ class ElasticConf(ElasticConfMixin, App):
             return True
 
         if repo_type == "s3":
-            settings = {
-                "bucket": self.es_snapshot_s3_bucket,
-                "endpoint": self.es_snapshot_s3_endpoint,
-            }
-        elif repo_type == "fs":
+            if not any([self.es_snapshot_s3_bucket, self.es_snapshot_s3_endpoint]):
+                logger.error(
+                    "Failed to register s3 repository %s: bucket or endpoint required, none provided",
+                    self.es_snapshot_repo,
+                )
+                return False
+
+            settings = {}
+            if self.es_snapshot_s3_bucket:
+                settings["bucket"] = self.es_snapshot_s3_bucket
+            if self.es_snapshot_s3_endpoint:
+                settings["endpoint"] = self.es_snapshot_s3_endpoint
+        else:  # repo-type=fs
             settings = {"location": self.es_snapshot_fs_location}
-        else:
-            logger.error("Unsupported repository type: %s", repo_type)
 
         try:
             response = es.snapshot.create_repository(
