@@ -19,6 +19,18 @@ logger = getLogger("elastic-conf")
 
 
 class ElasticConf(ElasticConfMixin, App):
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+        self.es_snapshot_s3_bucket = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET"
+        )
+        self.es_snapshot_fs_location = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION"
+        )
+        self.es_snapshot_s3_endpoint = os.environ.get(
+            "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT"
+        )
+
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         # Index template args
@@ -54,6 +66,12 @@ class ElasticConf(ElasticConfMixin, App):
             default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO") or "",
             help="ES snapshot repository name",
         )
+        ap.add_argument(
+            "--es-snapshot-repo-type",
+            dest="es_snapshot_repo_type",
+            default=os.environ.get("ELASTICSEARCH_SNAPSHOT_REPO_TYPE") or "",
+            help="ES snapshots type, default fs",
+        )
 
     def process_args(self) -> None:
         super().process_args()
@@ -64,6 +82,7 @@ class ElasticConf(ElasticConfMixin, App):
             ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
+            ("es_snapshot_repo_type", "ELASTICSEARCH_SNAPSHOT_REPO_TYPE"),
         ]
         for arg_name, env_name in required_args:
             arg_val = getattr(self.args, arg_name)
@@ -76,6 +95,7 @@ class ElasticConf(ElasticConfMixin, App):
         self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
+        self.es_snapshot_repo_type = self.args.es_snapshot_repo_type
 
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
@@ -95,6 +115,65 @@ class ElasticConf(ElasticConfMixin, App):
         else:
             logger.error("One or more configurations failed. Check logs for details.")
             return
+
+    def repository_exists(self, es: Elasticsearch) -> bool:
+        repo_name = self.es_snapshot_repo
+        try:
+            response = es.snapshot.get_repository(name=repo_name)
+            return repo_name in response
+        except Exception:
+            logger.exception("Error validating repository: %s", repo_name)
+        return False
+
+    def register_repository(self, es: Elasticsearch) -> bool:
+        repo_type = self.es_snapshot_repo_type
+        if repo_type not in ["fs", "s3"]:
+            logger.error(
+                "Unsupported repository type: '%s'. Must be either 'fs' or 's3'",
+                repo_type,
+            )
+            return False
+
+        if self.repository_exists(es):
+            logger.info("%s repository already exists.", repo_type)
+            return True
+
+        if repo_type == "s3":
+            if not any([self.es_snapshot_s3_bucket, self.es_snapshot_s3_endpoint]):
+                logger.error(
+                    "Failed to register s3 repository %s: bucket or endpoint required, none provided",
+                    self.es_snapshot_repo,
+                )
+                return False
+
+            settings = {}
+            if self.es_snapshot_s3_bucket:
+                settings["bucket"] = self.es_snapshot_s3_bucket
+            if self.es_snapshot_s3_endpoint:
+                settings["endpoint"] = self.es_snapshot_s3_endpoint
+        else:  # repo-type=fs
+            settings = {"location": self.es_snapshot_fs_location}
+
+        try:
+            response = es.snapshot.create_repository(
+                name=self.es_snapshot_repo,
+                type=repo_type,
+                settings=settings,
+            )
+
+            acknowledged = False
+            if response:
+                acknowledged = response.get("acknowledged", False)
+            if acknowledged:
+                logger.info(
+                    "Successfully registered repository: %s", self.es_snapshot_repo
+                )
+            else:
+                logger.error("Failed to register repository: %s", self.es_snapshot_repo)
+            return acknowledged
+        except Exception:
+            logger.exception("Failed to register repository: %s", self.es_snapshot_repo)
+        return False
 
     def create_index_template(self, es: Elasticsearch) -> Any:
         json_data = self.load_index_template()
@@ -162,6 +241,14 @@ class ElasticConf(ElasticConfMixin, App):
     def create_slm_policy(self, es: Elasticsearch) -> Any:
         CURRENT_POLICY_ID = "bi_weekly_slm"
         repository = self.es_snapshot_repo
+
+        if not self.register_repository(es):
+            logger.error(
+                "Elasticsearch snapshot repository does not exist: %s",
+                self.es_snapshot_repo,
+            )
+            return False
+
         json_data = self.load_slm_policy_template(CURRENT_POLICY_ID)
         if not json_data:
             logger.error("Elasticsearch create slm policy: error template not loaded")

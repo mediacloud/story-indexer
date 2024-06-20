@@ -435,6 +435,9 @@ services:
       ELASTICSEARCH_SHARD_COUNT : {{elasticsearch_shard_count}}
       ELASTICSEARCH_SHARD_REPLICAS: {{elasticsearch_shard_replicas}}
       ELASTICSEARCH_SNAPSHOT_REPO: {{elasticsearch_snapshot_repo}}
+      ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET: {{elasticsearch_snapshot_repo_settings_bucket}}
+      ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION: {{elasticsearch_snapshot_repo_settings_location}}
+      ELASTICSEARCH_SNAPSHOT_REPO_TYPE: {{elasticsearch_snapshot_repo_type}}
       RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}
