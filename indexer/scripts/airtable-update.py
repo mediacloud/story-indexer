@@ -53,6 +53,11 @@ def create_deployment(
 
     name = ":".join([codebase_name, deployment_name])
 
+    allowed_envs = ["prod", "staging", "dev", "other"]
+    if environment not in allowed_envs:
+        info += f"-- env: {environment}"
+        environment = "other"
+
     # Get the current time in UTC
     iso_timestamp = dt.datetime.utcnow().isoformat()
 
@@ -84,7 +89,6 @@ if __name__ == "__main__":
     parser.add_argument("--name", help="additional deployment name")
     parser.add_argument(
         "--env",
-        choices=["production", "staging", "other"],
         help="Formal environment name",
     )
     parser.add_argument("--version", help="A descriptive version string")
