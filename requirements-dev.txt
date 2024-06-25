@@ -200,8 +200,6 @@ py3langid==0.2.2
     # via mediacloud-metadata
 pyahocorasick==2.1.0
     # via goose3
-pyairtable==2.3.3
-    # via story-indexer (pyproject.toml)
 pyasn1==0.6.0
     # via
     #   pyasn1-modules
