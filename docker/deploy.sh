@@ -40,6 +40,11 @@ if [ "x$(which jinja2)" = x ]; then
     fi
 fi
 
+if ! python3 -m mc-manage.airtable-deployment-update  --help >/dev/null; then
+    echo FATAL: deployment requires an up-to-date venv with pyairtable requirements 1>&2
+    exit 3
+fi
+
 # capture command line
 DEPLOYMENT_OPTIONS="$*"
 
@@ -841,3 +846,11 @@ echo "$DATE_TIME $HOSTNAME $STACK_NAME $NOTE" >> deploy.log
 # XXX chown to LOGIN_USER?
 
 # optionally prune old images?
+
+#report deployment to airtable
+export AIRTABLE_API_KEY
+export MEAG_BASE_ID
+if [ "x$AIRTABLE_API_KEY" != x ]; then
+    ##Is DEPLOYMENT_HOST always right here? as far as I can tell all the stacks get thrown onto ramos regardless.
+    python3 -m mc-manage.airtable-deployment-update --codebase "story-indexer" --name $STACK_NAME --env $DEPLOYMENT_TYPE --version $IMAGE_TAG --hardware $HOSTNAME
+fi
