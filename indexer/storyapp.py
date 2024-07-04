@@ -791,7 +791,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
 
         # wake up workers (in _process_messages)
         for i in range(0, self.workers):
-            self._message_queue.put(None)
+            self._queue_kiss_of_death()
         # XXX join worker threads?
 
     def periodic(self) -> None:
