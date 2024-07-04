@@ -339,20 +339,16 @@ class QApp(App):
         if self.START_PIKA_THREAD:
             self.start_pika_thread()
 
+    def _assert_main_thread(self) -> None:
+        assert threading.current_thread() == threading.main_thread()
+
     def start_pika_thread(self) -> None:
         """
         Start Pika I/O thread. ONLY START ONE!
         """
+        self._assert_main_thread()
+
         assert self.connection
-
-        # need next check & _pika_thread set under a lock to allow
-        # calling from any thread:
-        assert threading.current_thread() == threading.main_thread()
-
-        if self._pika_thread:
-            logger.error("start_pika_thread called again")
-            return
-
         if self._state != PikaThreadState.NOT_STARTED:
             logger.error("start_pika_thread state %s", self._state)
             return
@@ -451,9 +447,9 @@ class QApp(App):
         """
         called from cleanup (below) after main_loop exit
         """
+        self._assert_main_thread()
         if self._pika_thread:
-            if self._pika_thread.is_alive():
-                # XXX assert in main thread???
+            if self._state == PikaThreadState.RUNNING:
                 logger.info("Stopping pika thread")
 
                 # wake up Pika thread, and have it change _state
@@ -539,6 +535,34 @@ class QApp(App):
             url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
         )
         return api
+
+    def synchronize_with_pika_thread(self) -> bool:
+        """
+        block current thread until all messages queued
+        (at the time the call is made) have been processed
+        by Pika thread.  Created for use by queuers.
+        Queue workers atomically output and ack.
+        """
+        # method local variable (can call independently in multiple threads!):
+        done = False
+
+        def sync() -> None:
+            nonlocal done  # access method local
+            done = True
+            logger.info("sync")
+
+        self._call_in_pika_thread(sync)
+
+        loops = 0
+        while self._state == PikaThreadState.RUNNING:
+            if done:
+                return True
+            loops += 1
+            if loops == 10:
+                logger.warning("waiting for pika thread sync")
+                loops = 0
+            time.sleep(0.1)
+        return False
 
 
 class Worker(QApp):

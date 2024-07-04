@@ -267,23 +267,8 @@ class RabbitMQStorySender(StorySender):
             self._send(**bi)
         self._batch = []
 
-        # XXX NOTE!!! should block here here until pika thread has
-        # queued msgs to RabbitMQ so that queuer work is not marked
-        # "done" prematurely!!!!  Using a threading.Condition is
-        # tempting but would render the calling thread insensitive to
-        # death of the Pika thread, so perhaps add a method to the
-        # Worker class:
-        #
-        #     def synchronize_with_pika_thread(self):
-        #         done = False
-        #         def sync() -> None:
-        #             global done
-        #             done = True
-        #         self._call_in_pika_thread(sync)
-        #         while self._state == PikaThreadState.RUNNING and not done:
-        #             time.sleep(0.1)
-        #
-        # and call it here via self.app.synchronize_with_pika_thread()
+        # block until all currently queued messages sent
+        self.app.synchronize_with_pika_thread()
 
 
 class ArchiveStorySender(StorySender):
