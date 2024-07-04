@@ -815,5 +815,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         finally:
             self._queue_kisses_of_death()
             # loop joining workers???
-        # return to main, which
-        # calls cleanup which calls _stop_pika_thread.
+
+        # QApp.cleanup (called from App.main try/finally) calls
+        # _stop_pika_thread.
+        sys.exit(1)  # Workers never exit happy (always restart)
