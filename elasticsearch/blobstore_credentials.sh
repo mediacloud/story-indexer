@@ -63,7 +63,7 @@ if [ "$BLOBSTORE" != "s3" ] && [ "$BLOBSTORE" != "b2" ]; then
 fi
 
 PRIVATE_CONF_DIR="es-credentials-setup"
-mkdir -p $PRIVATE_CONF_DIR
+run_as_login_user mkdir -p $PRIVATE_CONF_DIR
 chmod go-rwx $PRIVATE_CONF_DIR
 
 cd $PRIVATE_CONF_DIR
@@ -72,7 +72,7 @@ CONFIG_REPO_NAME=$(zzz fgbel-vaqrkre-pbasvt)
 PRIVATE_CONF_REPO=$(pwd)/$CONFIG_REPO_NAME
 
 echo "Cloning $CONFIG_REPO_NAME repo" 1>&2
-if ! git clone "$CONFIG_REPO_PREFIX/$CONFIG_REPO_NAME.git" >/dev/null 2>&1; then
+if ! run_as_login_user git clone "$CONFIG_REPO_PREFIX/$CONFIG_REPO_NAME.git" >/dev/null 2>&1; then
     echo "FATAL: could not clone config repo" 1>&2
     exit 1
 fi
@@ -90,11 +90,11 @@ fi
 rm -rf $PRIVATE_CONF_DIR
 
 if [ "$BLOBSTORE" = "s3" ]; then
-    ACCESS_KEY=$S3_ACCESS_KEY
-    SECRET_KEY=$S3_SECRET_KEY
+    ACCESS_KEY=$ELASTICSEARCH_SNAPSHOT_S3_ACCESS_KEY
+    SECRET_KEY=$ELASTICSEARCH_SNAPSHOT_S3_SECRET_KEY
 elif [ "$BLOBSTORE" = "b2" ]; then
-    ACCESS_KEY=$B2_ACCESS_KEY
-    SECRET_KEY=$B2_SECRET_KEY
+    ACCESS_KEY=$ELASTICSEARCH_SNAPSHOT_B2_ACCESS_KEY
+    SECRET_KEY=$ELASTICSEARCH_SNAPSHOT_B2_SECRET_KEY
 fi
 
 check_elasticsearch() {
