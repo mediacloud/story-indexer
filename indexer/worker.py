@@ -339,20 +339,16 @@ class QApp(App):
         if self.START_PIKA_THREAD:
             self.start_pika_thread()
 
+    def _assert_main_thread(self) -> None:
+        assert threading.current_thread() == threading.main_thread()
+
     def start_pika_thread(self) -> None:
         """
         Start Pika I/O thread. ONLY START ONE!
         """
+        self._assert_main_thread()
+
         assert self.connection
-
-        # need next check & _pika_thread set under a lock to allow
-        # calling from any thread:
-        assert threading.current_thread() == threading.main_thread()
-
-        if self._pika_thread:
-            logger.error("start_pika_thread called again")
-            return
-
         if self._state != PikaThreadState.NOT_STARTED:
             logger.error("start_pika_thread state %s", self._state)
             return
@@ -414,6 +410,7 @@ class QApp(App):
         finally:
             # tell _process_messages
             self._state = PikaThreadState.STOPPED
+            self._pika_thread_cleanup()
 
             # Trying clean close, in case process_data_events returns
             # with unprocessed events (especially send callbacks).
@@ -425,34 +422,34 @@ class QApp(App):
             logger.info("Pika thread exiting")
 
     def _call_in_pika_thread(self, cb: Callable[[], None]) -> None:
-        # XXX only acceptable _states RUNNING and NOT_STARTED?
+
         if self._state == PikaThreadState.NOT_STARTED:
             # here from a QApp in Main thread
             # transactions will NOT be enabled
             # (unless _subscribe is overridden)
             self.start_pika_thread()  # returns with _state == RUNNING
-        elif not self._pika_thread or not self._pika_thread.is_alive():
-            # XXX fatal error??
-            logger.info("Pika thread not running: %s", cb.__name__)
-            return
-        elif not (self.connection and self.connection.is_open):
-            # XXX fatal error??
-            logger.info("No Pika connection: %s", cb.__name__)
-            return
-        # RACE HERE, but only on shutdown?
+
+        # RACES POSSIBLE FROM HERE ON, BUT ONLY ON SHUTDOWN/ERROR:
+        if self._state != PikaThreadState.RUNNING:
+            logger.info("Pika thread state %s: %s", self._state, cb.__name__)
+            sys.exit(1)
+
+        assert self._pika_thread
+        assert self._pika_thread.is_alive()
+        assert self.connection
+        assert self.connection.is_open
 
         # NOTE! add_callback_threadsafe is documented (in the Pika
         # 1.3.2 comments) as the ONLY thread-safe connection method!!!
-        assert self.connection  # checked above
         self.connection.add_callback_threadsafe(cb)
 
     def _stop_pika_thread(self) -> None:
         """
         called from cleanup (below) after main_loop exit
         """
+        self._assert_main_thread()
         if self._pika_thread:
-            if self._pika_thread.is_alive():
-                # XXX assert in main thread???
+            if self._state == PikaThreadState.RUNNING:
                 logger.info("Stopping pika thread")
 
                 # wake up Pika thread, and have it change _state
@@ -469,6 +466,12 @@ class QApp(App):
 
                 # could issue join with timeout.
                 self._pika_thread.join()
+
+    def _pika_thread_cleanup(self) -> None:
+        """
+        Override as needed
+        """
+        pass
 
     def cleanup(self) -> None:
         """
@@ -532,6 +535,34 @@ class QApp(App):
             url=f"http://{par.host}:{port}", auth=(creds.username, creds.password)
         )
         return api
+
+    def synchronize_with_pika_thread(self) -> bool:
+        """
+        block current thread until all messages queued
+        (at the time the call is made) have been processed
+        by Pika thread.  Created for use by queuers.
+        Queue workers atomically output and ack.
+        """
+        # method local variable (can call independently in multiple threads!):
+        done = False
+
+        def sync() -> None:
+            nonlocal done  # access method local
+            done = True
+            logger.info("sync")
+
+        self._call_in_pika_thread(sync)
+
+        loops = 0
+        while self._state == PikaThreadState.RUNNING:
+            if done:
+                return True
+            loops += 1
+            if loops == 10:
+                logger.warning("waiting for pika thread sync")
+                loops = 0
+            time.sleep(0.1)
+        return False
 
 
 class Worker(QApp):
@@ -774,6 +805,18 @@ class Worker(QApp):
             quarantine_queue_name(self.process_name),
             BasicProperties(headers=headers),
         )
+
+    def _pika_thread_cleanup(self) -> None:
+        """
+        Here in Pika thread when exiting
+        """
+        self._queue_kiss_of_death()  # wake main thread
+
+    def _queue_kiss_of_death(self) -> None:
+        """
+        queue a sentinel to wake up other thread(s) on error
+        """
+        self._message_queue.put(None)
 
     def _retry(self, im: InputMessage, e: Exception) -> bool:
         """

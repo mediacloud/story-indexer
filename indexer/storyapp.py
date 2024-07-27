@@ -267,23 +267,8 @@ class RabbitMQStorySender(StorySender):
             self._send(**bi)
         self._batch = []
 
-        # XXX NOTE!!! should block here here until pika thread has
-        # queued msgs to RabbitMQ so that queuer work is not marked
-        # "done" prematurely!!!!  Using a threading.Condition is
-        # tempting but would render the calling thread insensitive to
-        # death of the Pika thread, so perhaps add a method to the
-        # Worker class:
-        #
-        #     def synchronize_with_pika_thread(self):
-        #         done = False
-        #         def sync() -> None:
-        #             global done
-        #             done = True
-        #         self._call_in_pika_thread(sync)
-        #         while self._state == PikaThreadState.RUNNING and not done:
-        #             time.sleep(0.1)
-        #
-        # and call it here via self.app.synchronize_with_pika_thread()
+        # block until all currently queued messages sent
+        self.app.synchronize_with_pika_thread()
 
 
 class ArchiveStorySender(StorySender):
@@ -791,7 +776,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
 
         # wake up workers (in _process_messages)
         for i in range(0, self.workers):
-            self._message_queue.put(None)
+            self._queue_kiss_of_death()
         # XXX join worker threads?
 
     def periodic(self) -> None:
@@ -815,5 +800,7 @@ class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
         finally:
             self._queue_kisses_of_death()
             # loop joining workers???
-        # return to main, which
-        # calls cleanup which calls _stop_pika_thread.
+
+        # QApp.cleanup (called from App.main try/finally) calls
+        # _stop_pika_thread.
+        sys.exit(1)  # Workers never exit happy (always restart)
