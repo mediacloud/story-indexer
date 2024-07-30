@@ -104,7 +104,7 @@ class HistFetcher(StoryWorker):
 
         resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
         for version in resp.get("Versions", []):
-            # Dict w/ ETag, Size, StorageClass, Key, VersionID, IsLatest, LastModified (datetime)
+            # Dict w/ ETag, Size, StorageClass, Key, VersionId, IsLatest, LastModified (datetime), Owner
             if version["Key"] != s3path:  # paranoia
                 break
 
@@ -128,7 +128,7 @@ class HistFetcher(StoryWorker):
             # declare victory if both from same epoch
             # NOT checking how close...
             if fetch_epoch == lm_epoch:
-                return {"VersionID": vid}
+                return {"VersionId": vid}
 
         raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no matching S3 object")
 
