@@ -29,35 +29,35 @@ logger = logging.getLogger("hist-fetcher")
 # DB B: 2021-09-15 00:00:00.921164 thru 2021-11-11 00:02:17.402188?
 # DB D: 2021-12-26 10:48:42.490858 thru 2022-01-25 00:00:00.072873?
 
-# db-b/stories_2021_09_15.csv:
-# 2021-09-15 16:36:53.505277,2043951575,18710,3211617068,59843,https://www.businessinsider.com/eff-google-daily-stormer-2017-8#comments
-
 # S3 attrs from boto (not necessarily story downloads):
 # ep. downloadid S3 VersionId                     S3siz S3 LastModified
 # B   3211617604 sbRmtvTcbmDH.dxWNcIBsmRz.ffbbosG 18620 2021-09-15T20:51:01
 # B   3211617605 dSQTc9dyyVj34GP7zMI0GfOFmEkaQE_K 13761 2021-09-15T20:50:59
 # D   3211617605 fKUnm9Sbr8Gt33FaY0gUoKxaq5J3kY1l 36    2021-12-27T05:11:47
 # ....
-# B   3257240456 N5Bn9xkkeGgXI1BSSzl71hRi9eiHCMo8 5499 2021-10-16T08:53:20
-# D   3257240456 Vp_Qfu7Yo1QkZqWA4RRYu83h0PFoFLOz 8853 2022-01-25T15:47:27
+# B   3257240456 N5Bn9xkkeGgXI1BSSzl71hRi9eiHCMo8 5499 2021-10-16T08:53:20 (*)
+# D   3257240456 Vp_Qfu7Yo1QkZqWA4RRYu83h0PFoFLOz 8853 2022-01-25T15:47:27 (*)
 # B   3257240457 N4tYO8GEnt6_px8SHE9VYc5B5N9Yp_hN 36   2021-10-16T08:53:19
+#
+# (*) db-d/stories_2022_01_25.csv
+# 2022-01-25 10:47:25.650489,2076253141,664224,3257240456,1747078,https://oglecountylife.com/article/museum-caps-year-with-christmas-party
 
 OVERLAP_START = 3211617605  # lowest dl_id w/ multiple versions?
 OVERLAP_END = 3257240456  # highest dl_id w/ multiple versions?
 
 DB_B_START = "2021-09-15"  # earliest date in DB B
-DB_B_END = "2021-11-12"  # latest date in DB B
+DB_B_END = "2021-11-11"  # latest date in DB B
 DB_D_START = "2021-12-26"  # earliest possible date in DB D
-DB_D_END = "2022-01-26"
+DB_D_END = "2022-01-25"  # latest date in DB D
 
 DOWNLOADS_BUCKET = "mediacloud-downloads-backup"
 DOWNLOADS_PREFIX = "downloads/"
 
 
 def date2epoch(date: str) -> Optional[str]:
-    if DB_B_START < date < DB_B_END:
+    if DB_B_START <= date <= DB_B_END:
         return "B"
-    if DB_D_START < date < DB_D_END:
+    if DB_D_START <= date <= DB_D_END:
         return "D"
     return None
 
@@ -91,6 +91,8 @@ class HistFetcher(StoryWorker):
         Determine if download id is in the range where multiple versions
         of the S3 object (named by dlid) can exist, and if so,
         return ExtraArgs dict w/ VersionId, else return None.
+
+        NOTE! Does NOT compare collect_date an S3 LastModifier directly!!
         """
         if dlid < OVERLAP_START or dlid > OVERLAP_END:
             return None
@@ -105,10 +107,10 @@ class HistFetcher(StoryWorker):
         resp = self.s3.list_object_versions(Bucket=DOWNLOADS_BUCKET, Prefix=s3path)
         for version in resp.get("Versions", []):
             # Dict w/ ETag, Size, StorageClass, Key, VersionId, IsLatest, LastModified (datetime), Owner
-            if version["Key"] != s3path:  # paranoia
+            if version["Key"] != s3path:  # paranoia (in case prefix match)
                 break
 
-            lmdate = version["LastModified"].isoformat(sep=" ")
+            lmdate = version["LastModified"].strftime("%Y-%m-%d")
             lm_epoch = date2epoch(lmdate)
             if not lm_epoch:
                 logger.debug("lmdate %s not in either epoch", lmdate)
@@ -130,7 +132,8 @@ class HistFetcher(StoryWorker):
             if fetch_epoch == lm_epoch:
                 return {"VersionId": vid}
 
-        raise QuarantineException(f"{dlid}: epoch {fetch_epoch} no matching S3 object")
+        logger.warning("%s: epoch %s no matching S3 object found", dlid, fetch_epoch)
+        return None
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         rss = story.rss_entry()
