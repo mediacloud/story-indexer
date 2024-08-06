@@ -88,15 +88,12 @@ class HistFetcher(StoryWorker):
         self, dlid: int, s3path: str, collect_date: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Determine if download id is in the range where multiple versions
-        of the S3 object (named by dlid) can exist, and if so,
+        If download id is in the range where multiple versions
+        of the S3 object (named by dlid) can exist called to
         return ExtraArgs dict w/ VersionId, else return None.
 
         NOTE! Does NOT compare collect_date an S3 LastModifier directly!!
         """
-        if dlid < OVERLAP_START or dlid > OVERLAP_END:
-            return None
-
         if collect_date is None:
             raise QuarantineException(f"{dlid}: no collect_date")
 
@@ -152,8 +149,17 @@ class HistFetcher(StoryWorker):
 
         s3path = DOWNLOADS_PREFIX + dlid_str
 
+        # hist-queuer checked URL
+        url = story.http_metadata().final_url or ""
+
         # get ExtraArgs (w/ VersionId) if needed
-        extras = self.pick_version(dlid, s3path, dldate)
+        extras = None
+        if dlid >= OVERLAP_START and dlid <= OVERLAP_END:
+            extras = self.pick_version(dlid, s3path, dldate)
+            if not extras:
+                # no object found for dldate epoch:
+                self.incr_stories("epoch-err", url)
+                return
 
         # need to have whole story in memory (for Story object),
         # so download to a memory-based file object and decompress
@@ -165,9 +171,6 @@ class HistFetcher(StoryWorker):
 
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
-
-        # hist-queuer checked URL
-        url = story.http_metadata().final_url or ""
 
         if not self.check_story_length(html, url):
             return  # counted and logged
