@@ -596,10 +596,10 @@ class Worker(QApp):
         )
 
     def process_args(self) -> None:
-        super().process_args()
         assert self.args
         if self.args.from_quarantine:
             self.input_queue_name = quarantine_queue_name(self.process_name)
+        super().process_args()  # after setting self.input_queue_name
 
     def prefetch(self) -> int:
         # double buffer: one to work on, one on deck
