@@ -185,6 +185,7 @@ class RSSQueuer(Queuer):
                 ):
                     logger.warning(
                         "%s: unexpected tag %s path %s",
+                        fname,
                         name,
                         "/".join(path),
                     )
