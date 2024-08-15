@@ -238,7 +238,7 @@ historical)
 	# (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
 	HIST_FETCHER_REPLICAS=12
 	PARSER_REPLICAS=21
-	IMPORTER_REPLICAS=4
+	IMPORTER_REPLICAS=5
 	ARCHIVER_REPLICAS=2
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
