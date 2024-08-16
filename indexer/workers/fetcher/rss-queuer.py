@@ -28,8 +28,7 @@ from lxml.etree import iterparse
 from indexer.app import run
 from indexer.queuer import Queuer
 from indexer.story import StoryFactory
-
-S3_URL_BASE = "https://mediacloud-public.s3.amazonaws.com/backup-daily-rss"
+from indexer.workers.fetcher.common import RSS_FETCHER_URL_BASE
 
 Story = StoryFactory()
 
@@ -97,7 +96,7 @@ class RSSQueuer(Queuer):
         assert args
 
         def add_by_date(date: str) -> None:
-            args.input_files.append(f"{S3_URL_BASE}/mc-{date}.rss.gz")
+            args.input_files.append(f"{RSS_FETCHER_URL_BASE}/mc-{date}.rss.gz")
 
         def previous(days: int) -> str:
             """
@@ -157,7 +156,7 @@ class RSSQueuer(Queuer):
         """
         called for each file/url on command line,
         each file in a directory on the command line,
-        each S3 object matching an s3 URL prefix,
+        each blobstore object matching a blobstore URL prefix,
         and URLs implied by --fetch-date, --days and --yesterday
         with an uncompressed (binary) byte stream
         """
