@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 import requests
 from lxml import etree
 
+from indexer.workers.fetcher.common import RSS_FETCHER_URL_BASE
+
 """
 Methods relating to grabbing and batching rss.
 """
@@ -38,7 +40,7 @@ def fetch_daily_rss(
     local rss_file for testing new formats of RSS file not yet in production.
     """
     if fetch_date:
-        url = f"https://mediacloud-public.s3.amazonaws.com/backup-daily-rss/mc-{fetch_date}.rss.gz"
+        url = f"{RSS_FETCHER_URL_BASE}/mc-{fetch_date}.rss.gz"
         rss = requests.get(url, timeout=60)
         if rss.status_code > 400:
             raise RuntimeError(f"No mediacloud rss available for {fetch_date}")
@@ -90,10 +92,10 @@ def fetch_daily_rss(
             return int(val)
 
         entry: RSSEntry = {
-            "link": item.findtext("link"),
-            "title": item.findtext("title"),
-            "domain": item.findtext("domain"),
-            "pub_date": item.findtext("pubDate"),
+            "link": item.findtext("link", ""),
+            "title": item.findtext("title", ""),
+            "domain": item.findtext("domain", ""),
+            "pub_date": item.findtext("pubDate", ""),
             "fetch_date": fetch_date,
             "source_url": src_attr("url"),
             "source_feed_id": src_attr_int("mcFeedId"),
