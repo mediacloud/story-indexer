@@ -152,7 +152,6 @@ HIST_FETCHER_REPLICAS=4		# needs tuning
 
 IMPORTER_REPLICAS=1
 
-
 PARSER_REPLICAS=4
 
 QUEUER_CRONJOB_ENABLE=true
@@ -236,10 +235,15 @@ historical)
 	# 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
 	# 12 fetchers, 21 parsers, 4 importers: ~100 stories/second w/ load avg 22
 	# (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
+	# Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 5 importers.
 	HIST_FETCHER_REPLICAS=12
 	PARSER_REPLICAS=21
 	IMPORTER_REPLICAS=5
 	ARCHIVER_REPLICAS=2
+    else
+	# Aug 2024 fetching ~40 stories/sec (w/ 4 fetchers); increased to 5 parsers
+	# (4 parsers wouldn't keep up even if HIST_FETCHER_REPLICAS lowered to 3)
+	PARSER_REPLICAS=5
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
     PIPE_TYPE_PORT_BIAS=200	# own port range (ES has 9200+9300)
