@@ -17,6 +17,7 @@ import time
 from typing import Any, Dict, Optional
 
 import boto3
+from botocore.exceptions import ClientError
 
 from indexer.app import run
 from indexer.story import BaseStory
@@ -164,10 +165,18 @@ class HistFetcher(StoryWorker):
         # need to have whole story in memory (for Story object),
         # so download to a memory-based file object and decompress
         with io.BytesIO() as bio:
-            # let any Exception cause retry/quarantine
-            self.s3.download_fileobj(
-                Bucket=DOWNLOADS_BUCKET, Key=s3path, Fileobj=bio, ExtraArgs=extras
-            )
+            try:
+                self.s3.download_fileobj(
+                    Bucket=DOWNLOADS_BUCKET, Key=s3path, Fileobj=bio, ExtraArgs=extras
+                )
+            except ClientError as exc:
+                # Try to detect non-existent object,
+                # let any other Exception cause retry/quarantine
+                error = exc.response.get("Error")
+                if error and error.get("Code") == "404":
+                    self.incr_stories("not-found", url)
+                    return
+                raise
 
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
