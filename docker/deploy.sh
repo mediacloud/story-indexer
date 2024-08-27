@@ -235,10 +235,10 @@ historical)
 	# 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
 	# 12 fetchers, 21 parsers, 4 importers: ~100 stories/second w/ load avg 22
 	# (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
-	# Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 5 importers.
+	# Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 7 importers.
 	HIST_FETCHER_REPLICAS=12
 	PARSER_REPLICAS=21
-	IMPORTER_REPLICAS=5
+	IMPORTER_REPLICAS=7
 	ARCHIVER_REPLICAS=2
     else
 	# Aug 2024 fetching ~40 stories/sec (w/ 4 fetchers); increased to 5 parsers
