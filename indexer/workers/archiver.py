@@ -11,7 +11,11 @@ import indexer.blobstore
 from indexer.app import run
 from indexer.path import DATAROOT
 from indexer.story import BaseStory
-from indexer.story_archive_writer import ArchiveStoryError, StoryArchiveWriter
+from indexer.story_archive_writer import (
+    ArchiveStoryError,
+    FileobjError,
+    StoryArchiveWriter,
+)
 from indexer.storyapp import BatchStoryWorker, StorySender
 from indexer.worker import QuarantineException
 
@@ -65,6 +69,7 @@ class Archiver(BatchStoryWorker):
                 fqdn=FQDN,
                 serial=self.archives,
                 work_dir=self.work_dir,
+                rw=True,
             )
             self.stories = 0
 
@@ -106,8 +111,6 @@ class Archiver(BatchStoryWorker):
             logger.info(
                 "wrote %d stories to %s (%s bytes)", self.stories, local_path, size
             )
-            del self.archive
-            self.archive = None
 
             if self.stories == 0:
                 try:
@@ -122,27 +125,39 @@ class Archiver(BatchStoryWorker):
                 #  Varying the prefix allows faster retrieval.
                 prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
                 remote_path = prefix + name
-
                 for bs in self.blobstores:
                     try:
-                        bs.upload_file(local_path, remote_path)
+                        fileobj = self.archive.fileobj()  # inside try
+                        fileobj.seek(0, 0)  # rewind!
+                        t0 = time.monotonic()
+                        bs.upload_fileobj(fileobj, remote_path)
+                        sec = time.monotonic() - t0
+                        self.timing(
+                            "upload",
+                            sec * 1000,
+                            labels=[("store", bs.PROVIDER)],
+                        )
                         logger.info(
-                            "uploaded %s to %s %s",
+                            "uploaded %s to %s %s in %.3f",
                             local_path,
                             bs.PROVIDER,
                             remote_path,
+                            sec,
                         )
                         # XXX keep count for each store instead of last?
                         status = "uploaded"
-                    except tuple(bs.EXCEPTIONS) as e:
+                    except tuple(bs.EXCEPTIONS + [FileobjError]) as e:
                         logger.error(
                             "archive %s upload to %s failed: %r", name, bs.PROVIDER, e
                         )
                         # XXX keep count for each store instead of last?
                         status = "noupload"
+                self.archive.close()
                 self.maybe_unlink_local(local_path)
             else:
                 status = "nostore"
+            del self.archive
+            self.archive = None
         else:
             logger.info("no archive?")  # want "notice" level!
             status = "noarch"

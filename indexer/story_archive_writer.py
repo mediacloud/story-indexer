@@ -1,5 +1,5 @@
 """
-classes to write archives of Story objects
+classes to write archives of Story objects (and read them too)
 """
 
 # In a file of its own so it can be reused (however unlikely), and
@@ -11,9 +11,9 @@ import datetime as dt
 import json
 import os
 import time
-from io import BytesIO
+from io import BufferedWriter, BytesIO
 from logging import getLogger
-from typing import Any, BinaryIO, Dict, Iterator, Optional, Union
+from typing import Any, BinaryIO, Dict, Iterator, Optional, Union, cast
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
@@ -129,11 +129,17 @@ METADATA_CONTENT_TYPE = "application/x.mediacloud-indexer+json"
 logger = getLogger(__name__)
 
 
-class ArchiveStoryError(RuntimeError):
+class ArchiveStoryError(Exception):
     """
     error thrown by ArchiveWriter to indicate not saving a Story.
     First arg WILL be used as a counter name!!
     (so keep it short, and use hyphens, not spaces or underscores)
+    """
+
+
+class FileobjError(Exception):
+    """
+    error thrown by fileobj method if cannot return fileobj
     """
 
 
@@ -173,7 +179,14 @@ class StoryArchiveWriter:
     """
 
     def __init__(
-        self, *, prefix: str, hostname: str, fqdn: str, serial: int, work_dir: str
+        self,
+        *,
+        prefix: str,
+        hostname: str,
+        fqdn: str,
+        serial: int,
+        work_dir: str,
+        rw: bool = False,
     ):
         self.timestamp = time.time()  # time used to generate archive name
         # WARC 1.1 Annex C suggests naming:
@@ -189,10 +202,20 @@ class StoryArchiveWriter:
         else:  # allow prefix to be absolute path for testing
             self.full_path = self.filename
         self.temp_path = f"{self.full_path}.tmp"
-        self._file = open(self.temp_path, "wb")
+        if rw:
+            # open returns BufferedRandom (subclass of BufferedWriter + BufferedReader)
+            mode = "w+b"
+        else:
+            mode = "wb"  # open returns BufferedWriter
+        self._file = open(self.temp_path, mode)
+        self._rw = rw
+        self._finished = False
+        self._closed = False
         self.size = -1
 
-        self.writer = WARCWriter(self._file, gzip=True, warc_version=WARC_VERSION)
+        self.writer = WARCWriter(
+            cast(BufferedWriter, self._file), gzip=True, warc_version=WARC_VERSION
+        )
 
         # write initial "warcinfo" record:
         info = {
@@ -333,9 +356,13 @@ class StoryArchiveWriter:
         return True  # written
 
     def finish(self) -> None:
-        if self._file:
+        if not self._finished:
             self.size = self._file.tell()
-            self._file.close()
+            if self._rw:
+                self._file.flush()
+            else:
+                self.close()
+        self._finished = True
 
         if os.path.exists(self.temp_path):
             os.rename(self.temp_path, self.full_path)
@@ -346,6 +373,20 @@ class StoryArchiveWriter:
         # self.full_path: full local path of output file
         # self.size: size of (compressed) output file
         # self.timestamp: timestamp used to create filename
+
+    def fileobj(self) -> BinaryIO:
+        """
+        for use with blobstore.upload_fileobj
+        (caller must rewind!)
+        """
+        if self._file and self._rw and self._finished and not self._closed:
+            return cast(BinaryIO, self._file)
+        raise FileobjError()
+
+    def close(self) -> None:
+        if not self._closed:
+            self._file.close()
+            self._closed = True
 
 
 class StoryArchiveReader:

@@ -56,6 +56,9 @@ class S3Store(BlobStore):
         # mypy says it doesn't return a value:
         self._s3.upload_file(local_path, self.bucket, remote_key)
 
+    def upload_fileobj(self, fileobj: FileObj, remote_key: str) -> None:
+        self._s3.upload_fileobj(Bucket=self.bucket, Key=remote_key, Fileobj=fileobj)
+
     def _key_generator(self, prefix: str) -> Generator[str, None, None]:
         """
         originally written as generator, keeping, just in case
