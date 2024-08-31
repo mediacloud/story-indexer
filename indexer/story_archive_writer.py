@@ -129,7 +129,13 @@ METADATA_CONTENT_TYPE = "application/x.mediacloud-indexer+json"
 logger = getLogger(__name__)
 
 
-class ArchiveStoryError(Exception):
+class ArchiveWriterError(RuntimeError):
+    """
+    base for all other ArchiveWriter run time errors
+    """
+
+
+class ArchiveStoryError(ArchiveWriterError):
     """
     error thrown by ArchiveWriter to indicate not saving a Story.
     First arg WILL be used as a counter name!!
@@ -137,7 +143,7 @@ class ArchiveStoryError(Exception):
     """
 
 
-class FileobjError(Exception):
+class FileobjError(ArchiveWriterError):
     """
     error thrown by fileobj method if cannot return fileobj
     """
