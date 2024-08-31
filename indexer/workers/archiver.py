@@ -125,6 +125,7 @@ class Archiver(BatchStoryWorker):
                 #  Varying the prefix allows faster retrieval.
                 prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
                 remote_path = prefix + name
+                errors = 0
                 for bs in self.blobstores:
                     try:
                         fileobj = self.archive.fileobj()  # inside try
@@ -146,17 +147,18 @@ class Archiver(BatchStoryWorker):
                             size,
                             sec,
                         )
-                        # XXX keep count for each store instead of last?
-                        status = "uploaded"
                     except tuple(bs.EXCEPTIONS + [FileobjError]) as e:
                         logger.error(
                             "archive %s upload to %s failed: %r", name, bs.PROVIDER, e
                         )
-                        # XXX keep count for each store instead of last?
-                        status = "noupload"
+                        errors += 1
                 self.archive.close()
-                self.maybe_unlink_local(local_path)
-            else:
+                if errors == 0:
+                    status = "uploaded"
+                    self.maybe_unlink_local(local_path)
+                else:
+                    status = "noupload"
+            else:  # no blobstores
                 status = "nostore"
             del self.archive
             self.archive = None
