@@ -216,7 +216,6 @@ class StoryArchiveWriter:
         self._file = open(self.temp_path, mode)
         self._rw = rw
         self._finished = False
-        self._closed = False
         self.size = -1
 
         self.writer = WARCWriter(
@@ -368,12 +367,11 @@ class StoryArchiveWriter:
                 self._file.flush()
             else:
                 self.close()
-        self._finished = True
 
-        if os.path.exists(self.temp_path):
-            os.rename(self.temp_path, self.full_path)
-            logger.info("renamed %s", self.full_path)
-
+            if os.path.exists(self.temp_path):
+                os.rename(self.temp_path, self.full_path)
+                logger.info("renamed %s", self.full_path)
+                self._finished = True
         # useful data now available:
         # self.filename: archive file name
         # self.full_path: full local path of output file
@@ -385,14 +383,19 @@ class StoryArchiveWriter:
         for use with blobstore.upload_fileobj
         (caller must rewind!)
         """
-        if self._file and self._rw and self._finished and not self._closed:
-            return cast(BinaryIO, self._file)
-        raise FileobjError()
+        if not self._file:
+            raise FileobjError("no file")
+        if self._file.closed:
+            raise FileobjError("closed")
+        if not self._rw:
+            raise FileobjError("not r/w")
+        if not self._finished:
+            raise FileobjError("not finished")
+        return cast(BinaryIO, self._file)
 
     def close(self) -> None:
-        if not self._closed:
+        if self._file and not self._file.closed:
             self._file.close()
-            self._closed = True
 
 
 class StoryArchiveReader:
