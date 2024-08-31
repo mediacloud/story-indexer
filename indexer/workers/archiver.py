@@ -137,11 +137,13 @@ class Archiver(BatchStoryWorker):
                             sec * 1000,
                             labels=[("store", bs.PROVIDER)],
                         )
+                        # could have upload_speed size/sec!
                         logger.info(
-                            "uploaded %s to %s %s in %.3f",
+                            "uploaded %s to %s %s %d b %.3f s",
                             local_path,
                             bs.PROVIDER,
                             remote_path,
+                            size,
                             sec,
                         )
                         # XXX keep count for each store instead of last?
