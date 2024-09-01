@@ -516,7 +516,13 @@ prod|staging)
     cd ..
     ;;
 dev)
-    PRIVATE_CONF_FILE=./dev.sh
+    # NOTE! in SCRIPT_DIR!
+    USER_CONF=$(pwd)/${LOGIN_USER}.sh
+    if [ -f $USER_CONF ]; then
+	PRIVATE_CONF_FILE=$USER_CONF
+    else
+	PRIVATE_CONF_FILE=$(pwd)/dev.sh
+    fi
     ;;
 esac
 
@@ -525,6 +531,7 @@ if [ ! -f $PRIVATE_CONF_FILE ]; then
     echo "FATAL: could not access $PRIVATE_CONF_FILE" 1>&2
     exit 1
 fi
+echo reading config from $PRIVATE_CONF_FILE
 . $PRIVATE_CONF_FILE
 
 # after reading PRIVATE_CONF_FILE!!
