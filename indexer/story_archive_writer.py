@@ -371,7 +371,8 @@ class StoryArchiveWriter:
             if os.path.exists(self.temp_path):
                 os.rename(self.temp_path, self.full_path)
                 logger.info("renamed %s", self.full_path)
-                self._finished = True
+            self._finished = True
+
         # useful data now available:
         # self.filename: archive file name
         # self.full_path: full local path of output file
