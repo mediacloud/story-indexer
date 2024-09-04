@@ -103,6 +103,9 @@ class BlobStore:
     def upload_file(self, local_path: str, remote_key: str) -> None:
         raise NotImplementedError
 
+    def upload_fileobj(self, fileobj: FileObj, remote_key: str) -> None:
+        raise NotImplementedError
+
     def list_objects(self, prefix: str) -> list[str]:
         raise NotImplementedError
 

@@ -105,7 +105,6 @@ fi
 # will lose if run non-interactively via ssh (no utmp entry)
 LOGIN_USER=$(who am i | awk '{ print $1 }')
 if [ "x$LOGIN_USER" = x ]; then
-    # XXX fall back to whoami (look by uid)
     echo could not find login user 1>&2
     exit 1
 fi
@@ -516,7 +515,15 @@ prod|staging)
     cd ..
     ;;
 dev)
-    PRIVATE_CONF_FILE=./dev.sh
+    # NOTE! in SCRIPT_DIR!
+    USER_CONF=./${LOGIN_USER}.sh
+    if [ -f $USER_CONF ]; then
+	# read dev.sh for defaults, then $USER_CONF for overrides
+	. ./dev.sh
+	PRIVATE_CONF_FILE=$USER_CONF
+    else
+	PRIVATE_CONF_FILE=./dev.sh
+    fi
     ;;
 esac
 
@@ -525,6 +532,7 @@ if [ ! -f $PRIVATE_CONF_FILE ]; then
     echo "FATAL: could not access $PRIVATE_CONF_FILE" 1>&2
     exit 1
 fi
+echo reading config from $PRIVATE_CONF_FILE
 . $PRIVATE_CONF_FILE
 
 # after reading PRIVATE_CONF_FILE!!
