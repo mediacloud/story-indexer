@@ -163,7 +163,7 @@
           {
             "evaluator": {
               "params": [
-                50000
+                90000
               ],
               "type": "gt"
             },
@@ -173,7 +173,7 @@
             "query": {
               "params": [
                 "A",
-                "5m",
+                "10m",
                 "now"
               ]
             },
@@ -185,8 +185,8 @@
           }
         ],
         "executionErrorState": "alerting",
-        "for": "5m",
-        "frequency": "1m",
+        "for": "10m",
+        "frequency": "5m",
         "handler": 1,
         "name": "all input queues alert",
         "noDataState": "no_data",
@@ -247,7 +247,7 @@
           "fill": true,
           "line": true,
           "op": "gt",
-          "value": 50000
+          "value": 90000
         }
       ],
       "timeFrom": null,
@@ -599,8 +599,8 @@
     "list": []
   },
   "time": {
-    "from": "now-24h",
-    "to": "now"
+    "from": "2024-09-21T08:53:49.085Z",
+    "to": "2024-09-21T12:29:18.565Z"
   },
   "timepicker": {
     "refresh_intervals": [
@@ -619,5 +619,5 @@
   "timezone": "",
   "title": "story-indexer alerts",
   "uid": "hN1OxidSk",
-  "version": 13
+  "version": 15
 }
