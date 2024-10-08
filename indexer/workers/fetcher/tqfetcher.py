@@ -47,7 +47,7 @@ import time
 from typing import NamedTuple
 
 import requests
-from mcmetadata.requests_arcana import unsecure_legacy_ssl_session
+from mcmetadata.requests_arcana import insecure_requests_session
 from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from requests.exceptions import RequestException
 
@@ -495,7 +495,7 @@ class Fetcher(MultiThreadStoryWorker):
 
         # ***NOTE*** here with slot marked active *MUST* call slot.finish!!!!
         t0 = time.monotonic()
-        with self.timer("fetch"), unsecure_legacy_ssl_session(
+        with self.timer("fetch"), insecure_requests_session(
             MEDIA_CLOUD_USER_AGENT
         ) as sess:
             # log starting URL
