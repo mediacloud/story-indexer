@@ -47,10 +47,11 @@ import time
 from typing import NamedTuple
 
 import requests
+from mcmetadata.requests_arcana import unsecure_legacy_ssl_session
+from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from requests.exceptions import RequestException
 
 from indexer.app import run
-from indexer.requests_arcana import legacy_ssl_session
 from indexer.story import BaseStory
 from indexer.storyapp import (
     MultiThreadStoryWorker,
@@ -494,7 +495,9 @@ class Fetcher(MultiThreadStoryWorker):
 
         # ***NOTE*** here with slot marked active *MUST* call slot.finish!!!!
         t0 = time.monotonic()
-        with self.timer("fetch"), legacy_ssl_session() as sess:
+        with self.timer("fetch"), unsecure_legacy_ssl_session(
+            MEDIA_CLOUD_USER_AGENT
+        ) as sess:
             # log starting URL
             logger.info("fetch %s", url)
 
