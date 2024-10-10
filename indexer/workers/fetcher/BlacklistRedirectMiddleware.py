@@ -11,7 +11,7 @@ from scrapy.exceptions import IgnoreRequest
 from w3lib.url import safe_url_string
 
 
-class BlacklistRedirectMiddleware(BaseRedirectMiddleware):  # type: ignore[no-any-unimported]
+class BlacklistRedirectMiddleware(BaseRedirectMiddleware):  # type: ignore[no-any-unimported,misc]
     """
     Handle redirection of requests based on response status
     and meta-refresh html tag. Very Minor Edit of scrapy's builtin RedirectMiddleware

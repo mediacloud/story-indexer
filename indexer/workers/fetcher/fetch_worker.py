@@ -145,6 +145,7 @@ class FetchWorker(StoryProducer):
                 if not hasattr(self, "sender"):
                     self.qconnect()
                     self.sender = self.story_sender()
+                assert self.sender
                 self.sender.send_story(story)
                 status_label = "success"
 
