@@ -523,7 +523,7 @@ class QApp(App):
             dest = routing_key  # using default exchange
         self.incr("sent-msgs", labels=[("dest", dest)])
 
-    def admin_api(self) -> rabbitmq_admin.AdminAPI:  # type: ignore[no-any-unimported]
+    def admin_api(self) -> rabbitmq_admin.AdminAPI:
         args = self.args
         assert args
 

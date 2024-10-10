@@ -332,9 +332,10 @@ class Pipeline(QApp):
     @command
     def show(self) -> None:
         """show queues, exchanges, bindings"""
-        defns = self.get_definitions()
-        for what in ("queues", "exchanges", "bindings"):
-            things = defns[what]
+        api = self.admin_api()
+        defns = api.get_definitions()
+
+        def dump_things(what: str, things: list[dict[str, Any]]) -> None:
             print("")
             if things:
                 print(what)
@@ -342,6 +343,12 @@ class Pipeline(QApp):
                     print("   ", thing)
             else:
                 print(f"no {what}")
+
+        # stubs/rabbitmq_admin.pyi defines get_definitions()
+        # as returning a TypedDict, so need to index with constant:
+        dump_things("queues", defns["queues"])
+        dump_things("exchanges", defns["exchanges"])
+        dump_things("bindings", defns["bindings"])
 
     @command
     def test(self) -> None:
@@ -365,12 +372,6 @@ class Pipeline(QApp):
         meth = getattr(self, cmd)
         assert callable(meth)
         return cast(Callable[[], None], meth)
-
-    def get_definitions(self) -> Dict[str, Any]:
-        api = self.admin_api()
-        defns = api.get_definitions()
-        assert isinstance(defns, dict)
-        return defns
 
 
 class MyPipeline(Pipeline):
