@@ -29,8 +29,7 @@ logger = getLogger("qutil")
 
 COMMANDS: List[str] = []
 
-# CommandMethod = Callable[["Pipeline"],None]
-CommandMethod = Callable
+CommandMethod = Callable[["QUtil"], None]
 
 
 def command(func: CommandMethod) -> CommandMethod:
@@ -222,7 +221,11 @@ class QUtil(QApp):
             sys.exit(1)
         return str(queue)
 
-    def dump_msgs(self, writer: Callable, flush: Callable) -> None:
+    def dump_msgs(
+        self,
+        writer: Callable[[bytes, int, BasicProperties], None],
+        flush: Callable[[], None],
+    ) -> None:
         """
         utility to read messages from queue & call writer
         """

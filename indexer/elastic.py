@@ -75,7 +75,7 @@ class ElasticConfMixin(ElasticMixin):
             logger.fatal("need --elasticsearch_config_dir or ELASTICSEARCH_CONFIG_DIR")
             sys.exit(1)
 
-    def _load_template(self, name: str) -> dict | Any:
+    def _load_template(self, name: str) -> dict[str, Any] | Any:
         """
         Load a JSON file from the Elasticsearch configuration directory.
         Args:

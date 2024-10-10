@@ -14,7 +14,7 @@ to be a utility, rather than a library...
 import argparse
 import logging
 import sys
-from typing import Callable, Dict, List, Union, cast
+from typing import Any, Callable, Dict, List, Union, cast
 
 # PyPI
 from pika.exchange_type import ExchangeType
@@ -121,8 +121,7 @@ class Consumer(_Process):
 
 Outputs = List[Union[Worker, Consumer]]
 
-# CommandMethod = Callable[["Pipeline"],None]
-CommandMethod = Callable
+CommandMethod = Callable[["Pipeline"], None]
 
 
 def command(func: CommandMethod) -> CommandMethod:
@@ -367,7 +366,7 @@ class Pipeline(QApp):
         assert callable(meth)
         return cast(Callable[[], None], meth)
 
-    def get_definitions(self) -> Dict:
+    def get_definitions(self) -> Dict[str, Any]:
         api = self.admin_api()
         defns = api.get_definitions()
         assert isinstance(defns, dict)

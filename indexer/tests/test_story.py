@@ -128,7 +128,7 @@ class TestDiskStory:
 
     # We want this to be cmdline toggleable probably.
     @pytest.fixture(scope="class", autouse=True)
-    def teardown_test_datadir(self, request: Any) -> Generator:
+    def teardown_test_datadir(self, request: Any) -> Generator[None, None, None]:
         yield
         shutil.rmtree(TEST_DATA_DIR)
 

@@ -24,7 +24,9 @@ def uuid_by_link(link: str) -> str:
 
 # enforces a specific naming pattern within this object, for concision and extensibility in the exit cb
 # https://stackoverflow.com/questions/1175208/elegant-python-function-to-convert-camelcase-to-snake-case
-def class_to_member_name(original_class: Callable, private: bool = True) -> str:
+def class_to_member_name(
+    original_class: type["StoryData"], private: bool = True
+) -> str:
     name = original_class.__name__
     name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     if private:
@@ -41,19 +43,19 @@ class StoryData:
     """
 
     dirty: bool = False
-    exit_cb: Callable = field(repr=False)
+    exit_cb: Callable[["StoryData"], None] = field(repr=False)
     frozen: bool = field(default=False, repr=False)
     CONTENT_TYPE: str = field(default="json", repr=False)
     MEMBER_NAME: str = field(default="", repr=False)
-    internals: tuple = field(
-        default=(
+    internals: list[str] = field(
+        default=[
             "internals",
             "dirty",
             "frozen",
             "exit_cb",
             "CONTENT_TYPE",
             "MEMBER_NAME",
-        ),
+        ],
         repr=False,
     )
 
@@ -87,8 +89,8 @@ class StoryData:
         self.frozen = True
         self.exit_cb(self)
 
-    def as_dict(self) -> dict:
-        output: dict = {}
+    def as_dict(self) -> dict[str, Any]:
+        output: dict[str, Any] = {}
         for key in fields(self):
             if key.name not in self.internals:
                 output[key.name] = getattr(self, key.name)
@@ -96,7 +98,7 @@ class StoryData:
         return output
 
     # As a convenience for loading in values from a storage interface.
-    def load_dict(self, load_dict: dict) -> None:
+    def load_dict(self, load_dict: dict[str, Any]) -> None:
         field_names: list[str] = [f.name for f in fields(self)]
         for key, value in load_dict.items():
             if key in field_names:
@@ -319,7 +321,7 @@ class DiskStory(BaseStory):
 
     # Using the dict interface to story_data so as to avoid typing issues.
     def init_storage(self, story_data: StoryData) -> None:
-        data_dict: dict = story_data.as_dict()
+        data_dict: dict[str, Any] = story_data.as_dict()
         fetch_date = data_dict["fetch_date"]
 
         if fetch_date is None:
@@ -421,7 +423,7 @@ class StoryFactory:
             "DiskStory": DiskStory,
         }
 
-    def __call__(self, *args: List, **kwargs: Dict[Any, Any]) -> BaseStory:
+    def __call__(self, *args: List[Any], **kwargs: Dict[Any, Any]) -> BaseStory:
         instance = self.classes[self.iface](*args, **kwargs)
         assert isinstance(instance, BaseStory)
         return instance
