@@ -47,15 +47,15 @@ class StoryData:
     frozen: bool = field(default=False, repr=False)
     CONTENT_TYPE: str = field(default="json", repr=False)
     MEMBER_NAME: str = field(default="", repr=False)
-    internals: list[str] = field(
-        default=[
+    internals: tuple[str, ...] = field(
+        default=(
             "internals",
             "dirty",
             "frozen",
             "exit_cb",
             "CONTENT_TYPE",
             "MEMBER_NAME",
-        ],
+        ),
         repr=False,
     )
 
