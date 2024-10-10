@@ -40,14 +40,18 @@ class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported,misc]
     }
 
     def __init__(
-        self, batch: List[BaseStory], cb: Callable, *args: List, **kwargs: Dict
+        self,
+        batch: List[BaseStory],
+        cb: Callable[[BaseStory], None],
+        *args: List[Any],
+        **kwargs: Dict[str, Any]
     ) -> None:
         super(BatchSpider, self).__init__(*args, **kwargs)
 
         self.batch = batch
         self.cb = cb
 
-    def start_requests(self) -> Generator:
+    def start_requests(self) -> Generator[scrapy.Request, None, None]:  # type: ignore[no-any-unimported]
         for story in self.batch:
             url = story.rss_entry().link
 
