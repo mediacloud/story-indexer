@@ -152,6 +152,7 @@ class ElasticConf(ElasticConfMixin, App):
             if self.es_snapshot_s3_endpoint:
                 settings["endpoint"] = self.es_snapshot_s3_endpoint
         else:  # repo-type=fs
+            assert self.es_snapshot_fs_location
             settings = {"location": self.es_snapshot_fs_location}
 
         try:

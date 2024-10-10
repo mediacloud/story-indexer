@@ -54,6 +54,15 @@ warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
 
+# from https://quantlane.com/blog/type-checking-large-codebase/
+# in the order they appear:
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+#disallow_any_generics = true
+disallow_subclassing_any = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
 # look for local stubs to PyPI packages in top level stubs directory
 mypy_path = "stubs"
 

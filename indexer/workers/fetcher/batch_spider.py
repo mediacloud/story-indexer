@@ -11,7 +11,7 @@ from indexer.story import BaseStory
 logger = logging.getLogger(__name__)
 
 
-class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported]
+class BatchSpider(scrapy.Spider):  # type: ignore[no-any-unimported,misc]
     """
     This spider is given a batch_index, loads the corresponding batchfile from the disk,
     then fetches the urls in that batch's stories, and then saves the corresponding html and http_metadata
