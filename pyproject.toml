@@ -11,7 +11,7 @@ dependencies = [
   "docker ~= 7.1.0",
   "elasticsearch ~= 8.12.0",
   # lxml installed by some other package?
-  "mediacloud-metadata ~= 0.12.0",
+  "mediacloud-metadata ~= 1.1.0",
   "pika ~= 1.3.2",
   "rabbitmq-admin ~= 0.2",
   "statsd_client ~= 1.0.7",
