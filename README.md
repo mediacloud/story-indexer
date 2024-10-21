@@ -6,26 +6,19 @@ Media Cloud online news story indexer.
 
 ### Setup
 
-To create an environment for testing from the command line:
-create and activate a `python3.10` virtual env and then from the root of the
-project, run `make` to install all required dependencies.
+To create an environment for development: run `make install` from the
+command line.  This creates a virtual environment (venv), installs all
+dependencies, and installs a pre-commit hook.
 
-```sh
-python3.10 -m venv venv
-source venv/bin/activate
-make
-```
+### "linting"
+
+To run all pre-commit hooks, run `make lint` from the command line.
 
 ### Updating requirements
 
 Required Python libraries are specified in `pyproject.toml`.
 `requirements.txt` and `requirements-dev.txt` can be regenerated using
 `make upgrade`
-
-
-### Other useful targets
-
-Run `make help` to see the list of other useful targets
 
 ## More documentation
 

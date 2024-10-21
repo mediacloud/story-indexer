@@ -1,6 +1,13 @@
 ROOT_DIR := $(shell dirname "$(realpath $(firstword $(MAKEFILE_LIST)))")
 
-all: install lint
+VENVDIR=venv
+VENVBIN=$(VENVDIR)/bin
+VENVDONE=$(VENVDIR)/.done
+VENVPY=$(VENVBIN)/python
+
+PIP=$(VENVPY) -m pip
+PIPTOOLS=$(VENVPY) -m piptools
+PRE_COMMIT=$(VENVBIN)/pre-commit
 
 ## display this message
 help:
@@ -18,16 +25,16 @@ clean:
 
 # generate and/or update requirement.txt
 upgrade-prod:
-	python -m pip install --upgrade pip-tools pip
-	python -m piptools compile \
+	$(PIP) install --upgrade pip-tools pip
+	$(PIPTOOLS) compile \
 		--strip-extras \
 		pyproject.toml
 
 # generate and/or update requirements-dev.txt (based on requirements.txt)
 upgrade-dev:
-	pre-commit autoupdate
+	$(PRE_COMMIT) autoupdate
 	echo "--constraint $(ROOT_DIR)/requirements.txt" | \
-		python -m piptools compile \
+		$(PIPTOOLS) compile \
 		  	--strip-extras \
 			--extra dev \
 			--output-file requirements-dev.txt \
@@ -38,23 +45,32 @@ upgrade: upgrade-prod upgrade-dev
 
 # install requirement.txt dependencies
 install-deps-prod:
-	python -m pip install -r requirements.txt
+	$(PIP) install -r requirements.txt
 
 # install requirement-dev.txt dependencies
 install-deps-dev:
-	python -m pip install -r requirements-dev.txt
+	$(PIP) install -r requirements-dev.txt
 
 # install this app with dev extras
 install-app-dev:
 # --no-deps so that we don't reinstall un-pinned dependencies from pyproject
-	python -m pip install --no-deps --editable ".[dev]"
+	$(PIP) install --no-deps --editable ".[dev]"
 
 ## install all required dependencies for development
-install: install-deps-dev install-app-dev
+install: $(VENVPY) install-deps-dev install-app-dev
+	$(PRE_COMMIT) install
+	touch $(VENVDONE)
+
+$(VENVDONE): requirements.txt requirements-dev.txt
+	$(MAKE) install
+
+# not depending on VENVDIR, which "changes" when VENVDONE created
+$(VENVPY):
+	python3 -m venv $(VENVDIR)
 
 ## check and format code
-lint:
-	pre-commit run --all-files
+lint:	$(VENVDONE)
+	$(PRE_COMMIT) run --all-files
 
 ## run pytests
 test:
