@@ -159,7 +159,7 @@ class HistFetcher(StoryWorker):
             extras = self.pick_version(dlid, s3path, dldate)
             if not extras:
                 # no object found for dldate epoch:
-                self.incr_stories("epoch-err", url)
+                self.incr_stories("epoch-err", url or str(dlid))
                 return
 
         # need to have whole story in memory (for Story object),
@@ -174,7 +174,7 @@ class HistFetcher(StoryWorker):
                 # let any other Exception cause retry/quarantine
                 error = exc.response.get("Error")
                 if error and error.get("Code") == "404":
-                    self.incr_stories("not-found", url)
+                    self.incr_stories("not-found", url or str(dlid))
                     return
                 raise
 

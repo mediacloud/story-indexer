@@ -5,6 +5,7 @@ metadata parser pipeline worker
 import datetime as dt
 import logging
 from collections import Counter
+from typing import Any
 
 # PyPI:
 import mcmetadata
@@ -21,17 +22,30 @@ QUARANTINE_DECODE_ERROR = True  # discard if False
 logger = logging.getLogger("parser")
 
 
+class Discard(Exception):
+    """Exception to signal story discard"""
+
+
 class Parser(StoryWorker):
-    def process_story(self, sender: StorySender, story: BaseStory) -> None:
+    def _decode_content(self, story: BaseStory) -> tuple[str, str, bool]:
         hmd = story.http_metadata()
         final_url = hmd.final_url
+        need_canonical_url = False
         if not final_url:
             rss = story.rss_entry()
-            # want notice level!
-            # should NOT have gotten here
-            logger.warning("rss link %s final_url %r", rss.link, final_url)
-            self.incr_stories("no-url", final_url or "")
-            raise QuarantineException("no url")
+
+            if rss.link and rss.link.isdigit():
+                # here with "historical" data without URL
+                # for a one month window of 2021
+                # (queued with --allow-empty-url)
+                need_canonical_url = True
+            else:
+                # want notice level!
+                # should NOT have gotten here
+                logger.warning("rss link %s final_url %r", rss.link, final_url)
+                self.incr_stories("no-url", final_url or "")
+                raise QuarantineException("no url")
+            final_url = ""
 
         # Deal with the character encoding miasma.
 
@@ -82,7 +96,7 @@ class Parser(StoryWorker):
                 if QUARANTINE_DECODE_ERROR:
                     raise QuarantineException(err)
                 else:
-                    return
+                    raise Discard("no-decode")
 
         # XXX also unicode_markup??
         html = ud.markup  # decoded HTML
@@ -90,7 +104,7 @@ class Parser(StoryWorker):
         if not html:
             # can get here from batch fetcher, or if body was just a BOM
             self.incr_stories("no-html", final_url)  # want level=NOTICE
-            return
+            raise Discard("no-html")
 
         with raw:
             # Scrapy removes BOM, so do it here too.
@@ -108,6 +122,62 @@ class Parser(StoryWorker):
             if encoding and raw.encoding != encoding:
                 logger.debug("encoding %s, was %s", encoding, raw.encoding)
                 raw.encoding = encoding
+
+        return (final_url, html, need_canonical_url)
+
+    def _save_metadata(
+        self,
+        story: BaseStory,
+        final_url: str,
+        mdd: dict[str, Any],
+        need_canonical_url: bool,
+    ) -> bool:
+        # XXX check for empty text_content?
+        # (will be discarded by importer)
+
+        cmd = story.content_metadata()
+        with cmd:
+            for key, val in mdd.items():
+                if hasattr(cmd, key):  # avoid hardwired exceptions
+                    setattr(cmd, key, val)
+
+            cmd.parsed_date = dt.datetime.utcnow().isoformat()
+
+        if need_canonical_url:
+            # should only get here with S3 object id in rss.link
+            link = story.rss_entry().link or "SNH"
+
+            if canonical_url := cmd.canonical_url:
+                with cmd:
+                    # importer calls mcmetadata.urls.unique_url_hash(cmd.url)
+                    # which calls normalize_url (cmd.normalized_url is never
+                    # used in story-indexer).  cmd.url is also
+                    # story_archive_writer's second choice.
+                    cmd.url = canonical_url
+
+                # story_archive_writer wants hmd.final_url and response_code,
+                # trying to centralize acts of forgery here, rather than
+                # difusing bits of magic in various places.
+                with story.http_metadata() as hmd:
+                    hmd.final_url = canonical_url
+                    hmd.response_code = 200
+
+                # In this case rss.link is the downloads_id (S3 object id).
+                logger.info("%s: using canonical_url %s", link, canonical_url)
+
+                # NOTE! Cannot call "incr_stories": would cause double counting!
+            else:
+                self.incr_stories("no-canonical-url", link)
+                return False  # discard
+
+        return True
+
+    def process_story(self, sender: StorySender, story: BaseStory) -> None:
+        try:
+            final_url, html, need_canonical_url = self._decode_content(story)
+        except Discard:
+            # already counted
+            return
 
         extract_stats: Counter[str] = Counter()
         try:
@@ -127,22 +197,16 @@ class Parser(StoryWorker):
         method = mdd["text_extraction_method"]
         logger.info("parsed %s with %s date %s", final_url, method, pub_date)
 
-        with story.content_metadata() as cmd:
-            for key, val in mdd.items():
-                if hasattr(cmd, key):  # avoid hardwired exceptions
-                    setattr(cmd, key, val)
+        if self._save_metadata(story, final_url, mdd, need_canonical_url):
+            sender.send_story(story)
+            self.incr_stories(f"OK-{method}", final_url)
 
-            cmd.parsed_date = dt.datetime.utcnow().isoformat()
-
-        sender.send_story(story)
-        self.incr_stories(f"OK-{method}", final_url)
-
-        skip_items = {"total", "fetch"}  # stackable, no fetch done
-        for item, sec in extract_stats.items():
-            if item not in skip_items:
-                # was tempted to replace 'content' with method,
-                # but is really sum of all methods tried!!
-                self.timing("extract", sec * 1000, labels=[("step", item)])
+            skip_items = {"total", "fetch"}  # stackable, no fetch done
+            for item, sec in extract_stats.items():
+                if item not in skip_items:
+                    # was tempted to replace 'content' with method,
+                    # but is really sum of all methods tried!!
+                    self.timing("extract", sec * 1000, labels=[("step", item)])
 
 
 if __name__ == "__main__":

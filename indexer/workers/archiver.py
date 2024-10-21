@@ -126,6 +126,17 @@ class Archiver(BatchStoryWorker):
                 prefix = time.strftime("%Y/%m/%d/", time.gmtime(timestamp))
                 remote_path = prefix + name
                 errors = 0
+
+                # NOTE! If upload fails for any single blobstore, the
+                # file will be left in the work (archiver) directory
+                # without indication of which upload fails.  We've
+                # only used multiple blobstores when switching from S3
+                # to B2, but if multiple stores ever become the norm,
+                # consider having multiple archiver input queues
+                # fed by a fanout exchange, ie; have
+                # two "add_consumer" calls in the "add_worker"
+                # line for importer in pipeline.py
+
                 for bs in self.blobstores:
                     try:
                         fileobj = self.archive.fileobj()  # inside try

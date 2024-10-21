@@ -186,6 +186,11 @@ class ContentMetadata(StoryData):
     # WARC files, populated from WARC metadata record WARC-Date header.
     parsed_date: Optional[str] = None
 
+    # MAY be extracted from <link ... rel="canonical"> or other tags,
+    # if present.  Added October 2024 to recover a month of 2021 stories
+    # stored in S3 without the original URLs.
+    canonical_url: Optional[str] = None
+
 
 CONTENT_METADATA = class_to_member_name(ContentMetadata)
 

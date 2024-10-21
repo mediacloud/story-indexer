@@ -259,6 +259,7 @@ class StoryArchiveWriter:
         cmd = story.content_metadata()
         rhtml = story.raw_html()
 
+        # NOTE! logging original_url (as elsewhere) for log tracing.
         original_url = cmd.original_url or re.link
         url = hmd.final_url or cmd.url or original_url or ""
         html = rhtml.html or b""
