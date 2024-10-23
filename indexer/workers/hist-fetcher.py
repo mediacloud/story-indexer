@@ -93,7 +93,7 @@ class HistFetcher(StoryWorker):
         of the S3 object (named by dlid) can exist called to
         return ExtraArgs dict w/ VersionId, else return None.
 
-        NOTE! Does NOT compare collect_date an S3 LastModifier directly!!
+        NOTE! Does NOT compare collect_date and S3 LastModified directly!!
         """
         if collect_date is None:
             raise QuarantineException(f"{dlid}: no collect_date")
@@ -181,6 +181,10 @@ class HistFetcher(StoryWorker):
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
+        if html.startswith(b"(redundant feed)"):
+            self.incr_stories("redundant", url or str(dlid))
+            return
+
         if not self.check_story_length(html, url):
             return  # counted and logged
 
@@ -189,8 +193,15 @@ class HistFetcher(StoryWorker):
             raw.html = html
 
         with hmd:
-            hmd.response_code = 200
-
+            hmd.response_code = 200  # for archiver
+            if not hmd.fetch_timestamp:
+                try:
+                    resp = self.s3.head_object(Bucket=DOWNLOADS_BUCKET, Key=s3path)
+                    hmd.fetch_timestamp = resp["LastModified"].timestamp()
+                except KeyboardInterrupt:
+                    raise
+                except Exception:
+                    pass
         sender.send_story(story)
         self.incr_stories("success", url)
 
