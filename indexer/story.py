@@ -11,6 +11,9 @@ import cchardet as chardet
 
 from indexer.path import DATAPATH_BY_DATE, STORIES
 
+# passed by hist-queuer.py w/ --allow-no-url option
+NEED_CANONICAL_URL = "http://mediacloud.org/need_canonical_url"
+
 """
 A single story interface object, with typed data fields for each pipeline step,
 context management on each of those step datum, and a serialization scheme.

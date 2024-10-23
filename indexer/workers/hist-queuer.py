@@ -16,7 +16,7 @@ from typing import BinaryIO, Set
 
 from indexer.app import run
 from indexer.queuer import Queuer
-from indexer.story import StoryFactory
+from indexer.story import NEED_CANONICAL_URL, StoryFactory
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,8 @@ class HistQueuer(Queuer):
 
                 if not self.check_story_url(url):
                     continue  # logged and counted
+            else:
+                url = NEED_CANONICAL_URL
 
             dlid = row.get("downloads_id")
             # let hist-fetcher quarantine if bad
@@ -156,7 +158,7 @@ class HistQueuer(Queuer):
             # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
 
             self.send_story(story)  # calls incr_story: to increment and log
-            if url:
+            if url != NEED_CANONICAL_URL:
                 urls_seen.add(url)  # mark URL as seen
 
 
