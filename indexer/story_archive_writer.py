@@ -421,6 +421,9 @@ class StoryArchiveReader:
                 expect = "response"
             elif expect == "response":
                 html = record.raw_stream.read()
+                # strip leading HTTP response and headers
+                if html.startswith(b"HTTP/") and (crcr := html.find(b"\r\n\r\n")) > 0:
+                    html = html[crcr + 4 :]
                 expect = "metadata"
             elif expect == "metadata":
                 j = json.load(record.raw_stream)
