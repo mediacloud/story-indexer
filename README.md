@@ -8,11 +8,15 @@ Media Cloud online news story indexer.
 
 To create an environment for development: run `make install` from the
 command line.  This creates a virtual environment (venv), installs all
-dependencies, and installs a pre-commit hook.
+dependencies, and installs a git pre-commit hook.
 
 ### "linting"
 
 To run all pre-commit hooks, run `make lint` from the command line.
+
+## Other useful targets
+
+Run `make` (or `make help`) to see the list of other useful targets
 
 ### Updating requirements
 
