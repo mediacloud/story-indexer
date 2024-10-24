@@ -140,6 +140,8 @@ class Parser(StoryWorker):
 
             canonical_url = cmd.canonical_url
             if not canonical_url or canonical_url == NEED_CANONICAL_URL:
+                # XXX look for first "tag" to distinguish XML/RSS from HTML/doctype???
+                # (including <?xml....> and <!doctype....>)
                 self.incr_stories("no-canonical-url", link)
                 return False  # discard
 
