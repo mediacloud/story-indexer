@@ -143,6 +143,11 @@ class Parser(StoryWorker):
                 self.incr_stories("no-canonical-url", link)
                 return False  # discard
 
+            # now that we FINALLY have a URL, make sure it isn't
+            # from a source we filter out!!!
+            if not self.check_story_url(canonical_url):
+                return False  # already counted and logged
+
             with cmd:
                 # importer calls mcmetadata.urls.unique_url_hash(cmd.url)
                 # which calls normalize_url (cmd.normalized_url is never
