@@ -120,7 +120,7 @@ class Parser(StoryWorker):
 
         return html
 
-    def _save_metadata(self, story: BaseStory, mdd: dict[str, Any]) -> bool:
+    def _save_metadata(self, story: BaseStory, mdd: dict[str, Any], html: str) -> bool:
         # XXX check for empty text_content?
         # (will be discarded by importer)
 
@@ -140,9 +140,29 @@ class Parser(StoryWorker):
 
             canonical_url = cmd.canonical_url
             if not canonical_url or canonical_url == NEED_CANONICAL_URL:
-                # XXX look for first "tag" to distinguish XML/RSS from HTML/doctype???
-                # (including <?xml....> and <!doctype....>)
-                self.incr_stories("no-canonical-url", link)
+                # could have been a saved feed document, so try and
+                # give observers and idea of what's going on!
+                top = html[:2048].lower()
+                first_gt = top.find("<")
+                if first_gt > 0:
+                    top = top[first_gt:]
+                if (
+                    top.startswith("<!doctype")
+                    or top.startswith("<html")
+                    or top.startswith("<head")
+                    or top.startswith("<body")
+                ):
+                    counter = "no-cannonical-url"
+                elif (
+                    top.startswith("<?xml")
+                    or top.startswith("<rss")
+                    or top.startswith("<feed")
+                    or top.startswith("<channel")
+                ):
+                    counter = "xml"
+                else:
+                    counter = "unknown"
+                self.incr_stories(counter, link)
                 return False  # discard
 
             # now that we FINALLY have a URL, make sure it isn't
@@ -192,7 +212,7 @@ class Parser(StoryWorker):
             pub_date = None
         mdd["publication_date"] = pub_date
 
-        if not self._save_metadata(story, mdd):
+        if not self._save_metadata(story, mdd, html):
             # here only when failed to get needed canonical_url
             return
 
