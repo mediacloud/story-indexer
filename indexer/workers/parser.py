@@ -120,6 +120,80 @@ class Parser(StoryWorker):
 
         return html
 
+    def _identify_document(self, html: str) -> str:
+        """
+        here with a historical document without a canonical url,
+        make a crude effort to figure out what the document is,
+        return a counter name for monitoring!
+        """
+        top = html[:2048].lower()
+        default = "unknown"
+        skip = 0
+        while (gt := top.find("<", skip)) != -1:
+            skip = 0
+            if gt > 0:
+                top = top[gt:]
+
+            if (
+                top.startswith("<!doctype")
+                or top.startswith("<html")
+                or top.startswith("<head")
+                or top.startswith("<body")
+            ):
+                return "no-cannonical-url"  # HTML
+
+            if top.startswith("<!"):
+                skip = 2
+                continue  # inconclusive
+
+            if top.startswith("<?xml"):
+                skip = 5
+                default = "xml"
+                continue  # inconclusive
+
+            if (
+                top.startswith("<rss")
+                or top.startswith("<feed")  # atom
+                or top.startswith("<channel")  # cdf
+            ):
+                return "feed"
+        return default
+
+    def _check_canonical_domain(self, story: BaseStory, html: str) -> str:
+        """
+        should only get here with S3 object id in rss.link
+        (historical data from S3 for Nov/Dec 2021 w/o CSV file)
+        """
+        link = story.rss_entry().link or "SNH"  # for logging
+
+        cmd = story.content_metadata()
+        canonical_url = cmd.canonical_url
+        if not canonical_url or canonical_url == NEED_CANONICAL_URL:
+            counter = self._identify_document(html)
+            self.incr_stories(counter, link)
+            return ""  # discard
+
+        # now that we FINALLY have a URL, make sure it isn't
+        # from a source we filter out!!!
+        if not self.check_story_url(canonical_url):
+            return ""  # logged & counted: discard
+
+        with cmd:
+            # importer calls mcmetadata.urls.unique_url_hash(cmd.url)
+            # which calls normalize_url (cmd.normalized_url is never
+            # used in story-indexer).
+            cmd.url = canonical_url
+
+        # story_archive_writer wants hmd.final_url
+        with story.http_metadata() as hmd:
+            hmd.final_url = canonical_url
+
+        # In this case rss.link is the downloads_id (S3 object id).
+        logger.info("%s: using canonical_url %s", link, canonical_url)
+
+        # NOTE! Cannot call "incr_stories": would cause double counting!
+        return canonical_url
+
     def _save_metadata(self, story: BaseStory, mdd: dict[str, Any], html: str) -> bool:
         # XXX check for empty text_content?
         # (will be discarded by importer)
@@ -134,56 +208,9 @@ class Parser(StoryWorker):
 
         hmd = story.http_metadata()
         if hmd.final_url == NEED_CANONICAL_URL:
-            # should only get here with S3 object id in rss.link
-            # (historical data from S3 for Nov/Dec 2021 w/o CSV file)
-            link = story.rss_entry().link or "SNH"  # for logging
-
-            canonical_url = cmd.canonical_url
-            if not canonical_url or canonical_url == NEED_CANONICAL_URL:
-                # could have been a saved feed document, so try and
-                # give observers and idea of what's going on!
-                top = html[:2048].lower()
-                first_gt = top.find("<")
-                if first_gt > 0:
-                    top = top[first_gt:]
-                if (
-                    top.startswith("<!doctype")
-                    or top.startswith("<html")
-                    or top.startswith("<head")
-                    or top.startswith("<body")
-                ):
-                    counter = "no-cannonical-url"
-                elif (
-                    top.startswith("<?xml")
-                    or top.startswith("<rss")
-                    or top.startswith("<feed")
-                    or top.startswith("<channel")
-                ):
-                    counter = "xml"
-                else:
-                    counter = "unknown"
-                self.incr_stories(counter, link)
-                return False  # discard
-
-            # now that we FINALLY have a URL, make sure it isn't
-            # from a source we filter out!!!
-            if not self.check_story_url(canonical_url):
-                return False  # already counted and logged
-
-            with cmd:
-                # importer calls mcmetadata.urls.unique_url_hash(cmd.url)
-                # which calls normalize_url (cmd.normalized_url is never
-                # used in story-indexer).
-                cmd.url = canonical_url
-
-            # story_archive_writer wants hmd.final_url
-            with hmd:
-                hmd.final_url = canonical_url
-
-            # In this case rss.link is the downloads_id (S3 object id).
-            logger.info("%s: using canonical_url %s", link, canonical_url)
-
-            # NOTE! Cannot call "incr_stories": would cause double counting!
+            canonical_domain = self._check_canonical_domain(story, html)
+            if not canonical_domain:
+                return False  # logged and counted: discard
 
         return True
 
@@ -214,11 +241,8 @@ class Parser(StoryWorker):
 
         if not self._save_metadata(story, mdd, html):
             # here only when failed to get needed canonical_url
+            # already counted and logged
             return
-
-        sender.send_story(story)
-
-        # send stats: not critical, so after passing story
 
         method = mdd["text_extraction_method"]
         self.incr_stories(f"OK-{method}", final_url)
@@ -232,6 +256,9 @@ class Parser(StoryWorker):
                 # was tempted to replace 'content' with method,
                 # but is really sum of all methods tried!!
                 self.timing("extract", sec * 1000, labels=[("step", item)])
+
+        # at very end: any unhandled exception would cause requeue
+        sender.send_story(story)
 
 
 if __name__ == "__main__":

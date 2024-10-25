@@ -194,7 +194,7 @@ class HistFetcher(StoryWorker):
 
         with hmd:
             hmd.response_code = 200  # for archiver
-            if not hmd.fetch_timestamp:
+            if not hmd.fetch_timestamp:  # no timestamp from queuer
                 try:
                     resp = self.s3.head_object(Bucket=DOWNLOADS_BUCKET, Key=s3path)
                     hmd.fetch_timestamp = resp["LastModified"].timestamp()
