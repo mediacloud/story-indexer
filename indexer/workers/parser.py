@@ -129,34 +129,29 @@ class Parser(StoryWorker):
         top = html[:2048].lower()
         default = "unknown"
         skip = 0
-        while (gt := top.find("<", skip)) != -1:
-            skip = 0
-            if gt > 0:
-                top = top[gt:]
+        while True:
+            # if skip > 0, skip to next ">"?
+            skip = top.find("<", skip)
+            if skip == -1:
+                break
 
-            if (
-                top.startswith("<!doctype")
-                or top.startswith("<html")
-                or top.startswith("<head")
-                or top.startswith("<body")
-            ):
+            skip += 1
+            if top.startswith(("!doctype", "html", "head", "body"), skip):
                 return "no-cannonical-url"  # HTML
 
-            if top.startswith("<!"):
-                skip = 2
+            if top[skip] == "!":  # includes <!--
+                skip += 1
                 continue  # inconclusive
 
-            if top.startswith("<?xml"):
-                skip = 5
+            if top.startswith("?xml", skip):
+                skip += 4
                 default = "xml"
                 continue  # inconclusive
 
-            if (
-                top.startswith("<rss")
-                or top.startswith("<feed")  # atom
-                or top.startswith("<channel")  # cdf
-            ):
+            if top.startswith(("rss", "feed", "rdf", "channel"), skip):
                 return "feed"
+
+            break
         return default
 
     def _check_canonical_domain(self, story: BaseStory, html: str) -> str:
@@ -244,11 +239,11 @@ class Parser(StoryWorker):
             # already counted and logged
             return
 
-        method = mdd["text_extraction_method"]
-        self.incr_stories(f"OK-{method}", final_url)
-
         # NOTE! after save_metadata, to get canonical_url if possible
-        logger.info("parsed %s with %s date %s", self._log_url(story), method, pub_date)
+        log_url = self._log_url(story)
+        method = mdd["text_extraction_method"]
+        logger.info("parsed %s with %s date %s", log_url, method, pub_date)
+        self.incr_stories(f"OK-{method}", log_url)
 
         skip_items = {"total", "fetch"}  # stackable, no fetch done
         for item, sec in extract_stats.items():
