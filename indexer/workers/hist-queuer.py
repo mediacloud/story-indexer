@@ -6,6 +6,7 @@ achieve anything close to S3 request rate limit (5500 requests/second
 per prefix)
 """
 
+import argparse
 import csv
 import datetime as dt
 import io
@@ -15,7 +16,7 @@ from typing import BinaryIO, Set
 
 from indexer.app import run
 from indexer.queuer import Queuer
-from indexer.story import StoryFactory
+from indexer.story import NEED_CANONICAL_URL, StoryFactory
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,23 @@ class HistQueuer(Queuer):
     HANDLE_GZIP = True  # just in case
     SHUFFLE_BATCH_SIZE = 0  # uses hist-fetcher no shuffling needed
 
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+
+        ap.add_argument(
+            "--allow-no-url",
+            action="store_true",
+            default=False,
+            help="Allow CSV's without URL (depend on canonical URL extraction)",
+        )
+
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
         called for each input file with open binary/bytes I/O object
         """
+        assert self.args
+        url_required = not self.args.allow_no_url
+
         # try extracting date from file name to create fetch_date for RSSEntry.
         m = DATE_RE.match(fname)
         if m:
@@ -56,16 +70,19 @@ class HistQueuer(Queuer):
             logger.debug("%r", row)
 
             url = row.get("url")
-            if not isinstance(url, str) or not url:
-                self.incr_stories("bad-url", repr(url))
-                continue
+            if url_required:
+                if not isinstance(url, str) or not url:
+                    self.incr_stories("bad-url", repr(url))
+                    continue
 
-            if url in urls_seen:
-                self.incr_stories("dups", url)
-                continue
+                if url in urls_seen:
+                    self.incr_stories("dups", url)
+                    continue
 
-            if not self.check_story_url(url):
-                continue  # logged and counted
+                if not self.check_story_url(url):
+                    continue  # logged and counted
+            else:
+                url = NEED_CANONICAL_URL
 
             dlid = row.get("downloads_id")
             # let hist-fetcher quarantine if bad
@@ -141,7 +158,8 @@ class HistQueuer(Queuer):
             # https://github.com/mediacloud/story-indexer/issues/213#issuecomment-1908583666
 
             self.send_story(story)  # calls incr_story: to increment and log
-            urls_seen.add(url)  # mark URL as seen
+            if url != NEED_CANONICAL_URL:
+                urls_seen.add(url)  # mark URL as seen
 
 
 if __name__ == "__main__":

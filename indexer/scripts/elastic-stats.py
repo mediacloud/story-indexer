@@ -24,7 +24,8 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 es = self.elasticsearch_client()
 
                 # see https://github.com/mediacloud/story-indexer/issues/199
-                stats = cast(Dict[str, Any], es.indices.stats())
+                stats = cast(Dict[str, Any], es.indices.stats())  # fetches /_stats
+
                 # top level keys: "_shards", "_all", "indices"
                 all = stats["_all"]
 

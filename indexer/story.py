@@ -11,6 +11,15 @@ import cchardet as chardet
 
 from indexer.path import DATAPATH_BY_DATE, STORIES
 
+# passed as URL by hist-queuer.py w/ --allow-no-url option to allow
+# processing HTML that was saved without the original URL!
+NEED_CANONICAL_URL = "http://mediacloud.org/need_canonical_url"
+
+# *NOTE* if more non-URLs are added and need to be checked for in the
+# same places as NEED_CANONICAL_URL (eg; before indexing), maybe add
+# functions in this file to test for the non-URLs rather than
+# spreading the tests out all over the place??
+
 """
 A single story interface object, with typed data fields for each pipeline step,
 context management on each of those step datum, and a serialization scheme.
@@ -185,6 +194,11 @@ class ContentMetadata(StoryData):
     # stores timestamps in millisecond resolution.  When reading old
     # WARC files, populated from WARC metadata record WARC-Date header.
     parsed_date: Optional[str] = None
+
+    # MAY be extracted from <link ... rel="canonical"> or other tags,
+    # if present.  Added October 2024 to recover a month of 2021 stories
+    # stored in S3 without the original URLs.
+    canonical_url: Optional[str] = None
 
 
 CONTENT_METADATA = class_to_member_name(ContentMetadata)

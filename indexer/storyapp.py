@@ -299,7 +299,7 @@ class ArchiveStorySender(StorySender):
                 # include expiration_ms?
             }
         }
-        self.writer.write_story(story, extra_metadata)
+        self.writer.write_story(story, extra_metadata, raise_errors=False)
 
 
 class StoryProducer(StoryMixin, Producer):
@@ -374,6 +374,17 @@ class StoryProducer(StoryMixin, Producer):
                 )
             args.max_stories = args.sample_size
             args.random_sample = self.SAMPLE_PERCENT
+
+    def check_output_queues(self) -> None:
+        """
+        snooze while output queues full,
+        ignore if testing with WARC files!
+        """
+
+        assert self.args
+        if self.args.test_file_prefix:
+            return
+        super().check_output_queues()
 
     def story_sender(self) -> StorySender:
         """
