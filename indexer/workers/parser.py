@@ -140,18 +140,20 @@ class Parser(StoryWorker):
 
         return True
 
-    def _extract_canonical_url(self, story: BaseStory) -> bool:
+    def _extract_canonical_url(self, story: BaseStory) -> str:
         """
         Here with story from Nov/Dec 2021, pulled from S3 without URL.
         Some S3 objects are feeds, and cause loooong parse times (over
         30 minutes), causing RabbitMQ to close connection, so try to
         detect feeds, and extract canonical URL at the same time.
+
+        Returns empty string after counting and logging stories to discard.
         """
         html_bytes = story.raw_html().html or b""
         # XXX err if no content?
 
         first = True
-        canonical_url = og_url = None
+        canonical_url = og_url = ""
         for event, element in iterparse(
             io.BytesIO(html_bytes),
             events=(
@@ -164,7 +166,7 @@ class Parser(StoryWorker):
                 logger.debug("first tag %s", element.tag)
                 if element.tag in FEED_TAGS:
                     self.incr_stories("feed", self._log_url(story))
-                    return False
+                    return ""
                 first = False
             if event == "end":
                 if element.tag == "head":
@@ -177,36 +179,37 @@ class Parser(StoryWorker):
                         og_url = element.get("content")
         # end for event: prefer canonical_url
         canonical_url = canonical_url or og_url
+        # XXX need html.unescape??  seems not?
         if not canonical_url:
             self.incr_stories("no-canonical-url", self._log_url(story))
-            return False
+            return ""
 
         logger.info("%s: canonical URL %s", story.rss_entry().link, canonical_url)
 
         # now that we FINALLY have a URL, make sure it isn't
         # from a source we filter out!!!
         if not self.check_story_url(canonical_url):
-            return False
+            return ""
 
         with story.http_metadata() as hmd:
             hmd.final_url = canonical_url
-        return True
+        return canonical_url
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
+        final_url = story.http_metadata().final_url
+        if final_url is None:
+            raise QuarantineException("no final_url")
+
+        if final_url == NEED_CANONICAL_URL:
+            if not (final_url := self._extract_canonical_url(story)):
+                return  # logged and counted
+
         try:
             html = self._decode_content(story)
         except CannotDecode:
             return  # already counted
 
         extract_stats: Counter[str] = Counter()
-        final_url = story.http_metadata().final_url
-        if final_url is None:
-            raise QuarantineException("no final_url")
-
-        if final_url == NEED_CANONICAL_URL:
-            if not self._extract_canonical_url(story):
-                return  # logged and counted
-
         try:
             mdd = mcmetadata.extract(final_url, html, stats_accumulator=extract_stats)
         except mcmetadata.exceptions.BadContentError:
