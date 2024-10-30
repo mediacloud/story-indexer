@@ -129,7 +129,7 @@ start_reindex() {
 
         echo "Reindex body: $reindex_body"
 
-        task_response=$(curl -s -X POST "$ES_HOST/_reindex?wait_for_completion=false" \
+        task_response=$(curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false" \
         -H 'Content-Type: application/json' -d "$reindex_body")
 
         task_id=$(echo "$task_response" | grep -o '"task":"[^"]*"' | cut -d':' -f2- | tr -d '"')

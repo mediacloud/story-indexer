@@ -74,3 +74,13 @@ The [script](../../bin/run-elastic-reindex.sh) provides for an optional argument
 #### Reindexing from Multiple sources
 
 Elasticsearch recommends to index one document at a time if we have many indices to reindex from, as referenced [here](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-from-multiple-sources).
+
+
+#### Slicing
+
+The Reindex API supports Sliced scroll to parallelize the [reindexing process](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-slice), thereby improving efficiency.
+We can perfom slicing Manually (providing the no.of slices for each request) or Automatically (let Elasticsearch chose the number of slices to use).
+
+```
+curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false"
+```
