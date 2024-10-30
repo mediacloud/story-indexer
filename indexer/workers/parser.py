@@ -3,27 +3,29 @@ metadata parser pipeline worker
 """
 
 import datetime as dt
-import io
 import logging
 from collections import Counter
 from typing import Any
+from xml.etree.ElementTree import XMLPullParser
 
 # PyPI:
 import mcmetadata
 from bs4.dammit import UnicodeDammit
 
-# xml.etree.ElementTree.iterparse doesn't have recover argument
-# (fatal error on control characters in element text), so using lxml
-from lxml.etree import iterparse
-
 # local:
 from indexer.app import run
-from indexer.story import NEED_CANONICAL_URL, BaseStory
+from indexer.story import NEED_CANONICAL_URL, BaseStory, ContentMetadata
 from indexer.storyapp import StorySender, StoryWorker
 from indexer.worker import QuarantineException
 
 QUARANTINE_DECODE_ERROR = True  # discard if False
-FEED_TAGS = ("rss", "feed", "rdf", "channel")  # must be tuple for startswith
+
+# must be tuple for endswith
+# ordered (somewhat) by frequency
+FEED_TAGS = ("rss", "feed", "rdf", "channel", "urlset", "sitemapindex")
+
+# omit total so stackable in grafana, no fetching done by mcmetadata
+SKIP_EXTRACT_STATS_ITEMS = {"total", "fetch"}
 
 logger = logging.getLogger("parser")
 
@@ -34,9 +36,14 @@ class CannotDecode(Exception):
 
 class Parser(StoryWorker):
     def _log_url(self, story: BaseStory) -> str:
+        """
+        return URL for logging
+        """
         url = story.http_metadata().final_url
         if url and url != NEED_CANONICAL_URL:
             return url
+        # here with historical data w/o URL in csv
+        # rss "link" will be S3 object ID
         return story.rss_entry().link or "UNKNOWN"
 
     def _decode_content(self, story: BaseStory) -> str:
@@ -127,6 +134,9 @@ class Parser(StoryWorker):
         return html
 
     def _save_metadata(self, story: BaseStory, mdd: dict[str, Any], html: str) -> bool:
+        """
+        copy extracted metadata dict to Story object
+        """
         # XXX check for empty text_content?
         # (will be discarded by importer)
 
@@ -136,84 +146,118 @@ class Parser(StoryWorker):
                 if hasattr(cmd, key):  # avoid hardwired exceptions
                     setattr(cmd, key, val)
 
+            # XXX full timestamp?!
             cmd.parsed_date = dt.datetime.utcnow().isoformat()
+
+        if (
+            story.http_metadata().final_url == NEED_CANONICAL_URL
+            and not self._check_canonical_url(story, html, cmd)
+        ):
+            return False  # logged and counted: discard
 
         return True
 
-    def _extract_canonical_url(self, story: BaseStory) -> str:
+    def _check_is_html(self, story: BaseStory, data: str) -> bool:
         """
         Here with story from Nov/Dec 2021, pulled from S3 without URL.
-        Some S3 objects are feeds, and cause loooong parse times (over
-        30 minutes), causing RabbitMQ to close connection, so try to
-        detect feeds, and extract canonical URL at the same time.
+        Try to detect feed documents; some can cause loooong parse times
+        (an hour!) causing RabbitMQ to close connection!
 
-        Returns empty string after counting and logging stories to discard.
+        Returns False after counting and logging errors.
+
+        Tried extracting canonical URL here (only), but it was less
+        effective so rather than have two places (here and
+        _check_canonical_url), called before and after "extract"
+
+        Looks ONLY at the first start tag for speed
+        (quick tests shows between 0.4 and 41ms (most <1)
+
+        Errs on the side of NOT discarding!!!
         """
-        html_bytes = story.raw_html().html or b""
-        # XXX err if no content?
+        if "<!doctype" in data[0:128].lower():
+            return True
 
-        first = True
-        canonical_url = og_url = ""
-        for event, element in iterparse(
-            io.BytesIO(html_bytes),
-            events=(
-                "start",
-                "end",
-            ),
-            recover=True,
-        ):
-            if first:
-                logger.debug("first tag %s", element.tag)
-                if element.tag in FEED_TAGS:
-                    self.incr_stories("feed", self._log_url(story))
-                    return ""
-                first = False
-            if event == "end":
-                if element.tag == "head":
-                    break
-                if element.tag == "link":
-                    if not canonical_url and element.get("rel") == "canonical":
-                        canonical_url = element.get("href")
-                elif element.tag == "meta":
-                    if not og_url and element.get("property") == "og:url":
-                        og_url = element.get("content")
-        # end for event: prefer canonical_url
-        canonical_url = canonical_url or og_url
-        # XXX need html.unescape??  seems not?
-        if not canonical_url:
-            self.incr_stories("no-canonical-url", self._log_url(story))
-            return ""
+        try:
+            pp = XMLPullParser(["start"])
+            pp.feed(data)  # pass substring? (first 8K?)
+            event, element = next(pp.read_events())
+            tag = element.tag.lower()
+        except SyntaxError:  # xml.etree.ElementTree.ParseError is subclass
+            return True
 
-        logger.info("%s: canonical URL %s", story.rss_entry().link, canonical_url)
+        # use endswith to handle:
+        # {http://www.w3.org/2005/atom}feed
+        # {http://www.w3.org/1999/02/22-rdf-syntax-ns#}rdf
+        # NOT searching for prefix, in case of variations!!!
+        if tag.endswith(FEED_TAGS):
+            self.incr_stories("feed", self._log_url(story))
+            return False  # NOT HTML
+        return True
+
+    def _check_canonical_url(
+        self, story: BaseStory, html: str, cmd: ContentMetadata
+    ) -> bool:
+        """
+        should only get here with S3 object id in rss.link
+        (historical data from S3 for Nov/Dec 2021 w/o CSV file)
+
+        check if mcmetadata.extract found a canonical URL,
+        validate it, and update Story object.
+        """
+        log_url = self._log_url(story)
+
+        canonical_url = cmd.canonical_url
+        if not canonical_url or canonical_url == NEED_CANONICAL_URL:
+            self.incr_stories("no-canonical-url", log_url)
+            return False  # logged and counted
 
         # now that we FINALLY have a URL, make sure it isn't
         # from a source we filter out!!!
         if not self.check_story_url(canonical_url):
-            return ""
+            return False  # logged and counted
+
+        log_url = self._log_url(story)  # before setting final_url!!
 
         with story.http_metadata() as hmd:
+            # story_archive_writer wants hmd.final_url
             hmd.final_url = canonical_url
-        return canonical_url
+
+        with cmd:
+            # importer calls mcmetadata.urls.unique_url_hash(cmd.url)
+            # which calls normalize_url (cmd.normalized_url is never
+            # used in story-indexer).
+            cmd.url = canonical_url
+
+            # NOTE! leaving original_url (which IS (currently) stored
+            # in ES) alone!!!  story-indexer only ever uses
+            # original_url for logging (with low preference)
+
+            # Used to select sources/collections!!
+            cmd.canonical_domain = mcmetadata.urls.canonical_domain(canonical_url)
+
+        logger.info("%s: canonical URL %s", log_url, canonical_url)
+
+        # NOTE! Cannot call "incr_stories": would cause double counting!
+        return True
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
-        final_url = story.http_metadata().final_url
-        if final_url is None:
-            raise QuarantineException("no final_url")
-
-        if final_url == NEED_CANONICAL_URL:
-            if not (final_url := self._extract_canonical_url(story)):
-                return  # logged and counted
-
         try:
             html = self._decode_content(story)
         except CannotDecode:
             return  # already counted
 
+        final_url = story.http_metadata().final_url
+        if final_url is None:
+            raise QuarantineException("no final_url")
+
+        if final_url == NEED_CANONICAL_URL and not self._check_is_html(story, html):
+            return  # logged and counted
+
         extract_stats: Counter[str] = Counter()
         try:
             mdd = mcmetadata.extract(final_url, html, stats_accumulator=extract_stats)
         except mcmetadata.exceptions.BadContentError:
-            self.incr_stories("too-short", final_url)
+            self.incr_stories("too-short", self._log_url(story))
             # No quarantine error here, just discard
             return
 
@@ -235,9 +279,8 @@ class Parser(StoryWorker):
         logger.info("parsed %s with %s date %s", log_url, method, pub_date)
         self.incr_stories(f"OK-{method}", log_url)
 
-        skip_items = {"total", "fetch"}  # stackable, no fetch done
         for item, sec in extract_stats.items():
-            if item not in skip_items:
+            if item not in SKIP_EXTRACT_STATS_ITEMS:
                 # was tempted to replace 'content' with method,
                 # but is really sum of all methods tried!!
                 self.timing("extract", sec * 1000, labels=[("step", item)])
