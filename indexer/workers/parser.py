@@ -204,7 +204,7 @@ class Parser(StoryWorker):
         check if mcmetadata.extract found a canonical URL,
         validate it, and update Story object.
         """
-        log_url = self._log_url(story)
+        log_url = self._log_url(story)  # before setting final_url!!
 
         canonical_url = cmd.canonical_url
         if not canonical_url or canonical_url == NEED_CANONICAL_URL:
@@ -215,8 +215,6 @@ class Parser(StoryWorker):
         # from a source we filter out!!!
         if not self.check_story_url(canonical_url):
             return False  # logged and counted
-
-        log_url = self._log_url(story)  # before setting final_url!!
 
         with story.http_metadata() as hmd:
             # story_archive_writer wants hmd.final_url
