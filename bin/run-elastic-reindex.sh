@@ -37,7 +37,7 @@ SOURCE_INDEXES=() # Array to hold source indices
 DEST_SUFFIX="" #Suffix destination indexes
 MAX_DOCS="" # Maximum number of documents to reindex
 
-while getopts ":he:s:d:m:" opt; do
+while getopts ":he:s:d:m:q:" opt; do
     case $opt in
         h)
             display_help
@@ -59,6 +59,9 @@ while getopts ":he:s:d:m:" opt; do
             ;;
         m)
             MAX_DOCS=$OPTARG
+            ;;
+        q)
+            QUERY=$OPTARG
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
@@ -111,15 +114,36 @@ check_dest_index_not_exists() {
     done
 }
 
+validate_query() {
+    if [ -n "$QUERY" ]; then
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$ES_HOST/_validate/query?explain" \
+            -H 'Content-Type: application/json' \
+            -d "{\"query\": $QUERY}")
+        if [ "$response" -ne 200 ]; then
+            echo "Error: The provided query is not valid"
+            exit 6
+        fi
+        echo "Query validated successfully."
+    fi
+}
+
 # From ES https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-from-multiple-sources
 # Indexing multiple sources
+validate_query
 
 start_reindex() {
     for index in "${SOURCE_INDEXES[@]}"; do
         DEST_INDEX="${index}-${DEST_SUFFIX}"
         echo "Starting reindex from '$index' to '$DEST_INDEX'..."
 
-        reindex_body="{\"source\": {\"index\": \"$index\"}, \"dest\": {\"index\": \"$DEST_INDEX\", \"op_type\": \"$OP_TYPE\"}"
+        # Construct the reindex body with optional query and max_docs
+        reindex_body="{\"source\": {\"index\": \"$index\""
+
+        if [ -n "$QUERY" ]; then
+            reindex_body="${reindex_body}, \"query\": $QUERY"
+        fi
+
+        reindex_body="${reindex_body}}, \"dest\": {\"index\": \"$DEST_INDEX\", \"op_type\": \"$OP_TYPE\"}"
 
         if [ -n "$MAX_DOCS" ]; then
             reindex_body="${reindex_body}, \"max_docs\": $MAX_DOCS"
