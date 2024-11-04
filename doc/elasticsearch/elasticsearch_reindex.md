@@ -71,10 +71,40 @@ The Elasticsearch Reindex API provides for a `max_docs` argument to specify the 
 
 The [script](../../bin/run-elastic-reindex.sh) provides for an optional argument `-m` to specify the number of documents to re-index.
 
-#### Reindexing from Multiple sources
+#### Reindexing from multiple sources
 
 Elasticsearch recommends to index one document at a time if we have many indices to reindex from, as referenced [here](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-from-multiple-sources).
 
+### Reindexing select documents with a query
+
+To reindex documents based on specific criteria, you can utilize the query parameter in the reindex request. This allows you to specify a query that filters the documents being reindexed. Here’s how you can structure your request:
+
+```
+POST _reindex
+{
+  "source": {
+    "index": "mc_search-000002",
+    "query": {
+      "match": {
+        "canonical-domain": "mediacloud.org"
+      }
+    }
+  },
+  "dest": {
+    "index": "mc_search-000002-test"
+  }
+}
+```
+
+Example in the bash script [here](../../bin/run-elastic-reindex.sh)
+
+```
+bin/run-elastic-reindex.sh -s mc_search-000003 mc_search-000004 -d reindexed -m 1000 -q '{
+   "match": {
+      "canonical_domain": "okezone.com"
+   }
+}'
+```
 
 #### Slicing
 
@@ -83,4 +113,16 @@ We can perfom slicing Manually (providing the no.of slices for each request) or 
 
 ```
 curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false"
+```
+
+#### Throttling
+
+The Reindex API supports throttling during reindexing by setting the `requests_per_second` to throttle the rate at which `_reindex` issues batches of index operations.
+
+##### Rethrotting During Reindex
+
+Based on the clusture monitoring stats, you can adjust the throttling dynamically using the _rethrottle API. This allows us to manage the load to our clusture.
+
+```
+POST _reindex/<task_id>/_rethrottle?requests_per_second=10
 ```
