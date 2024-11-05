@@ -31,7 +31,7 @@ display_help() {
     echo
 }
 
-ES_HOST="http://localhost:9210"
+ES_HOST="http://localhost:9200"
 OP_TYPE="create"  # Operation type for reindex, could be `create` or `index`
 SOURCE_INDEXES=() # Array to hold source indices
 DEST_SUFFIX="" #Suffix destination indexes
@@ -119,6 +119,7 @@ validate_query() {
         response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$ES_HOST/_validate/query?explain" \
             -H 'Content-Type: application/json' \
             -d "{\"query\": $QUERY}")
+
         if [ "$response" -ne 200 ]; then
             echo "Error: The provided query is not valid"
             exit 6
@@ -136,7 +137,6 @@ start_reindex() {
         DEST_INDEX="${index}-${DEST_SUFFIX}"
         echo "Starting reindex from '$index' to '$DEST_INDEX'..."
 
-        # Construct the reindex body with optional query and max_docs
         reindex_body="{\"source\": {\"index\": \"$index\""
 
         if [ -n "$QUERY" ]; then
@@ -146,6 +146,7 @@ start_reindex() {
         reindex_body="${reindex_body}}, \"dest\": {\"index\": \"$DEST_INDEX\", \"op_type\": \"$OP_TYPE\"}"
 
         if [ -n "$MAX_DOCS" ]; then
+            # If max_docs is provided, do not use slices to avoid complexities.
             reindex_body="${reindex_body}, \"max_docs\": $MAX_DOCS"
         fi
 
@@ -153,9 +154,21 @@ start_reindex() {
 
         echo "Reindex body: $reindex_body"
 
-        task_response=$(curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false" \
-        -H 'Content-Type: application/json' -d "$reindex_body")
+        # If max_docs is provided, do not use slices to avoid complexities.
+        # Using slices with max_docs can lead to unpredictable document counts
+        # due to how slices operate independently, which may exceed the intended limit.
+        if [ -n "$MAX_DOCS" ]; then
+            task_response=$(curl -s -X POST "$ES_HOST/_reindex?wait_for_completion=false" \
+                -H 'Content-Type: application/json' \
+                -d "$reindex_body")
+        else
+            # If max_docs is not provided, we can safely use slices.
+            task_response=$(curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false" \
+                -H 'Content-Type: application/json' \
+                -d "$reindex_body")
+        fi
 
+        # Extract task ID from the response
         task_id=$(echo "$task_response" | grep -o '"task":"[^"]*"' | cut -d':' -f2- | tr -d '"')
 
         if [ -z "$task_id" ]; then
