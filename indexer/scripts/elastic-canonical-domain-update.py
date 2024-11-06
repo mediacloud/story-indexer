@@ -4,6 +4,7 @@ from logging import getLogger
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import mcmetadata
+from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, scan
 
 from indexer.app import App
@@ -16,6 +17,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
 
     def __init__(self, process_name: str, descr: str) -> None:
         super().__init__(process_name, descr)
+        self.es_client: Optional[Elasticsearch] = None
         self.batch_size: int = 0
         self.updates_buffer: List[Dict[str, Any]] = []
         self.buffer_size: int = 0
@@ -110,6 +112,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             Tuple of (is_valid, parsed_query, error_message)
         """
         try:
+            assert self.es_client
             # Try to parse the string as JSON first
             query = json.loads(self.query)
 
@@ -144,12 +147,13 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             Total number of matching documents
         """
         try:
+            assert self.es_client
             count_response = self.es_client.count(index=self.index_name, body=query)
             count = count_response.get("count")
             if count is not None:
                 return int(count)
         except Exception as e:
-            logger.error(f"Error getting document count: {e}")
+            logger.error("Error getting document count: %s", e)
         return None
 
     def get_documents_to_update(self) -> Generator[Dict[str, Any], None, None]:
@@ -164,10 +168,10 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             success, query, error = self.build_query()
 
             if success:
-                assert query
+                assert query and self.es_client
                 self.total_matched_docs = self.get_document_count(query)
                 logger.info(
-                    f"Found a total of [{self.total_matched_docs}] documents to update."
+                    "Found a total of [%s] documents to update", self.total_matched_docs
                 )
 
                 for hit in scan(
@@ -218,7 +222,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             if len(self.updates_buffer) >= self.buffer_size:
                 self.flush_updates()
         except Exception as e:
-            logger.error(f"Error processing document {doc_data.get('id')}: {e}")
+            logger.error("Error processing document %s: %s", doc_data.get("id"), e)
 
     def flush_updates(self) -> None:
         """
@@ -227,6 +231,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         if not self.updates_buffer:
             return
         try:
+            assert self.es_client
             # Perform bulk update
             success, failed = bulk(
                 client=self.es_client,
@@ -242,14 +247,14 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             else:
                 assert isinstance(failed, int)
                 failed_count = failed
-            logger.info(f"Bulk update: {success} successful, {failed_count} failed")
+            logger.info("Bulk update: %s successful, %s failed", success, failed_count)
 
             if is_failed_list:
                 assert isinstance(failed, list)
                 for error in failed:
-                    logger.error(f"Failed to update: {error}")
+                    logger.error("Failed to update: %s", error)
         except Exception as e:
-            logger.error(f"Bulk update failed: {e}")
+            logger.error("Bulk update failed: %s", e)
         finally:
             # Clear the buffer
             self.updates_buffer = []
