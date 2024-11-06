@@ -16,8 +16,26 @@ from indexer.elastic import ElasticMixin
 
 logger = getLogger("elastic-stats")
 
+StatsDict = dict[str, dict[str, int | float | dict[str, int | float]]]
+
 
 class ElasticStats(ElasticMixin, IntervalMixin, App):
+    def index(self, name: str, data: StatsDict) -> None:
+        # just dump it all for now, rather than trying to figure out what's useful
+        pri = data["primaries"]  # vs "total"
+        for k1, v1 in pri.items():
+            if isinstance(v1, (int, float)):
+                path = f"{name}.primaries.{k1}"
+                logger.debug(" %s %s", path, v1)
+                self.gauge(path, v1)
+            elif isinstance(v1, dict):
+                for k2, v2 in v1.items():
+                    if isinstance(v2, (int, float)):
+                        # NOTE! bool is subclass of int!!!
+                        path = f"{name}.primaries.{k1}.{k2}"
+                        logger.debug(" %s %s", path, v2)
+                        self.gauge(path, v2)
+
     def main_loop(self) -> None:
         while True:
             try:
@@ -28,28 +46,17 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
 
                 # top level keys: "_shards", "_all", "indices"
                 all = stats["_all"]
+                self.index("all", all)
 
-                # just dump it all for now, rather than trying to figure out what's useful
-                pri = all["primaries"]  # vs "total"
-                for k1, v1 in pri.items():
-                    if isinstance(v1, (int, float)):
-                        path = f"all.primaries.{k1}"
-                        logger.debug(" %s %s", path, v1)
-                        self.gauge(path, v1)
-                    elif isinstance(v1, dict):
-                        for k2, v2 in v1.items():
-                            if isinstance(v2, (int, float)):
-                                # NOTE! bool is subclass of int!!!
-                                path = f"all.primaries.{k1}.{k2}"
-                                logger.debug(" %s %s", path, v2)
-                                self.gauge(path, v2)
-
-                # with ILM, no longer reporting individual index stats.
-                # tally of index health status across all indices
+                # when started using ILM, no longer reported individual index stats.
+                # with kibana needed to again (unless/until hidden)
                 health: Counter[str] = Counter()
 
                 for name, values in stats["indices"].items():
-                    health[values["health"]] += 1
+                    if name[0] == ".":  # hide monitoring indices
+                        continue
+                    health[values["health"]] += 1  # sum by color
+                    self.index("indices." + name, values)
 
                 # report totals for each health state
                 for color in ("green", "red", "yellow"):
