@@ -28,6 +28,7 @@ display_help() {
     echo "  -s SOURCE_INDEX Required. One or more source indices to reindex from (space-separated)."
     echo "  -d DEST_SUFFIX Required. Suffix for the destination index names."
     echo "  -m MAX_DOCS   Optional. The maximum number of documents to re-index. Must be a positive integer."
+    echo "  -q QUERY   Optional. The query to reindex a sub-set of documents."
     echo
 }
 
@@ -116,22 +117,26 @@ check_dest_index_not_exists() {
 
 validate_query() {
     if [ -n "$QUERY" ]; then
-        response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$ES_HOST/_validate/query?explain" \
+        response=$(curl -s -X GET "$ES_HOST/_validate/query" \
             -H 'Content-Type: application/json' \
             -d "{\"query\": $QUERY}")
 
-        if [ "$response" -ne 200 ]; then
-            echo "Error: The provided query is not valid"
+        echo "Response :$response"
+
+        is_valid=$(echo "$response" | grep -o '"valid":\s*\(true\|false\)' | cut -d':' -f2 | tr -d ' ')
+
+        if [ "$is_valid" != "true" ]; then
+            error_message=$(echo "$response" | grep -o '"error":{[^}]*}' | cut -d':' -f2-)
+            echo "Error: The provided query is not valid. Details: $error_message"
             exit 6
         fi
+
         echo "Query validated successfully."
     fi
 }
 
 # From ES https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-from-multiple-sources
 # Indexing multiple sources
-validate_query
-
 start_reindex() {
     for index in "${SOURCE_INDEXES[@]}"; do
         DEST_INDEX="${index}-${DEST_SUFFIX}"
@@ -183,6 +188,7 @@ start_reindex() {
 check_es_alive
 check_source_index_exists
 check_dest_index_not_exists
+validate_query
 start_reindex
 
 echo "Reindexing script executed successfully."

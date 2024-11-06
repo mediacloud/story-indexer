@@ -1,7 +1,7 @@
 ## Elasticsearch Reindexing Guide
 
 The _reindex API in Elasticsearch allows you to copy documents from one index to another. This can be useful when you need to change the mappings of an index, upgrade Elasticsearch versions, or simply migrate data.
-This huide covers reindexing using two methods;
+This guide covers reindexing using two methods;
 
 1. Using the Kibana Dev Tools
 2. Using `curl` and Elasticsearch `reindex` API as per the script [here](../../bin/run-elastic-reindex.sh)
@@ -14,7 +14,7 @@ The Kibana Dev Tools provides an interactive environment to execute Elasticsearc
 
 1. Open Kibana and navigate to Dev Tools > Console
 
-2. Use the following `POST` request to reindex documents from the source index to the destination index
+2. Use the following `POST` request to re-index documents from the source index to the destination index
 
 ```
 POST _reindex
@@ -34,7 +34,7 @@ POST _reindex
 
 *** Set the "op-type":"create" to avoid overwriting existing documents in the destination index. To allow overwriting use "op_type":"index"
 
-3. Use the following GET request from the Kibana Dev Tools console to get the Reindexing status
+3. Use the following GET request from the Kibana Dev Tools console to get the Re-indexing status
 
 ```
 GET _tasks/<task_id>
@@ -109,7 +109,7 @@ bin/run-elastic-reindex.sh -s mc_search-000003 mc_search-000004 -d reindexed -m 
 #### Slicing
 
 The Reindex API supports Sliced scroll to parallelize the [reindexing process](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html#docs-reindex-slice), thereby improving efficiency.
-We can perfom slicing Manually (providing the no.of slices for each request) or Automatically (let Elasticsearch chose the number of slices to use).
+We can perform slicing Manually (providing the no.of slices for each request) or Automatically (let Elasticsearch chose the number of slices to use).
 
 ```
 curl -s -X POST "$ES_HOST/_reindex?slices=auto&wait_for_completion=false"
@@ -121,7 +121,7 @@ The Reindex API supports throttling during reindexing by setting the `requests_p
 
 ##### Rethrotting During Reindex
 
-Based on the clusture monitoring stats, you can adjust the throttling dynamically using the _rethrottle API. This allows us to manage the load to our clusture.
+Based on the cluster monitoring stats, you can adjust the throttling dynamically using the _rethrottle API. This allows us to manage the load to our cluster.
 
 ```
 POST _reindex/<task_id>/_rethrottle?requests_per_second=10
