@@ -1,7 +1,7 @@
 import argparse
 import json
 from logging import getLogger
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Literal, Optional, Tuple
 
 import mcmetadata
 from elasticsearch import Elasticsearch
@@ -23,6 +23,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         self.buffer_size: int = 0
         self.index_name: str = ""
         self.query: str = ""
+        self.query_format: Literal["DLS", "query_string"] = "query_string"
         self.total_matched_docs: Optional[int] = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
@@ -68,6 +69,14 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             help="Elasticsearch query string to filter documents for processing",
         )
 
+        ap.add_argument(
+            "--format",
+            dest="query_format",
+            default="query_string",
+            choices=["DSL", "query_string"],
+            help="The elasticsearch query format (supported values are: [DSL, query_string])",
+        )
+
     def process_args(self) -> None:
         """
         Process command line arguments and set instance variables.
@@ -90,6 +99,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         self.batch_size = args.batch_size
         self.buffer_size = int(args.buffer_size)
         self.query = args.query
+        self.query_format = args.query_format
 
     def initialize(self) -> None:
         """
@@ -113,8 +123,15 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         """
         try:
             assert self.es_client
-            # Try to parse the string as JSON first
-            query = json.loads(self.query)
+
+            if (
+                self.query_format == "query_string"
+            ):  # This is query in the format canonical_domain:mediacloud.org
+                # Construct the query in the "query_string" format based on the value passed by the user
+                query = {"query": {"query_string": {"query": self.query}}}
+            else:
+                # Try to parse the string as JSON first
+                query = json.loads(self.query)
 
             # Extract just the query part if it exists
             query_body = query.get("query", query)
