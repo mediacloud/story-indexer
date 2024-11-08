@@ -5,7 +5,7 @@ from typing import Any, Dict, Generator, List, Literal, Optional, Tuple
 
 import mcmetadata
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk, scan
+from elasticsearch.helpers import bulk
 
 from indexer.app import App
 from indexer.elastic import ElasticMixin
@@ -17,6 +17,8 @@ class CanonicalDomainUpdater(ElasticMixin, App):
 
     def __init__(self, process_name: str, descr: str) -> None:
         super().__init__(process_name, descr)
+        self.pit_id: Optional[str] = None
+        self.keep_alive: str = ""
         self.es_client: Optional[Elasticsearch] = None
         self.batch_size: int = 0
         self.updates_buffer: List[Dict[str, Any]] = []
@@ -77,6 +79,13 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             help="The elasticsearch query format (supported values are: [DSL, query_string])",
         )
 
+        ap.add_argument(
+            "--keep_alive",
+            dest="keep_alive",
+            default="1m",
+            help="How long should Elasticsearch keep the PIT alive",
+        )
+
     def process_args(self) -> None:
         """
         Process command line arguments and set instance variables.
@@ -100,6 +109,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         self.buffer_size = int(args.buffer_size)
         self.query = args.query
         self.query_format = args.query_format
+        self.keep_alive = args.keep_alive
 
     def initialize(self) -> None:
         """
@@ -112,6 +122,11 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         app.args = parser.parse_args()
         app.process_args()
         self.es_client = self.elasticsearch_client()
+        self.pit_id = self.es_client.open_point_in_time(
+            index=self.index_name,
+            keep_alive=self.keep_alive,
+        ).get("id")
+        logger.info("Successfully opened Point-in-Time with ID %s", self.pit_id)
 
     def build_query(self) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
@@ -175,7 +190,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
 
     def get_documents_to_update(self) -> Generator[Dict[str, Any], None, None]:
         """
-        Get documents that need to be updated using scroll API
+        Get documents that need to be updated using search_after
 
         Yields:
             Document dictionaries
@@ -190,19 +205,42 @@ class CanonicalDomainUpdater(ElasticMixin, App):
                 logger.info(
                     "Found a total of [%s] documents to update", self.total_matched_docs
                 )
+                # Add a sort by "_doc" (the most efficient sort order) for "search_after" tracking
+                # See https://www.elastic.co/guide/en/elasticsearch/reference/current/sort-search-results.html
+                query["sort"] = [{"_doc": "asc"}]
 
-                for hit in scan(
-                    client=self.es_client,
-                    query=query,
-                    index=self.index_name,
-                    size=self.batch_size,
-                    preserve_order=True,
-                ):
-                    yield {
-                        "index": hit["_index"],
-                        "source": hit["_source"],
-                        "id": hit["_id"],
-                    }
+                # Limit the number of results returned per search query
+                query["size"] = self.batch_size
+
+                # Add PIT to the query
+                query["pit"] = {"id": self.pit_id, "keep_alive": self.keep_alive}
+
+                search_after = None
+
+                while True:
+                    if search_after:
+                        # Update the query with the last sort values to continue the pagination
+                        query["search_after"] = search_after
+
+                    # Fetch the next batch of documents
+                    response = self.es_client.search(body=query)
+                    hits = response["hits"]["hits"]
+
+                    # Each result will return a PIT ID which may change, thus we just need to update it
+                    self.pit_id = response.get("pit_id")
+
+                    if not hits:
+                        # No more documents to process, exit the loop
+                        break
+
+                    for hit in hits:
+                        yield {
+                            "index": hit["_index"],
+                            "source": hit["_source"],
+                            "id": hit["_id"],
+                        }
+                    # Since we are sorting in ascending order, lets get the last sort value to use for "search_after"
+                    search_after = hits[-1]["sort"]
             else:
                 raise Exception(error)
 
@@ -301,6 +339,13 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             # Ensure the buffer is flushed if it's not empty before finishing execution
             if self.updates_buffer:
                 self.flush_updates()
+            # Ensure we can close the PIT opened
+            if isinstance(self.es_client, Elasticsearch) and self.pit_id:
+                response = self.es_client.close_point_in_time(id=self.pit_id)
+                if response.get("succeeded"):
+                    logger.info(
+                        "Successfully closed Point-in-Time with ID %s", self.pit_id
+                    )
 
 
 if __name__ == "__main__":
