@@ -13,9 +13,13 @@ On-the-fly XML parsing using iterparse
 
 NOTE! --yesterday only valid after 01:00 GMT
 (before that, gets the day before)
+
+Not used in production (see rss-puller),
+*BUT* run for dev & staging stacks!
 """
 
 import argparse
+import datetime as dt
 import html
 import logging
 import time
@@ -48,6 +52,7 @@ class RSSQueuer(Queuer):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self.reset_item(True)
+        self.last_build_date: str | None = None
 
     def reset_item(self, first: bool = False) -> None:
         if first:
@@ -138,10 +143,12 @@ class RSSQueuer(Queuer):
                 rss.domain = self.domain
                 rss.pub_date = self.pub_date
                 rss.title = self.title
+                # the rest are never indexed, added for tracing:
                 rss.source_url = self.source_url
                 rss.source_feed_id = self.source_feed_id
                 rss.source_source_id = self.source_source_id
-                rss.via = fname  # instead of fetch_date
+                rss.fetch_date = self.last_build_date
+                rss.via = fname  # filename may contain date
             self.send_story(s)
             self.ok += 1
         else:
@@ -176,6 +183,30 @@ class RSSQueuer(Queuer):
                     continue
 
                 lpath = len(path)
+
+                if (
+                    name.lower() == "lastbuilddate"
+                    and lpath == 2
+                    and path[0] == "rss"
+                    and path[1] == "channel"
+                    and element.text
+                ):
+                    # save feed last build date to put in rss_entry.fetch_date
+                    # which is only used for tracing purposes.
+                    lbd = element.text.strip()
+                    logger.info("%s tag %s", name, lbd)
+                    if lbd:
+                        try:
+                            # try to convert to ISO format date
+                            build_dt = dt.datetime.strptime(
+                                lbd, "%a, %d %b %Y %H:%M:%S %z"
+                            )
+                            self.last_build_date = build_dt.strftime("%Y-%m-%d")
+                        except ValueError:
+                            self.last_build_date = lbd
+                        logger.info("last_build_date %s", self.last_build_date)
+                    continue
+
                 if (
                     (lpath > 0 and path[0] != "rss")
                     or (lpath > 1 and path[1] != "channel")
