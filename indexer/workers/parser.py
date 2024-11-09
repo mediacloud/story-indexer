@@ -261,7 +261,9 @@ class Parser(StoryWorker):
 
         # change datetime object to JSON-safe string
         if mdd["publication_date"] is not None:
-            pub_date = mdd["publication_date"].strftime("%Y-%m-%d")
+            pub_dt = mdd["publication_date"]
+            pub_date = pub_dt.strftime("%Y-%m-%d")
+            self.timing("extracted-pub-date", pub_dt.date())
         else:
             pub_date = None
         mdd["publication_date"] = pub_date

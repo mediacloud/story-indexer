@@ -3,6 +3,7 @@ Base class for command line applications
 """
 
 import argparse
+import datetime as dt
 import logging
 import os
 import socket
@@ -50,7 +51,9 @@ class AppProtocol(Protocol):
 
     def gauge(self, name: str, value: float, labels: Labels = []) -> None: ...
 
-    def timing(self, name: str, ms: float, labels: Labels = []) -> None: ...
+    def timing(
+        self, name: str, ms: float | dt.date | dt.datetime, labels: Labels = []
+    ) -> None: ...
 
     def timer(self, name: str) -> "_TimingContext": ...
 
@@ -360,7 +363,9 @@ class App(AppProtocol):
         if self._statsd:
             self._statsd.gauge(self._name(name, labels), value)
 
-    def timing(self, name: str, ms: float, labels: Labels = []) -> None:
+    def timing(
+        self, name: str, t: float | dt.date | dt.datetime, labels: Labels = []
+    ) -> None:
         """
         Report a timing (duration) in milliseconds.  Any variable that has
         a range of values (and multiple values per period) can be
@@ -373,9 +378,23 @@ class App(AppProtocol):
         (cardinality) of each label, SO label values should
         be constrained to a small set!!!
 
-        ALSO: statd already creates NUMEROUS series for each timing!
+        ALSO: statsd already creates NUMEROUS series for each timing!
+
+        Now takes date and datetime too!
         """
         if self._statsd:
+            ms: float
+            if isinstance(t, dt.date):
+                # encode date as YYYYMMDD
+                ms = t.year * 10000.0 + t.month * 100.0 + t.day
+            elif isinstance(t, dt.datetime):
+                ms = t.timestamp() * 1000
+            elif isinstance(t, int):
+                ms = float(t)
+            elif isinstance(t, float):
+                ms = t
+            else:
+                return
             self._statsd.timing(self._name(name, labels), ms)
 
     def timer(self, name: str) -> "_TimingContext":
