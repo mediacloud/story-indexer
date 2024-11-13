@@ -10,10 +10,10 @@ from elasticsearch.helpers import bulk
 from indexer.app import App
 from indexer.elastic import ElasticMixin
 
-logger = getLogger("elastic-canonical-domain-updater")
+logger = getLogger("elastic-update-canonical-domain")
 
 
-class CanonicalDomainUpdater(ElasticMixin, App):
+class CanonicalDomainUpdate(ElasticMixin, App):
 
     def __init__(self, process_name: str, descr: str) -> None:
         super().__init__(process_name, descr)
@@ -89,15 +89,6 @@ class CanonicalDomainUpdater(ElasticMixin, App):
     def process_args(self) -> None:
         """
         Process command line arguments and set instance variables.
-
-        Sets the following instance attributes:
-            index_name (str): Name of the Elasticsearch index to operate on
-            batch_size (int): Number of documents to retrieve per batch from Elasticsearch
-            buffer_size (int): Maximum number of update operations to buffer before flushing to Elasticsearch
-            query (str): Elasticsearch query string to filter documents for processing
-
-        Note:
-            Calls the parent class's process_args() first to handle any inherited argument processing.
         """
         super().process_args()
 
@@ -111,23 +102,6 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         self.query_format = args.query_format
         self.keep_alive = args.keep_alive
 
-    def initialize(self) -> None:
-        """
-        Initializes the Elasticsearch instance and sets up application arguments.
-        Returns:
-             None
-        """
-        parser = argparse.ArgumentParser()
-        app.define_options(parser)
-        app.args = parser.parse_args()
-        app.process_args()
-        self.es_client = self.elasticsearch_client()
-        self.pit_id = self.es_client.open_point_in_time(
-            index=self.index_name,
-            keep_alive=self.keep_alive,
-        ).get("id")
-        logger.info("Successfully opened Point-in-Time with ID %s", self.pit_id)
-
     def build_query(self) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Builds a query for searching documents whose canonical domain must be updated, the query is validated by
@@ -139,24 +113,23 @@ class CanonicalDomainUpdater(ElasticMixin, App):
         try:
             assert self.es_client
 
-            if (
-                self.query_format == "query_string"
-            ):  # This is query in the format canonical_domain:mediacloud.org
-                # Construct the query in the "query_string" format based on the value passed by the user
+            if self.query_format == "query_string":
                 query = {"query": {"query_string": {"query": self.query}}}
             else:
-                # Try to parse the string as JSON first
                 query = json.loads(self.query)
 
-            # Extract just the query part if it exists
             query_body = query.get("query", query)
 
-            # Use the Elasticsearch validate API to ensure the query is ok
             validation_result = self.es_client.indices.validate_query(
                 index=self.index_name, body={"query": query_body}, explain=True
             )
 
             if validation_result["valid"]:
+                self.pit_id = self.es_client.open_point_in_time(
+                    index=self.index_name,
+                    keep_alive=self.keep_alive,
+                ).get("id")
+                logger.info("Successfully opened Point-in-Time with ID %s", self.pit_id)
                 return True, query, None
             else:
                 error_msg = "No detailed explanation is available"
@@ -185,10 +158,10 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             if count is not None:
                 return int(count)
         except Exception as e:
-            logger.error("Error getting document count: %s", e)
+            logger.exception("Error getting document count: %s", e)
         return None
 
-    def get_documents_to_update(self) -> Generator[Dict[str, Any], None, None]:
+    def fetch_documents_to_update(self) -> Generator[Dict[str, Any], None, None]:
         """
         Get documents that need to be updated using search_after
 
@@ -196,7 +169,6 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             Document dictionaries
         """
         try:
-            # Build the query from the string passed by the user as an arg, the build process also validates the query
             success, query, error = self.build_query()
 
             if success:
@@ -209,10 +181,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
                 # See https://www.elastic.co/guide/en/elasticsearch/reference/current/sort-search-results.html
                 query["sort"] = [{"_doc": "asc"}]
 
-                # Limit the number of results returned per search query
                 query["size"] = self.batch_size
-
-                # Add PIT to the query
                 query["pit"] = {"id": self.pit_id, "keep_alive": self.keep_alive}
 
                 search_after = None
@@ -230,7 +199,6 @@ class CanonicalDomainUpdater(ElasticMixin, App):
                     self.pit_id = response.get("pit_id")
 
                     if not hits:
-                        # No more documents to process, exit the loop
                         break
 
                     for hit in hits:
@@ -245,7 +213,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
                 raise Exception(error)
 
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
 
     def queue_canonical_domain_update(self, doc_data: Dict[str, Any]) -> None:
         """
@@ -256,12 +224,10 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             doc_data: Dictionary containing document data with 'source.url', 'index', and 'id' fields
         """
         try:
-            # Determine the canonical domain from mcmetadata, the URL we have on these document is a canonical URL
             canonical_domain = mcmetadata.urls.canonical_domain(
                 doc_data["source"]["url"]
             )
 
-            # Create an update action where we update only the canonical domain by Document ID
             update_action = {
                 "_op_type": "update",
                 "_index": doc_data["index"],
@@ -273,13 +239,12 @@ class CanonicalDomainUpdater(ElasticMixin, App):
 
             self.updates_buffer.append(update_action)
 
-            # Check if the buffer is full and flush updates
             if len(self.updates_buffer) >= self.buffer_size:
-                self.flush_updates()
+                self.bulk_update()
         except Exception as e:
-            logger.error("Error processing document %s: %s", doc_data.get("id"), e)
+            logger.exception("Error processing document %s: %s", doc_data.get("id"), e)
 
-    def flush_updates(self) -> None:
+    def bulk_update(self) -> None:
         """
         Flush the buffered updates to Elasticsearch
         """
@@ -287,36 +252,30 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             return
         try:
             assert self.es_client
-            # Perform bulk update
             success, failed = bulk(
                 client=self.es_client,
                 actions=self.updates_buffer,
                 refresh=False,
                 raise_on_error=False,
             )
-
-            is_failed_list = isinstance(failed, list)
-            if is_failed_list:
-                assert isinstance(failed, list)
+            if isinstance(failed, list):
                 failed_count = len(failed)
-            else:
-                assert isinstance(failed, int)
-                failed_count = failed
-            logger.info("Bulk update: %s successful, %s failed", success, failed_count)
-
-            if is_failed_list:
-                assert isinstance(failed, list)
                 for error in failed:
-                    logger.error("Failed to update: %s", error)
+                    logger.error("Failed to update: [%s]", error)
+            else:
+                failed_count = failed
+            logger.info(
+                "Bulk update summary: %s successful, %s failed", success, failed_count
+            )
         except Exception as e:
-            logger.error("Bulk update failed: %s", e)
+            logger.exception("Bulk update failed: %s", e)
         finally:
             # Clear the buffer
             self.updates_buffer = []
 
-    def main(self) -> None:
+    def main_loop(self) -> None:
         """
-        Main execution method for processing canonical domain updates to documents.
+        Main loop execution method for processing canonical domain updates to documents.
 
         This method serves as the entry point for the application logic. It initializes the
         application, retrieves documents that require updates, and processes them by queuing
@@ -328,18 +287,14 @@ class CanonicalDomainUpdater(ElasticMixin, App):
             None
         """
         try:
-            # Initialize the app
-            self.initialize()
-            # Get a buffer of documents that need to be updated
-            for doc in self.get_documents_to_update():
+            self.es_client = self.elasticsearch_client()
+            for doc in self.fetch_documents_to_update():
                 self.queue_canonical_domain_update(doc)
         except Exception as e:
             logger.fatal(e)
         finally:
-            # Ensure the buffer is flushed if it's not empty before finishing execution
             if self.updates_buffer:
-                self.flush_updates()
-            # Ensure we can close the PIT opened
+                self.bulk_update()
             if isinstance(self.es_client, Elasticsearch) and self.pit_id:
                 response = self.es_client.close_point_in_time(id=self.pit_id)
                 if response.get("succeeded"):
@@ -349,7 +304,7 @@ class CanonicalDomainUpdater(ElasticMixin, App):
 
 
 if __name__ == "__main__":
-    app = CanonicalDomainUpdater(
-        "elastic-canonical-domain-updater", "Updates canonical domain"
+    app = CanonicalDomainUpdate(
+        "elastic-update-canonical-domain", "Updates canonical domain"
     )
     app.main()
