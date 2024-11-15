@@ -1,7 +1,7 @@
 import argparse
 import json
 from logging import getLogger
-from typing import Any, Dict, Generator, List, Literal, Optional, Tuple
+from typing import Any, Dict, Generator, List, Literal, Optional
 
 import mcmetadata
 from elasticsearch import Elasticsearch
@@ -18,32 +18,17 @@ class CanonicalDomainUpdate(ElasticMixin, App):
     def __init__(self, process_name: str, descr: str) -> None:
         super().__init__(process_name, descr)
         self.pit_id: Optional[str] = None
+        self.query: Optional[Dict[str, Any]] = {}
         self.keep_alive: str = ""
-        self.es_client: Optional[Elasticsearch] = None
+        self._es_client: Optional[Elasticsearch] = None
         self.batch_size: int = 0
         self.updates_buffer: List[Dict[str, Any]] = []
         self.buffer_size: int = 0
         self.index_name: str = ""
-        self.query: str = ""
         self.query_format: Literal["DLS", "query_string"] = "query_string"
         self.total_matched_docs: Optional[int] = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
-        """
-        Define command line arguments for the script.
-        Extends the parent class argument definitions.
-
-        Args:
-            ap (argparse.ArgumentParser): The argument parser instance to add arguments to
-
-        Adds the following arguments:
-            --index: Name of the Elasticsearch index to update
-            --batch: Batch size for document fetching (default: 1000)
-            --buffer: Size of update operation buffer (default: 2000)
-            --query: Elasticsearch query string for filtering documents
-        Returns:
-            None
-        """
         super().define_options(ap)
         ap.add_argument(
             "--index",
@@ -91,69 +76,67 @@ class CanonicalDomainUpdate(ElasticMixin, App):
         Process command line arguments and set instance variables.
         """
         super().process_args()
-
+        assert self.args
         args = self.args
-        assert args
-
         self.index_name = args.index
         self.batch_size = args.batch_size
         self.buffer_size = int(args.buffer_size)
-        self.query = args.query
-        self.query_format = args.query_format
         self.keep_alive = args.keep_alive
+        self.query_format = args.query_format
+        self.query = self.validate_query(args.query)
 
-    def build_query(self) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    @property
+    def es_client(self) -> Elasticsearch:
+        if self._es_client is None:
+            self._es_client = self.elasticsearch_client()
+        return self._es_client
+
+    def validate_query(self, query: str) -> Optional[Dict[str, Any]]:
         """
-        Builds a query for searching documents whose canonical domain must be updated, the query is validated by
-        the Elasticsearch _validate API, before execution
+        Validates the query using the Elasticsearch _validate API, opens Point in time
 
         Returns:
-            Tuple of (is_valid, parsed_query, error_message)
+            Validated query
         """
+        validated_query = None
         try:
-            assert self.es_client
-
             if self.query_format == "query_string":
-                query = {"query": {"query_string": {"query": self.query}}}
+                query_dict = {"query": {"query_string": {"query": query}}}
             else:
-                query = json.loads(self.query)
-
-            query_body = query.get("query", query)
-
+                query_dict = json.loads(query)
             validation_result = self.es_client.indices.validate_query(
-                index=self.index_name, body={"query": query_body}, explain=True
+                index=self.index_name, body=query_dict, explain=True
             )
-
             if validation_result["valid"]:
                 self.pit_id = self.es_client.open_point_in_time(
-                    index=self.index_name,
-                    keep_alive=self.keep_alive,
+                    index=self.index_name, keep_alive=self.keep_alive
                 ).get("id")
                 logger.info("Successfully opened Point-in-Time with ID %s", self.pit_id)
-                return True, query, None
+                validated_query = query_dict
             else:
                 error_msg = "No detailed explanation is available"
                 if "error" in validation_result:
                     error_msg = f"Invalid Query - {validation_result['error']}"
-                return False, None, error_msg
+                logger.error(error_msg)
         except json.JSONDecodeError as e:
-            return False, None, f"Invalid Query: Invalid JSON format - {str(e)}"
+            logger.exception("Invalid Query: Invalid JSON format - {%s}", e)
         except Exception as e:
-            return False, None, f"Invalid Query:  Validation error - {str(e)}"
+            logger.exception("Invalid Query:  Validation error - {%s}", e)
+        finally:
+            return validated_query
 
-    def get_document_count(self, query: Dict[str, Any]) -> Optional[int]:
+    def fetch_document_count(self) -> Optional[int]:
         """
         Get the total number of documents matching the query
-
-        Args:
-            query: Elasticsearch query
 
         Returns:
             Total number of matching documents
         """
         try:
             assert self.es_client
-            count_response = self.es_client.count(index=self.index_name, body=query)
+            count_response = self.es_client.count(
+                index=self.index_name, body=self.query
+            )
             count = count_response.get("count")
             if count is not None:
                 return int(count)
@@ -169,49 +152,43 @@ class CanonicalDomainUpdate(ElasticMixin, App):
             Document dictionaries
         """
         try:
-            success, query, error = self.build_query()
+            assert self.query and self.es_client
+            self.total_matched_docs = self.fetch_document_count()
+            logger.info(
+                "Found a total of [%s] documents to update", self.total_matched_docs
+            )
+            # Add a sort by "_doc" (the most efficient sort order) for "search_after" tracking
+            # See https://www.elastic.co/guide/en/elasticsearch/reference/current/sort-search-results.html
+            self.query["sort"] = [{"_doc": "asc"}]
 
-            if success:
-                assert query and self.es_client
-                self.total_matched_docs = self.get_document_count(query)
-                logger.info(
-                    "Found a total of [%s] documents to update", self.total_matched_docs
-                )
-                # Add a sort by "_doc" (the most efficient sort order) for "search_after" tracking
-                # See https://www.elastic.co/guide/en/elasticsearch/reference/current/sort-search-results.html
-                query["sort"] = [{"_doc": "asc"}]
+            self.query["size"] = self.batch_size
+            self.query["pit"] = {"id": self.pit_id, "keep_alive": self.keep_alive}
 
-                query["size"] = self.batch_size
-                query["pit"] = {"id": self.pit_id, "keep_alive": self.keep_alive}
+            search_after = None
 
-                search_after = None
+            while True:
+                if search_after:
+                    # Update the query with the last sort values to continue the pagination
+                    self.query["search_after"] = search_after
 
-                while True:
-                    if search_after:
-                        # Update the query with the last sort values to continue the pagination
-                        query["search_after"] = search_after
+                # Fetch the next batch of documents
+                response = self.es_client.search(body=self.query)
+                hits = response["hits"]["hits"]
 
-                    # Fetch the next batch of documents
-                    response = self.es_client.search(body=query)
-                    hits = response["hits"]["hits"]
+                # Each result will return a PIT ID which may change, thus we just need to update it
+                self.pit_id = response.get("pit_id")
 
-                    # Each result will return a PIT ID which may change, thus we just need to update it
-                    self.pit_id = response.get("pit_id")
+                if not hits:
+                    break
 
-                    if not hits:
-                        break
-
-                    for hit in hits:
-                        yield {
-                            "index": hit["_index"],
-                            "source": hit["_source"],
-                            "id": hit["_id"],
-                        }
-                    # Since we are sorting in ascending order, lets get the last sort value to use for "search_after"
-                    search_after = hits[-1]["sort"]
-            else:
-                raise Exception(error)
-
+                for hit in hits:
+                    yield {
+                        "index": hit["_index"],
+                        "source": hit["_source"],
+                        "id": hit["_id"],
+                    }
+                # Since we are sorting in ascending order, lets get the last sort value to use for "search_after"
+                search_after = hits[-1]["sort"]
         except Exception as e:
             logger.exception(e)
 
@@ -274,20 +251,8 @@ class CanonicalDomainUpdate(ElasticMixin, App):
             self.updates_buffer = []
 
     def main_loop(self) -> None:
-        """
-        Main loop execution method for processing canonical domain updates to documents.
-
-        This method serves as the entry point for the application logic. It initializes the
-        application, retrieves documents that require updates, and processes them by queuing
-        updates for the canonical domain. Any exceptions encountered during execution are
-        logged as fatal errors. Finally, it ensures that any remaining updates in the buffer
-        are flushed before execution completes.
-
-        Returns:
-            None
-        """
         try:
-            self.es_client = self.elasticsearch_client()
+            assert self.query and self.es_client
             for doc in self.fetch_documents_to_update():
                 self.queue_canonical_domain_update(doc)
         except Exception as e:
