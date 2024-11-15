@@ -25,7 +25,7 @@ class CanonicalDomainUpdate(ElasticMixin, App):
         self.updates_buffer: List[Dict[str, Any]] = []
         self.buffer_size: int = 0
         self.index_name: str = ""
-        self.query_format: Literal["DLS", "query_string"] = "query_string"
+        self.query_type: Optional[Literal["query_string", "simple_query_string"]] = None
         self.total_matched_docs: Optional[int] = None
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
@@ -57,11 +57,10 @@ class CanonicalDomainUpdate(ElasticMixin, App):
         )
 
         ap.add_argument(
-            "--format",
-            dest="query_format",
-            default="query_string",
-            choices=["DSL", "query_string"],
-            help="The elasticsearch query format (supported values are: [DSL, query_string])",
+            "--type",
+            dest="query_type",
+            choices=["query_string", "simple_query_string"],
+            help="The elasticsearch query format (supported values are: [query_string, simple_query_string])",
         )
 
         ap.add_argument(
@@ -82,7 +81,7 @@ class CanonicalDomainUpdate(ElasticMixin, App):
         self.batch_size = args.batch_size
         self.buffer_size = int(args.buffer_size)
         self.keep_alive = args.keep_alive
-        self.query_format = args.query_format
+        self.query_type = args.query_type
         self.query = self.validate_query(args.query)
 
     @property
@@ -100,8 +99,10 @@ class CanonicalDomainUpdate(ElasticMixin, App):
         """
         validated_query = None
         try:
-            if self.query_format == "query_string":
+            if self.query_type == "query_string":
                 query_dict = {"query": {"query_string": {"query": query}}}
+            elif self.query_type == "simple_query_string":
+                query_dict = {"query": {"simple_query_string": {"query": query}}}
             else:
                 query_dict = json.loads(query)
             validation_result = self.es_client.indices.validate_query(
