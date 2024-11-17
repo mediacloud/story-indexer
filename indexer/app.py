@@ -42,6 +42,8 @@ class AppProtocol(Protocol):
 
     args: Optional[argparse.Namespace]
 
+    process_name: str
+
     def define_options(self, ap: argparse.ArgumentParser) -> None: ...
 
     def process_args(self) -> None: ...

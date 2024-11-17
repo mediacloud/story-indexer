@@ -7,6 +7,7 @@ Elastic Search App Mixin
 import argparse
 import json
 import os
+import socket
 import sys
 from logging import getLogger
 from typing import Any
@@ -38,6 +39,26 @@ class ElasticMixin(AppProtocol):
         assert self.args
         self.elasticsearch_hosts = self.args.elasticsearch_hosts
 
+        # Assemble an "opaque id" string to pass in to ES, to identify the
+        # stack and this process, visible in ES "tasks" API.  Documentation
+        # says to set on a per-client (not per-connection) basis, so do it
+        # once. We should try to keep these similar between programs (outside
+        # story-indexer) that access ES:
+        opaque_toks = ["story-indexer"]
+
+        # the stack name itself is not (BY DESIGN) available to avoid
+        # testing it rather than adding a new orthognal variable.
+        deployment = os.environ.get("DEPLOYMENT_ID")
+        if not deployment:
+            deployment = os.environ.get("STATSD_REALM")
+        if deployment:
+            opaque_toks.append(deployment)
+        opaque_toks.append(self.process_name)  # App class
+        opaque_toks.append(socket.gethostname().split(".")[0])
+        opaque_toks.append(str(os.getpid()))
+        self.opaque_id = ".".join(opaque_toks)
+        logger.info("opaque_id %s", self.opaque_id)
+
     def elasticsearch_client(self) -> Elasticsearch:
         # maybe take boolean arg or environment variable and call
         # getLogger("elastic_transport.transport").setLevel(logging.WARNING)
@@ -47,7 +68,9 @@ class ElasticMixin(AppProtocol):
             sys.exit(1)
 
         # Connects immediately, performs failover and retries
-        return Elasticsearch(self.elasticsearch_hosts.split(","))
+        return Elasticsearch(
+            self.elasticsearch_hosts.split(","), opaque_id=self.opaque_id
+        )
 
 
 class ElasticConfMixin(ElasticMixin):
