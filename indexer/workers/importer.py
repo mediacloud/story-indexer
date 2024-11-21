@@ -121,6 +121,18 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         data: dict[str, Optional[Union[str, bool]]] = {}
         # extract valid keys from index template (schema)
 
+        fetch_ts = story.http_metadata().fetch_timestamp
+        if fetch_ts:
+            # Here with timestamp of when story was fetched, make
+            # visible to see what's currently entering ES.
+            # While it's tempting to subtract off the current time (to
+            # get an idea of "how far behind" we are, with
+            # historical data from S3 fetch_timestamp will be the
+            # original fetch time (and historical data is processed
+            # from newest to oldest, so send in as ms (displayable
+            # in Grafana as "Date & Time")
+            self.timing("fetch-ts", fetch_ts * 1000.0)
+
         self.incr("field_check.stories")  # total number of stories checked
         for key, value in content_metadata.as_dict().items():
             if key in self.elasticsearch_fields:
