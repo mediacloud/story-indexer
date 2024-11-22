@@ -109,7 +109,7 @@ def fetch_daily_rss(
 
 def batch_rss(
     source_list: List[RSSEntry], num_batches: int = 20, max_domain_size: int = 10000
-) -> tuple[List, Dict]:
+) -> tuple[List[List[RSSEntry]], Dict[str, int]]:
     """
     Greedily pack source_list into num_batches batches, keeping each domain together.
     """
@@ -127,8 +127,8 @@ def batch_rss(
         [(k, v) for k, v in agg.items()], key=lambda x: x[1]
     )
 
-    batches: List = [[] for i in range(num_batches)]
-    batch_map: Dict = {}
+    batches: List[List[RSSEntry]] = [[] for i in range(num_batches)]
+    batch_map: Dict[str, int] = {}
 
     while len(domains_sorted) > 0:
         domain = domains_sorted.pop()
