@@ -942,8 +942,12 @@ class Producer(QApp):
 
     def check_output_queues(self) -> None:
         """
+        Called from Queuer.maybe_process_file and rss-puller main_loop.
+
         snooze while output queue(s) have enough work;
         if in "try one and quit" (crontab) mode, just quit.
+
+        now also checks for "data" disk space
         """
 
         assert self.args
@@ -961,6 +965,7 @@ class Producer(QApp):
             ]
         )
 
+        what = "queue(s)"
         while True:
             # also wanted/used by scripts.rabbitmq-stats:
             queues = admin._api_get("/api/queues")
@@ -972,16 +977,31 @@ class Producer(QApp):
                     if ready > max_queue:
                         break
             else:
-                # here when all queues short enough
-                return
+                # Here when all queues short enough.
+
+                # Look at "data" directory (/app/data) likely to be
+                # where rabbitmq queues are located if everything
+                # running on one server.  This was added to help
+                # historical processing stacks manage a little better
+                # if queues back up.  If running outside docker,
+                # "data" should have been created to hold queue
+                # tracker files.
+                try:
+                    fs = os.statvfs("data")
+                except FileNotFoundError:
+                    return
+
+                # percentage of blocks available to regular users
+                disk_percent_available = 100 * fs.f_bavail / fs.f_blocks
+                if disk_percent_available >= 25:
+                    return
+                what = "disk"
 
             if self.args.loop:
-                logger.debug("sleeping until output queue(s) shorter")
+                logger.debug("sleeping until %s space available", what)
                 time.sleep(self.args.sleep)
             else:
-                logger.info(
-                    "queue(s) full enough: sent %d messages", self.sent_messages
-                )
+                logger.info("%s too full: sent %d messages", what, self.sent_messages)
                 sys.exit(0)
 
 
