@@ -913,6 +913,7 @@ class Producer(QApp):
 
     LOOP_SLEEP_TIME = 60.0
     MAX_QUEUE_LEN = 100000  # don't queue if (any) dest queue longer than this
+    MIN_DISK_FREE = 25  # minimum % free data disk for queuing
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -934,6 +935,12 @@ class Producer(QApp):
             help=f"Maximum queue length at which to send a new batch (default: {self.MAX_QUEUE_LEN})",
         )
         ap.add_argument(
+            "--min-disk-free",
+            type=int,
+            default=self.MIN_DISK_FREE,
+            help=f"Minimum data disk free percent to send a new batch (default: {self.MIN_DISK_FREE})",
+        )
+        ap.add_argument(
             "--sleep",
             type=float,
             default=self.LOOP_SLEEP_TIME,
@@ -952,6 +959,7 @@ class Producer(QApp):
 
         assert self.args
         max_queue = self.args.max_queue_len
+        min_disk_free = self.args.min_disk_free
 
         # get list of queues fed from this app's output exchange
         admin = self.admin_api()
@@ -993,7 +1001,7 @@ class Producer(QApp):
 
                 # percentage of blocks available to regular users
                 disk_percent_available = 100 * fs.f_bavail / fs.f_blocks
-                if disk_percent_available >= 25:
+                if disk_percent_available >= min_disk_free:
                     return
                 what = "disk"
 
