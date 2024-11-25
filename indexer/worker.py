@@ -1015,7 +1015,7 @@ class Producer(QApp):
                 # percentage of blocks available to regular users
                 disk_percent_available = 100 * usage.free / usage.total
                 self.gauge("data-disk-free", disk_percent_available)
-                if disk_percent_available >= min_disk_free:
+                if disk_percent_available < min_disk_free:
                     report_status("disk-space-low")
                     return
                 what = "disk"
