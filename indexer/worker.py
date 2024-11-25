@@ -16,6 +16,7 @@ import argparse
 import logging
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -973,6 +974,9 @@ class Producer(QApp):
             ]
         )
 
+        def report_status(status: str) -> None:  # call only once!
+            self.incr("check-output", labels=[("status", status)])
+
         what = "queue(s)"
         while True:
             # also wanted/used by scripts.rabbitmq-stats:
@@ -980,12 +984,19 @@ class Producer(QApp):
             for q in queues:
                 name = q["name"]
                 if name in queue_names:
+                    # saw key error in staging 2024-11-25:
+                    if "messages_ready" not in q:
+                        logger.info("%s: no messages_ready data", name)
+                        report_status("q-not-ready")
+                        break
                     ready = q["messages_ready"]
                     logger.debug("%s: ready %d", name, ready)
                     if ready > max_queue:
+                        report_status("q-full")
                         break
             else:
-                # Here when all queues short enough.
+                # Here when all queues short enough
+                # (loop ran to completion)
 
                 # Look at "data" directory (/app/data) likely to be
                 # where rabbitmq queues are located if everything
@@ -995,13 +1006,17 @@ class Producer(QApp):
                 # "data" should have been created to hold queue
                 # tracker files.
                 try:
-                    fs = os.statvfs("data")
+                    # more portable than os.statvfs!
+                    usage = shutil.disk_usage("data")
                 except FileNotFoundError:
+                    report_status("no-data-usage")
                     return
 
                 # percentage of blocks available to regular users
-                disk_percent_available = 100 * fs.f_bavail / fs.f_blocks
+                disk_percent_available = 100 * usage.free / usage.total
+                self.gauge("data-disk-free", disk_percent_available)
                 if disk_percent_available >= min_disk_free:
+                    report_status("disk-space-low")
                     return
                 what = "disk"
 
