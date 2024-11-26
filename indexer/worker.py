@@ -16,6 +16,7 @@ import argparse
 import logging
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -913,6 +914,7 @@ class Producer(QApp):
 
     LOOP_SLEEP_TIME = 60.0
     MAX_QUEUE_LEN = 100000  # don't queue if (any) dest queue longer than this
+    MIN_DISK_FREE = 25  # minimum % free data disk for queuing
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
@@ -934,6 +936,12 @@ class Producer(QApp):
             help=f"Maximum queue length at which to send a new batch (default: {self.MAX_QUEUE_LEN})",
         )
         ap.add_argument(
+            "--min-disk-free",
+            type=int,
+            default=self.MIN_DISK_FREE,
+            help=f"Minimum data disk free percent to send a new batch (default: {self.MIN_DISK_FREE})",
+        )
+        ap.add_argument(
             "--sleep",
             type=float,
             default=self.LOOP_SLEEP_TIME,
@@ -942,12 +950,17 @@ class Producer(QApp):
 
     def check_output_queues(self) -> None:
         """
+        Called from Queuer.maybe_process_file and rss-puller main_loop.
+
         snooze while output queue(s) have enough work;
         if in "try one and quit" (crontab) mode, just quit.
+
+        now also checks for "data" disk space
         """
 
         assert self.args
         max_queue = self.args.max_queue_len
+        min_disk_free = self.args.min_disk_free
 
         # get list of queues fed from this app's output exchange
         admin = self.admin_api()
@@ -961,27 +974,57 @@ class Producer(QApp):
             ]
         )
 
+        def report_status(status: str) -> None:  # call only once!
+            self.incr("check-output", labels=[("status", status)])
+
+        what = "queue(s)"
         while True:
             # also wanted/used by scripts.rabbitmq-stats:
             queues = admin._api_get("/api/queues")
             for q in queues:
                 name = q["name"]
                 if name in queue_names:
+                    # saw key error in staging 2024-11-25:
+                    if "messages_ready" not in q:
+                        logger.info("%s: no messages_ready data", name)
+                        report_status("q-not-ready")
+                        break
                     ready = q["messages_ready"]
                     logger.debug("%s: ready %d", name, ready)
                     if ready > max_queue:
+                        report_status("q-full")
                         break
             else:
-                # here when all queues short enough
-                return
+                # Here when all queues short enough
+                # (loop ran to completion)
+
+                # Look at "data" directory (/app/data) likely to be
+                # where rabbitmq queues are located if everything
+                # running on one server.  This was added to help
+                # historical processing stacks manage a little better
+                # if queues back up.  If running outside docker,
+                # "data" should have been created to hold queue
+                # tracker files.
+                try:
+                    # more portable than os.statvfs!
+                    usage = shutil.disk_usage("data")
+                except FileNotFoundError:
+                    report_status("no-data-usage")
+                    return
+
+                # percentage of blocks available to regular users
+                disk_percent_available = 100 * usage.free / usage.total
+                self.gauge("data-disk-free", disk_percent_available)
+                if disk_percent_available < min_disk_free:
+                    report_status("disk-space-low")
+                    return
+                what = "disk"
 
             if self.args.loop:
-                logger.debug("sleeping until output queue(s) shorter")
+                logger.debug("sleeping until %s space available", what)
                 time.sleep(self.args.sleep)
             else:
-                logger.info(
-                    "queue(s) full enough: sent %d messages", self.sent_messages
-                )
+                logger.info("%s too full: sent %d messages", what, self.sent_messages)
                 sys.exit(0)
 
 
