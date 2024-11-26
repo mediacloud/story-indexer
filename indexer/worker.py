@@ -975,6 +975,7 @@ class Producer(QApp):
         )
 
         def report_status(status: str) -> None:  # call only once!
+            logger.info("check_output_queues status %s", status)
             self.incr("check-output", labels=[("status", status)])
 
         what = "queue(s)"
@@ -987,12 +988,12 @@ class Producer(QApp):
                     # saw key error in staging 2024-11-25:
                     if "messages_ready" not in q:
                         logger.info("%s: no messages_ready data", name)
-                        report_status("q-not-ready")
+                        # report_status called below
                         break
                     ready = q["messages_ready"]
                     logger.debug("%s: ready %d", name, ready)
                     if ready > max_queue:
-                        report_status("q-full")
+                        # report_status called below
                         break
             else:
                 # Here when all queues short enough
@@ -1009,17 +1010,18 @@ class Producer(QApp):
                     # more portable than os.statvfs!
                     usage = shutil.disk_usage("data")
                 except FileNotFoundError:
-                    report_status("no-data-usage")
+                    report_status("no-usage")
                     return
 
                 # percentage of blocks available to regular users
                 disk_percent_available = 100 * usage.free / usage.total
                 self.gauge("data-disk-free", disk_percent_available)
-                if disk_percent_available < min_disk_free:
-                    report_status("disk-space-low")
+                if disk_percent_available >= min_disk_free:
+                    report_status("ok")
                     return
                 what = "disk"
 
+            report_status(f"{what}-space-low")
             if self.args.loop:
                 logger.debug("sleeping until %s space available", what)
                 time.sleep(self.args.sleep)
