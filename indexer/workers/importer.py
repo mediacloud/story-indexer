@@ -71,12 +71,27 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             help="Disable output to archiver",
         )
 
+        # While it's wasteful to run importer processes that don't do
+        # importing, but it's a rare case (created for "offline"
+        # processing of historical data) and this was less invasive
+        # than altering the plumbing of the pipeline.
+        ap.add_argument(
+            "--no-import",
+            action="store_true",
+            default=False,
+            help="Disable importing!",
+        )
+
     def process_args(self) -> None:
         super().process_args()
         assert self.args
         logger.info(self.args)
 
         self.output_msgs = self.args.output_msgs
+        self.no_import = self.args.no_import
+
+        if not self.output_msgs and self.no_import:
+            logger.error("no output AND no import?!")
 
         index_template = self.load_index_template()
         if not index_template:
@@ -236,6 +251,11 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
 
         # url is for hashing, logging, and testing
         url: str = cast(str, data["url"])  # switch to typing.assert_type in py3.11
+
+        if self.no_import:
+            self.incr_stories("noimp", url)
+            return "success"  # so passed forward
+
         url_hash = unique_url_hash(url)
 
         try:

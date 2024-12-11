@@ -69,13 +69,14 @@ usage() {
     echo "  -u      allow running as non-root user"
     echo "  -Y HIST_YEAR"
     echo "          select year for historical pipeline"
+    echo "  -z      disable import!"
     exit 1
 }
 
 PIPELINE_TYPE=queue-fetcher	# default (2024-04-22)
 
 # if you add an option here, add to usage function above!!!
-while getopts B:abdhH:I:nO:T:uY: OPT; do
+while getopts B:abdhH:I:nO:T:uY:z OPT; do
    case "$OPT" in
    a) INDEXER_ALLOW_DIRTY=1;; # allow default from environment!
    b) BUILD_ONLY=1;;
@@ -88,6 +89,7 @@ while getopts B:abdhH:I:nO:T:uY: OPT; do
    T) PIPELINE_TYPE=$OPTARG;;
    u) AS_USER=1;;	# untested: _may_ work if user in docker group
    Y) HIST_YEAR=$OPTARG;;
+   z) NO_IMPORT=1;;
    ?) usage;;		# here on 'h' '?' or unhandled option
    esac
 done
@@ -294,6 +296,10 @@ csv)
     usage
     ;;
 esac
+
+if [ "x$NO_IMPORT" != x ]; then
+    IMPORTER_ARGS="$IMPORTER_ARGS --no-import"
+fi
 
 # If explicit input files supplied for "normal" (RSS/puller) pipeline,
 # change stack/stats prefix from empty to "rss-" to distinguish from
@@ -725,8 +731,10 @@ mv -f docker-compose.yml.new docker-compose.yml
 chmod -w docker-compose.yml
 
 echo "checking docker-compose.yml syntax" 1>&2
-rm -f docker-compose.yml.dump
-docker stack config -c docker-compose.yml > docker-compose.yml.dump
+# was .dump; save using TAG for reference
+DUMPFILE=docker-compose.yml.save-$TAG
+rm -f $DUMPFILE
+docker stack config -c docker-compose.yml > $DUMPFILE
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo "docker stack config status: $STATUS" 1>&2
@@ -738,7 +746,7 @@ if [ $STATUS != 0 ]; then
     fi
 else
     # maybe only keep if $DEBUG set??
-    echo "output (with merges expanded) in docker-compose.yml.dump" 1>&2
+    echo "output (with merges expanded) in $DUMPFILE" 1>&2
 fi
 
 # XXX check if on suitable server (right swarm?) for prod/staging??
@@ -830,7 +838,7 @@ if [ "x$BUILD_ONLY" != x ]; then
     exit 0
 fi
 
-# TEMP OFF (only run if repo not localhost?)
+# only needed if using multi-host swarm?
 echo docker compose push:
 docker compose push --quiet
 STATUS=$?
@@ -840,8 +848,9 @@ if [ $STATUS != 0 ]; then
 fi
 
 echo 'docker stack deploy (ignore "Ignoring unsupported options: build"):'
+# added explicit --detach to silence complaints
 # add --prune to remove old services?
-docker stack deploy -c docker-compose.yml $STACK_NAME
+docker stack deploy -c docker-compose.yml --detach $STACK_NAME
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo docker stack deploy failed: $STATUS 1>&2
