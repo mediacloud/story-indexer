@@ -731,8 +731,10 @@ mv -f docker-compose.yml.new docker-compose.yml
 chmod -w docker-compose.yml
 
 echo "checking docker-compose.yml syntax" 1>&2
-rm -f docker-compose.yml.dump
-docker stack config -c docker-compose.yml > docker-compose.yml.dump
+# was .dump; save using TAG for reference
+DUMPFILE=docker-compose.yml.save-$TAG
+rm -f $DUMPFILE
+docker stack config -c docker-compose.yml > $DUMPFILE
 STATUS=$?
 if [ $STATUS != 0 ]; then
     echo "docker stack config status: $STATUS" 1>&2
@@ -744,7 +746,7 @@ if [ $STATUS != 0 ]; then
     fi
 else
     # maybe only keep if $DEBUG set??
-    echo "output (with merges expanded) in docker-compose.yml.dump" 1>&2
+    echo "output (with merges expanded) in $DUMPFILE" 1>&2
 fi
 
 # XXX check if on suitable server (right swarm?) for prod/staging??
