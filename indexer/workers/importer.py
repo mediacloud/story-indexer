@@ -91,7 +91,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         self.no_import = self.args.no_import
 
         if not self.output_msgs and self.no_import:
-            logger.error("no output AND no import?!")
+            logger.warning("no output AND no import?!")
 
         index_template = self.load_index_template()
         if not index_template:
