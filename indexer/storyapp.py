@@ -165,6 +165,8 @@ class StoryMixin(AppProtocol):
             self.incr_stories("non-news", url)
             return False
 
+        # XXX check if looks like home page here?
+        # (would cover canonical_url extraction at extra cost)
         return True
 
 

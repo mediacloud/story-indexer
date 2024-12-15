@@ -138,7 +138,7 @@ class Parser(StoryWorker):
         copy extracted metadata dict to Story object
         """
         # XXX check for empty text_content?
-        # (will be discarded by importer)
+        # (will be quarantined by importer)
 
         cmd = story.content_metadata()
         with cmd:
@@ -146,7 +146,9 @@ class Parser(StoryWorker):
                 if hasattr(cmd, key):  # avoid hardwired exceptions
                     setattr(cmd, key, val)
 
-            # XXX full timestamp?!
+            # NOTE! Full timestamp: used for "indexed_date"
+            # (the best choice for query result pagination)
+            # so fine granularity is required!!
             cmd.parsed_date = dt.datetime.utcnow().isoformat()
 
         if (
@@ -155,6 +157,14 @@ class Parser(StoryWorker):
         ):
             return False  # logged and counted: discard
 
+        # XXX check if looks like a home page?  Doing check in
+        # StoryMixin.check_story_url would cover canonical_url, at the
+        # cost of an extra call to mcmetadata.urls.is_homepage_url
+        # but would mean just one place that does the check.
+        # An alternative would be to create a local function
+        # for the self.incr_stories("homepage") call, checking
+        # cmd.is_homepage at the top, and calling is_homepage_url
+        # after calling _check_canonical_url.
         return True
 
     def _check_is_html(self, story: BaseStory, data: str) -> bool:
