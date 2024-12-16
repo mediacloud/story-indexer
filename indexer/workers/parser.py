@@ -157,21 +157,19 @@ class Parser(StoryWorker):
         ):
             return False  # logged and counted: discard
 
-        # XXX check if looks like a home page?  Doing check in
-        # StoryMixin.check_story_url would cover canonical_url, at the
-        # cost of an extra call to mcmetadata.urls.is_homepage_url
-        # but would mean just one place that does the check.
-        # An alternative would be to create a local function
-        # for the self.incr_stories("homepage") call, checking
-        # cmd.is_homepage at the top, and calling is_homepage_url
-        # after calling _check_canonical_url.
+        # after _check_canonical_url
+        if cmd.is_homepage:
+            self.incr_stories("homepage", self._log_url(story))
+            return False
+
         return True
 
     def _check_is_html(self, story: BaseStory, data: str) -> bool:
         """
-        Here with story from Nov/Dec 2021, pulled from S3 without URL.
-        Try to detect feed documents; some can cause loooong parse times
-        (an hour!) causing RabbitMQ to close connection!
+        Here with stories from Nov/Dec 2021 and Mar/Apr 2022 pulled from
+        S3 without URL.  Try to detect feed documents; some can cause
+        loooong parse times (an hour!) causing RabbitMQ to close
+        connection!
 
         Returns False after counting and logging errors.
 
@@ -192,7 +190,8 @@ class Parser(StoryWorker):
             pp.feed(data)  # pass substring? (first 8K?)
             event, element = next(pp.read_events())
             tag = element.tag.lower()
-        except SyntaxError:  # xml.etree.ElementTree.ParseError is subclass
+        except (SyntaxError, StopIteration):
+            # xml.etree.ElementTree.ParseError is subclass of SyntaxError
             return True
 
         # use endswith to handle:
@@ -242,6 +241,8 @@ class Parser(StoryWorker):
 
             # Used to select sources/collections!!
             cmd.canonical_domain = mcmetadata.urls.canonical_domain(canonical_url)
+
+            cmd.is_homepage = mcmetadata.urls.is_homepage_url(canonical_url)
 
         logger.info("%s: canonical URL %s", log_url, canonical_url)
 
