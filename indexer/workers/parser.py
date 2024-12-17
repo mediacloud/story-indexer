@@ -138,7 +138,7 @@ class Parser(StoryWorker):
         copy extracted metadata dict to Story object
         """
         # XXX check for empty text_content?
-        # (will be discarded by importer)
+        # (will be quarantined by importer)
 
         cmd = story.content_metadata()
         with cmd:
@@ -146,7 +146,9 @@ class Parser(StoryWorker):
                 if hasattr(cmd, key):  # avoid hardwired exceptions
                     setattr(cmd, key, val)
 
-            # XXX full timestamp?!
+            # NOTE! Full timestamp: used for "indexed_date"
+            # (the best choice for query result pagination)
+            # so fine granularity is required!!
             cmd.parsed_date = dt.datetime.utcnow().isoformat()
 
         if (
@@ -155,13 +157,19 @@ class Parser(StoryWorker):
         ):
             return False  # logged and counted: discard
 
+        # after _check_canonical_url
+        if cmd.is_homepage:
+            self.incr_stories("homepage", self._log_url(story))
+            return False
+
         return True
 
     def _check_is_html(self, story: BaseStory, data: str) -> bool:
         """
-        Here with story from Nov/Dec 2021, pulled from S3 without URL.
-        Try to detect feed documents; some can cause loooong parse times
-        (an hour!) causing RabbitMQ to close connection!
+        Here with stories from Nov/Dec 2021 and Mar/Apr 2022 pulled from
+        S3 without URL.  Try to detect feed documents; some can cause
+        loooong parse times (an hour!) causing RabbitMQ to close
+        connection!
 
         Returns False after counting and logging errors.
 
@@ -182,7 +190,8 @@ class Parser(StoryWorker):
             pp.feed(data)  # pass substring? (first 8K?)
             event, element = next(pp.read_events())
             tag = element.tag.lower()
-        except SyntaxError:  # xml.etree.ElementTree.ParseError is subclass
+        except (SyntaxError, StopIteration):
+            # xml.etree.ElementTree.ParseError is subclass of SyntaxError
             return True
 
         # use endswith to handle:
@@ -232,6 +241,8 @@ class Parser(StoryWorker):
 
             # Used to select sources/collections!!
             cmd.canonical_domain = mcmetadata.urls.canonical_domain(canonical_url)
+
+            cmd.is_homepage = mcmetadata.urls.is_homepage_url(canonical_url)
 
         logger.info("%s: canonical URL %s", log_url, canonical_url)
 
