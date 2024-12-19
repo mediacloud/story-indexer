@@ -35,6 +35,11 @@ class CannotDecode(Exception):
 
 
 class Parser(StoryWorker):
+    def sentry_init(self) -> None:
+        super().sentry_init()
+        mcmetadata.sentry_ignore_loggers()
+        mcmetadata.ignore_loggers()  # or at top of this file?
+
     def _log_url(self, story: BaseStory) -> str:
         """
         return URL for logging

@@ -410,6 +410,12 @@ class App(AppProtocol):
         when overridden, call super().cleanup()
         """
 
+    def sentry_init(self) -> None:
+        """
+        override to make sentry calls after sentry.init
+        """
+        sentry.init()
+
     ################ main program
 
     def main(self) -> None:
@@ -418,7 +424,7 @@ class App(AppProtocol):
         self.args = ap.parse_args()
         self.process_args()
         self._stats_init()
-        sentry.init()
+        self.sentry_init()
 
         with self.timer("main_loop"):  # also serves as restart count
             try:
