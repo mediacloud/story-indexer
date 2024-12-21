@@ -103,7 +103,7 @@
           "hide": false,
           "refCount": -1,
           "refId": "A",
-          "target": "summarize(nonNegativeDerivative(stats.gauges.mc.prod.story-indexer.elastic-stats.all.primaries.docs.count), '1h', 'sum', false)",
+          "target": "sumSeries(summarize(nonNegativeDerivative(stats.gauges.mc.prod.story-indexer.elastic-stats.indices.indices.primaries.docs.count.name_mc_search*), '1h', 'sum', false))",
           "textEditor": false
         }
       ],
@@ -163,7 +163,7 @@
           {
             "evaluator": {
               "params": [
-                90000
+                175000
               ],
               "type": "gt"
             },
@@ -237,8 +237,8 @@
       "targets": [
         {
           "refId": "A",
-          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in, stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-delay)",
-          "textEditor": false
+          "target": "sumSeries(stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-in, stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-delay, stats.gauges.mc.prod.story-indexer.rabbitmq-stats.queues.ready.*-fast)",
+          "textEditor": true
         }
       ],
       "thresholds": [
@@ -247,7 +247,7 @@
           "fill": true,
           "line": true,
           "op": "gt",
-          "value": 90000
+          "value": 175000
         }
       ],
       "timeFrom": null,
@@ -398,7 +398,7 @@
           "refCount": 0,
           "refId": "A",
           "target": "stats.gauges.mc.prod.story-indexer.elastic-stats.indices.health.color_red",
-          "textEditor": false
+          "textEditor": true
         },
         {
           "refCount": 0,
@@ -619,5 +619,5 @@
   "timezone": "",
   "title": "story-indexer alerts",
   "uid": "hN1OxidSk",
-  "version": 15
+  "version": 19
 }
