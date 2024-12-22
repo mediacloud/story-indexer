@@ -111,6 +111,25 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                     labels=node_labels + [("name", breaker_name)],
                 )
 
+            os_data = node_data["os"]
+            cpu_data = os_data["cpu"]
+
+            cpu_pct = cpu_data["percent"]
+            self.g("node.os.cpu.percent", cpu_pct, labels=node_labels)
+
+            # report in old location too, for now
+            # (can be removed after one week in production)
+            self.g("cat.nodes.cpu", cpu_pct, labels=node_labels)
+
+            lavg = cpu_data["load_average"]
+            for m in (1, 5, 15):
+                value = lavg[f"{m}m"]
+                self.g(f"node.os.cpu.load_average.{m}m", value, labels=node_labels)
+
+                # report in old location too, for now
+                # (can be removed after one week in production)
+                self.g(f"cat.nodes.load_{m}m", value, labels=node_labels)
+
     def cluster_health(self) -> None:
         es = self.elasticsearch_client()
         cluster_health = cast(Dict[str, Any], es.cluster.health().raw)
@@ -149,33 +168,6 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
         ]:
             self.g(f"cluster.health.pending_tasks.{short}", cluster_health[attr])
 
-    def cat_nodes(self) -> None:
-        """
-        Docs say:
-
-        cat (Compact and aligned text) APIs are only intended for
-        human consumption using the Kibana console or command
-        line. They are not intended for use by applications. For
-        application consumption, we recommend using a corresponding
-        JSON API.
-
-        BUT I can't find the CPU/loadvg data elsewere, and while CPU% and
-        loadavg info is available on a per-server basis (by server name)
-        not by stack name / realm.
-        """
-
-        es = self.elasticsearch_client()
-        nodes = cast(list[dict[str, Any]], es.cat.nodes(format="json").raw)
-        keys = ["cpu", "load_1m", "load_5m", "load_15m"]
-        for node in nodes:
-            name = node["name"].split(".")[0]
-            labels = [("node", name)]
-            for key in keys:
-                try:
-                    self.g(f"cat.nodes.{key}", node[key], labels=labels)
-                except KeyError:
-                    pass
-
     def main_loop(self) -> None:
         while True:
             try:
@@ -192,11 +184,6 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 self.cluster_health()
             except (ConnectionError, ConnectionTimeout, KeyError) as e:
                 logger.warning("cluster.health: %r", e)
-
-            try:
-                self.cat_nodes()
-            except (ConnectionError, ConnectionTimeout, KeyError) as e:
-                logger.warning("cat.nodes: %r", e)
 
             # sleep until top of next period:
             self.interval_sleep()
