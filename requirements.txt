@@ -42,7 +42,7 @@ charset-normalizer==3.4.0
     #   htmldate
     #   requests
     #   trafilatura
-click==8.1.7
+click==8.1.8
     # via nltk
 constantly==23.10.4
     # via twisted
@@ -127,13 +127,13 @@ lxml==5.1.1
     #   readability-lxml
     #   scrapy
     #   trafilatura
-mediacloud-metadata==1.4.0
+mediacloud-metadata==1.4.1
     # via story-indexer (pyproject.toml)
 newspaper3k==0.2.8
     # via mediacloud-metadata
 nltk==3.9.1
     # via newspaper3k
-numpy==2.2.0
+numpy==2.2.1
     # via py3langid
 orderedmultidict==1.0.1
     # via furl
