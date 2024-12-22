@@ -14,6 +14,7 @@ import sys
 from logging import getLogger
 from types import FrameType
 from typing import Callable, List, Optional, cast
+from urllib.parse import urlparse
 
 # PyPI
 from pika import BasicProperties
@@ -39,10 +40,40 @@ def command(func: CommandMethod) -> CommandMethod:
     return func
 
 
+def check_domains(url: Optional[str], domains: List[str]) -> bool:
+    """
+    return True, if, and only if url hostname is in one of domains
+    """
+    if not url:
+        return False  # not a reason to eliminate
+
+    try:
+        u = urlparse(url)
+        if not u.hostname:
+            return False
+    except ValueError:
+        return False
+
+    for domain in domains:
+        if u.hostname == domain or u.hostname.endswith("." + domain):
+            return True
+    return False
+
+
 class QUtil(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("--max", type=int, help="max items to process")
+        ap.add_argument(
+            "--ignore-domain", help="domain names to NOT load", action="append"
+        )
+        # XXX add --only-domain (allow multiple) for filtering?? mutually exclusive with --ignore-domain!!
+        ap.add_argument(
+            "--really-queue",
+            help="actually queue stories when loading",
+            action="store_true",
+            default=False,
+        )
 
         ap.add_argument(
             "command",
@@ -96,8 +127,11 @@ class QUtil(QApp):
                     work_dir=".",
                 )
 
-            # XXX just save headers that start with "x-mc-"?
-            extras = {"rabbitmq_headers": properties.headers}
+            # only save headers that start with "x-mc-"
+            # (broker x-death contains list of dicts which contains a datetime value)
+            headers = properties.headers or {}
+            mc_headers = {k: v for k, v in headers.items() if k.startswith("x-mc-")}
+            extras = {"rabbitmq_headers": mc_headers}
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
@@ -159,6 +193,27 @@ class QUtil(QApp):
             descr = self.get_command_func(cmd).__doc__
             print(f"{cmd:16.16} {descr}")
 
+    def check_url_domains(self, story: BaseStory) -> bool:
+        """
+        look for forbidden domains in all the places they might be hiding
+
+        """
+        assert self.args
+
+        # XXX Maybe also implement "only_domains" check??
+
+        # discrete statements (not single expression with and) for debug:
+        if check_domains(story.rss_entry().link, self.args.ignore_domain):
+            return False
+
+        if check_domains(story.http_metadata().final_url, self.args.ignore_domain):
+            return False
+
+        if check_domains(story.content_metadata().url, self.args.ignore_domain):
+            return False
+
+        return True
+
     @command
     def load_archives(self) -> None:
         """load archive files into queue"""
@@ -179,15 +234,24 @@ class QUtil(QApp):
             logger.error("need input files")
             return
 
+        if not self.args.really_queue:
+            logger.warning("NOTE! give --queue option to actually queue stories!")
+
         for fname in input_files:
             logger.info("reading archive %s", fname)
             with open(fname, "rb") as f:
                 reader = StoryArchiveReader(f)
-                count = 0
+                read = queued = 0
                 for story in reader.read_stories():
-                    sender.send_story(story, exchange, routing_key)
-                    count += 1
-                logger.info("read %d stories", count)
+                    read += 1
+                    if self.args.really_queue:
+                        if self.args.ignore_domain and not self.check_url_domains(
+                            story
+                        ):
+                            continue
+                        sender.send_story(story, exchange, routing_key)
+                        queued += 1
+                logger.info("read %d stories, queued %d", read, queued)
 
     @command
     def purge(self) -> None:
