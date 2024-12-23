@@ -524,7 +524,7 @@ class QApp(App):
             dest = routing_key  # using default exchange
         self.incr("sent-msgs", labels=[("dest", dest)])
 
-    def admin_api(self) -> rabbitmq_admin.AdminAPI:  # type: ignore[no-any-unimported]
+    def admin_api(self) -> rabbitmq_admin.AdminAPI:
         args = self.args
         assert args
 
@@ -752,7 +752,7 @@ class Worker(QApp):
         # AFTER basic_ack!
         chan.tx_commit()  # commit sent messages and ack atomically!
 
-    def _exc_headers(self, e: Exception) -> Dict:
+    def _exc_headers(self, e: Exception) -> Dict[str, str]:
         """
         return dict of headers to add to a message
         after an exception was caught
