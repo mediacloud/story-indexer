@@ -212,6 +212,17 @@ class Queuer(ShufflingStoryProducer):
         args = self.args
         assert args
 
+        if fname[0] == "@":
+            # implement "indirect file" (file containing file names)
+            # NOTE! paths read from indirect files are NOT interpreted
+            # as relative to the path of the indirect file.
+            logger.info("indirect file %s", fname)
+
+            f = self.open_file(fname[1:])
+            for line in f:
+                self.maybe_process_file(line.decode().rstrip())
+            return
+
         if args.test:
             logger.info("maybe_process_file %s", fname)
             return
