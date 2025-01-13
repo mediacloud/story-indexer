@@ -25,48 +25,39 @@ with some available from B2 as well (may be cheaper to fetch from B2).
 
 2. From RSS files blindly extracted from S3 (ignoring the HTML files!) into CSV files of URLs
 
-================ index mc_search-00002 created 2024-03-24T01:07:19.076Z
+Stories in index mc_search-00002 and mc_search-00003
 
 All files on S3, some on B2 (starting 2024/05/31)
 
 arch prefix     start           end             archives
-mccsv           2024/05/22 -> 2024/06/22        S3/(B2)
-mc[rss]         2024/05/27 -> 2024/06/22        S3/(B2) [1]
+mccsv           2024/05/22 -> 2024/06/27        S3/(B2)
+mc(rss)         2024/05/27 -> 2024/06/20        S3/(B2) [1]
+mcrss           2024/06/20 -> 2024/08/16        S3/B2
 
 (B2) means some of the date range on B2
 
-[1] files named mcrss- start 2024/06/20.
-    files written from 2024/05/27 thru 2024/06/20 start with mc-
-    (see below):
+[1] initial WARC files from RSS files written from 2024/05/27 thru
+    2024/06/20 start with mc- (see below):
 
     THESE SHOULD BE VERIFIED!!! The "via" field in the metadata
     should indicate how the URL was obtained!
 
     dates                   container name (in WARC filename)
-    2024/05/27-2024/05/28   cf94b52abe5a
-    2024/05/29-2024/06/04   cefd3fdce464
-    2024/06/05              0c501ed61cf4
-    2024/06/05              446d55936e82
+    2024/05/27-2024/05/28   cf94b52abe5a        S3 [154 files]
+    2024/05/29-2024/06/04   cefd3fdce464        S3 [882 files]
+    2024/06/05              0c501ed61cf4        S3 & B2 [497 files]
+    2024/06/05              446d55936e82        S3 & B2 [27 files]
     2024/06/05              cefd3fdce464
     2024/06/06-2024/06/09   0c501ed61cf4
-    2024/06/09              7e1b47c305f1
+    2024/06/09              7e1b47c305f1        S3 & B2 [1 file]
     2024/06/11-2024/06/20   6c55aaf9daaa
-
-================ mc_search-000003 created 2024-06-22T01:09:36.337Z
-
-arch prefix     start           end             archives
-mccsv           2024/06/22 -> 2024/06/27        S3/(B2)
-mcrss           2024/06/22 -> 2024/08/16        S3/(B2)
-
-(B2) means some of the date range on B2
-(S3) means some of the date range on S3
 
 ================
 
 This is based on the "Queuer" class, which reads both local and remote
 input files, and keeps track of which files have been processed.
 
-No queues are involved, so this code should be runnable outside of Docker.
+No queues are involved (provide any value for --rabbitmq-url or RABBITMQ_URL)
 
 The "tracker" uses SQLite3 (**), and should be multi-process safe,
 although this application may experience more contention (SQLite3 does
