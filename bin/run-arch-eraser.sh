@@ -24,7 +24,7 @@ increment_date() {
     esac
 }
 
-if [ $# -ne 3 ]; then
+if [ $# -lt 3 ]; then
     echo "Usage: $0 [start_date] [end_date] [pattern]" >&2
     exit 1
 fi
@@ -32,6 +32,8 @@ fi
 start_date="$1"
 end_date="$2"
 pattern="$3"
+shift 3
+other_params="$*"
 
 if ! is_valid_date "$start_date" || ! is_valid_date "$end_date"; then
     echo "Error: Invalid date format. Use YYYY/MM/DD" >&2
@@ -50,7 +52,7 @@ convert_date_to_int() {
     fi
 }
 
-output_string="--rabbitmq-url='-' "
+output_string=""
 start_date_int=$(convert_date_to_int "$start_date")
 end_date_int=$(convert_date_to_int "$end_date")
 
@@ -61,4 +63,4 @@ while [ "$start_date_int" -le "$end_date_int" ]; do
     start_date_int=$(convert_date_to_int "$start_date")
 done
 
-run_python indexer.scripts.arch-eraser $output_string
+run_python indexer.scripts.arch-eraser ${output_string} ${other_params}
