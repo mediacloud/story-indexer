@@ -75,21 +75,33 @@ file (or files), and use the "indirect file" feature in the queuer
 to read the files of URLs.
 """
 
+import argparse
 import logging
-from typing import BinaryIO
+import time
+from typing import BinaryIO, List, Optional
 
+from elasticsearch import Elasticsearch
+
+from indexer.elastic import ElasticMixin
 from indexer.queuer import Queuer
 from indexer.story_archive_writer import StoryArchiveReader
 
 logger = logging.getLogger("arch-eraser")
 
 
-class ArchEraser(Queuer):
+class ArchEraser(ElasticMixin, Queuer):
     APP_BLOBSTORE = "HIST"  # first choice for blobstore conf vars
     HANDLE_GZIP = False  # StoryArchiveReader handles compression
 
     # don't want to talk to RabbitMQ, but too much work
     # to refactor Queuer into a FileProcessor add-in
+
+    def __init__(self, process_name: str, descr: str):
+        super().__init__(process_name, descr)
+        self.is_batch_delete: bool = False
+        self.keep_alive: str = ""
+        self.fetch_batch_size: Optional[int] = None
+        self.indices: str = ""
 
     def qconnect(self) -> None:
         return
@@ -97,21 +109,117 @@ class ArchEraser(Queuer):
     def check_output_queues(self) -> None:
         return
 
+    def define_options(self, ap: argparse.ArgumentParser) -> None:
+        super().define_options(ap)
+        ap.add_argument(
+            "--fetch-batch-size",
+            dest="fetch_batch_size",
+            type=int,
+            default=1000,
+            help="The number of documents to fetch from Elasticsearch in each batch (default: 1000)",
+        )
+        ap.add_argument(
+            "--indices",
+            dest="indices",
+            help="The name of the Elasticsearch indices to delete",
+        )
+        ap.add_argument(
+            "--keep-alive",
+            dest="keep_alive",
+            default="1m",
+            help="How long should Elasticsearch keep the PIT alive e.g. 1m -> 1 minute",
+        )
+        ap.add_argument(
+            "--batch-delete",
+            dest="is_batch_delete",
+            action="store_true",
+            default=False,
+            help="Enable batch deletion of documents (default: False)",
+        )
+
+    def process_args(self) -> None:
+        """
+        Process command line arguments and set instance variables.
+        """
+        super().process_args()
+        assert self.args
+        self.fetch_batch_size = self.args.fetch_batch_size
+        self.indices = self.args.indices
+        self.keep_alive = self.args.keep_alive
+        self.is_batch_delete = self.args.is_batch_delete
+
+    def delete_documents(self, urls: List[Optional[str]]) -> None:
+        es = self.elasticsearch_client()
+        pit_id = None
+        total_deleted = 0
+        try:
+            pit_id = es.open_point_in_time(
+                index=self.indices, keep_alive=self.keep_alive
+            ).get("id")
+            logger.info("Opened Point-in-Time with ID %s", pit_id)
+            query = {
+                "size": self.fetch_batch_size,
+                "query": {"terms": {"original_url": urls}},
+                "pit": {"id": pit_id, "keep_alive": self.keep_alive},
+                "sort": [{"_doc": "asc"}],
+            }
+            search_after = None
+            while True:
+                if search_after:
+                    query["search_after"] = search_after
+                # Fetch the next batch of documents
+                response = es.search(body=query)
+                hits = response["hits"]["hits"]
+                # Each result will return a PIT ID which may change, thus we just need to update it
+                pit_id = response.get("pit_id")
+                if not hits:
+                    break
+                bulk_actions = []
+                for hit in hits:
+                    document_index = hit["_index"]
+                    document_id = hit["_id"]
+                    if self.is_batch_delete:
+                        bulk_actions.append(
+                            {"delete": {"_index": document_index, "_id": document_id}}
+                        )
+                    else:
+                        es.delete(index=document_index, id=document_id)
+                        total_deleted += 1
+                if bulk_actions:
+                    es.bulk(index=self.indices, body=bulk_actions)
+                    total_deleted += len(bulk_actions)
+                search_after = hits[-1]["sort"]
+        except Exception as e:
+            logger.exception(e)
+        finally:
+            if total_deleted != len(urls):
+                logger.warning(
+                    f"Mismatch in document deletion count: [{total_deleted}] deleted out of [{len(urls)}] expected."
+                )
+            else:
+                logger.info(f"Deleted [{total_deleted}/{len(urls)}] documents.")
+            if isinstance(es, Elasticsearch) and pit_id:
+                response = es.close_point_in_time(id=pit_id)
+                if response.get("succeeded"):
+                    logger.info("Successfully closed Point-in-Time with ID %s", pit_id)
+
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         assert self.args
-
         logger.info("process_file %s", fname)
-
         # it may be possible to make this faster by NOT using
         # StoryArchiveReader and warcio, but it came for "free":
         reader = StoryArchiveReader(fobj)
         urls = []
         for story in reader.read_stories():
             urls.append(story.content_metadata().url)
-
         logger.info("collected %d urls from %s", len(urls), fname)
         if not self.args.dry_run:
             logger.warning("delete %d urls from %s here!", len(urls), fname)
+            start_time = time.time()
+            self.delete_documents(urls)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"Time taken: {elapsed_time:.2f} seconds")
 
 
 if __name__ == "__main__":
