@@ -66,7 +66,7 @@ class ElasticMixin(AppProtocol):
         if not self.elasticsearch_hosts:
             logger.fatal("need --elasticsearch-hosts or ELASTICSEARCH_HOSTS")
             sys.exit(1)
-        print(self.elasticsearch_hosts)
+
         # Connects immediately, performs failover and retries
         return Elasticsearch(
             self.elasticsearch_hosts.split(","), opaque_id=self.opaque_id
