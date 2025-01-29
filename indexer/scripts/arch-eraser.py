@@ -77,7 +77,6 @@ to read the files of URLs.
 
 import argparse
 import logging
-import time
 from typing import BinaryIO, List, Optional
 
 from elasticsearch import Elasticsearch
@@ -215,11 +214,6 @@ class ArchEraser(ElasticMixin, Queuer):
         logger.info("collected %d urls from %s", len(urls), fname)
         if not self.args.dry_run:
             logger.warning("delete %d urls from %s here!", len(urls), fname)
-            start_time = time.time()
-            self.delete_documents(urls)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            print(f"Time taken: {elapsed_time:.2f} seconds")
 
 
 if __name__ == "__main__":
