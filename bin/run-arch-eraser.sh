@@ -58,7 +58,6 @@ print_erase_help(){
 }
 
 print_generate_erase_list_help(){
-    echo "Usage: $0 --generate-erase-list [start_date] [end_date] [pattern] --output-file=[path]" >&2
     echo "Usage: $0 --generate-erase-list <start_date> <end_date> <pattern> --output-file=<path>"
     echo ""
     echo "Description:"
@@ -91,8 +90,6 @@ print_help(){
     exit 0
 }
 
-# Handle help flag
-# Handle help flag
 # Handle help flag
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     if [ "$2" = "--generate-erase-list" ]; then
@@ -151,5 +148,4 @@ else
    echo "Error: Invalid argument. The first argument must be either '--help', '-h', '--generate-erase-list', or '--erase'" >&2
    exit 1
 fi
-echo  ${output_string} ${other_params}
 run_python indexer.scripts.arch-eraser ${output_string} ${other_params} "--rabbitmq-url='-'"
