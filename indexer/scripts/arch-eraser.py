@@ -77,6 +77,7 @@ to read the files of URLs.
 
 import argparse
 import logging
+import time
 from typing import BinaryIO, List, Optional
 
 from elasticsearch import Elasticsearch
@@ -204,6 +205,7 @@ class ArchEraser(ElasticMixin, Queuer):
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         assert self.args
+        print(self.args)
         logger.info("process_file %s", fname)
         # it may be possible to make this faster by NOT using
         # StoryArchiveReader and warcio, but it came for "free":
@@ -213,7 +215,12 @@ class ArchEraser(ElasticMixin, Queuer):
             urls.append(story.content_metadata().url)
         logger.info("collected %d urls from %s", len(urls), fname)
         if not self.args.dry_run:
-            logger.warning("delete %d urls from %s here!", len(urls), fname)
+            logger.warning("deleting %d urls from %s here!", len(urls), fname)
+            start_time = time.time()
+            self.delete_documents(urls)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"Time taken: {elapsed_time:.2f} seconds")
 
 
 if __name__ == "__main__":
