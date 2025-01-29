@@ -148,7 +148,7 @@ elif [ "$action" = "--erase" ]; then
    shift 2
    other_params="$*"
 else
-   echo "Error: Invalid argument. The first argument must be either '--generate-erase-list' or '--erase'" >&2
+   echo "Error: Invalid argument. The first argument must be either '--help', '-h', '--generate-erase-list', or '--erase'" >&2
    exit 1
 fi
 echo  ${output_string} ${other_params}

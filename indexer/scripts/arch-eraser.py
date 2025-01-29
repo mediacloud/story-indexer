@@ -194,10 +194,14 @@ class ArchEraser(ElasticMixin, Queuer):
         finally:
             if total_deleted != len(urls):
                 logger.warning(
-                    f"Mismatch in document deletion count: [{total_deleted}] deleted out of [{len(urls)}] expected."
+                    "Mismatch in document deletion count: [%s] deleted out of [%s] expected.",
+                    total_deleted,
+                    len(urls),
                 )
             else:
-                logger.info(f"Deleted [{total_deleted}/{len(urls)}] documents.")
+                logger.info(
+                    "Deleted [%s] out of [%s] documents.", total_deleted, len(urls)
+                )
             if isinstance(es, Elasticsearch) and pit_id:
                 response = es.close_point_in_time(id=pit_id)
                 if response.get("succeeded"):
@@ -205,7 +209,6 @@ class ArchEraser(ElasticMixin, Queuer):
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         assert self.args
-        print(self.args)
         logger.info("process_file %s", fname)
         # it may be possible to make this faster by NOT using
         # StoryArchiveReader and warcio, but it came for "free":
@@ -220,7 +223,7 @@ class ArchEraser(ElasticMixin, Queuer):
             self.delete_documents(urls)
             end_time = time.time()
             elapsed_time = end_time - start_time
-            print(f"Time taken: {elapsed_time:.2f} seconds")
+            logger.info("Time taken: %.2f seconds", elapsed_time)
 
 
 if __name__ == "__main__":
