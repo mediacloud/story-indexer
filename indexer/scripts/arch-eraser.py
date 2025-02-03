@@ -209,6 +209,7 @@ class ArchEraser(ElasticMixin, Queuer):
                             "Waiting %0.2f seconds before deleting the next document...",
                             delay,
                         )
+                        time.sleep(delay)
                 if bulk_actions:
                     es.bulk(index=self.indices, body=bulk_actions)
                     total_deleted += len(bulk_actions)
@@ -221,16 +222,16 @@ class ArchEraser(ElasticMixin, Queuer):
         except Exception as e:
             logger.exception(e)
         finally:
-            if total_deleted != len(urls):
-                logger.warning(
-                    "Mismatch in document deletion count: [%s] deleted out of [%s] expected.",
-                    total_deleted,
-                    len(urls),
-                )
-            else:
-                logger.info(
-                    "Deleted [%s] out of [%s] documents.", total_deleted, len(urls)
-                )
+            log_level = logging.INFO
+            total_urls = len(urls)
+            if total_deleted != total_urls:
+                log_level = logging.WARNING
+            logger.log(
+                log_level,
+                "Deleted [%s] out of [%s] documents.",
+                total_deleted,
+                total_urls,
+            )
             if isinstance(es, Elasticsearch) and pit_id:
                 response = es.close_point_in_time(id=pit_id)
                 if response.get("succeeded"):

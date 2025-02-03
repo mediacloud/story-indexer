@@ -28,7 +28,8 @@ import os
 import sys
 import tempfile
 from contextlib import nullcontext
-from typing import BinaryIO, cast, ContextManager, Optional, TextIO
+from io import TextIOWrapper
+from typing import BinaryIO, TextIO, Union, cast
 
 import requests
 
@@ -191,17 +192,16 @@ class Queuer(ShufflingStoryProducer):
                     # more likely a queuer might actually need
                     # multiple keys (eg; reading CSVs from one bucket
                     # that reference objects in another bucket).
-                    assert self.args
-                    output_file: Optional[str] = self.args.output_file
-                    context: ContextManager[Optional[object]] = nullcontext()
-                    with (
-                        open(output_file, "a")
-                        if output_file
-                        else context
-                    ) as file:
+
+                    if self.args and self.args.output_file:
+                        output_file: Union[TextIO, nullcontext] = open(
+                            self.args.output_file, "a"
+                        )
+                    else:
+                        output_file = nullcontext()
+                    with output_file as file:
                         for key in sorted(bs.list_objects(prefix), reverse=True):
-                            if output_file:
-                                assert isinstance(file, io.TextIOWrapper)
+                            if isinstance(file, TextIOWrapper):
                                 file.write(f"{scheme}://{bs.bucket}/{key}\n")
                             self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
                     break  # found working config: for store .... loop
