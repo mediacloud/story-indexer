@@ -144,14 +144,14 @@ class ArchEraser(ElasticMixin, Queuer):
             dest="min_delay",
             type=int,
             default=0.5,
-            help="The minimum time to wait between delete operations (default: 0.1 seconds)",
+            help="The minimum time to wait between delete operations (default: 0.5 seconds)",
         )
         ap.add_argument(
             "--max-delay",
             dest="max_delay",
             type=int,
             default=3.0,
-            help="The maximum time to wait between delete operations (default: 0.5 seconds)",
+            help="The maximum time to wait between delete operations (default: 3.0 seconds)",
         )
 
     def process_args(self) -> None:
