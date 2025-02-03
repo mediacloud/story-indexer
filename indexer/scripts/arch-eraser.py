@@ -77,6 +77,7 @@ to read the files of URLs.
 
 import argparse
 import logging
+import random
 import time
 from typing import BinaryIO, List, Optional
 
@@ -102,6 +103,8 @@ class ArchEraser(ElasticMixin, Queuer):
         self.keep_alive: str = ""
         self.fetch_batch_size: Optional[int] = None
         self.indices: str = ""
+        self.min_delay: float = 0
+        self.max_delay: float = 0
 
     def qconnect(self) -> None:
         return
@@ -136,6 +139,20 @@ class ArchEraser(ElasticMixin, Queuer):
             default=False,
             help="Enable batch deletion of documents (default: False)",
         )
+        ap.add_argument(
+            "--min-delay",
+            dest="min_delay",
+            type=int,
+            default=0.5,
+            help="The minimum time to wait between delete operations (default: 0.1 seconds)",
+        )
+        ap.add_argument(
+            "--max-delay",
+            dest="max_delay",
+            type=int,
+            default=3.0,
+            help="The maximum time to wait between delete operations (default: 0.5 seconds)",
+        )
 
     def process_args(self) -> None:
         """
@@ -147,6 +164,8 @@ class ArchEraser(ElasticMixin, Queuer):
         self.indices = self.args.indices
         self.keep_alive = self.args.keep_alive
         self.is_batch_delete = self.args.is_batch_delete
+        self.min_delay = self.args.min_delay
+        self.max_delay = self.args.max_delay
 
     def delete_documents(self, urls: List[Optional[str]]) -> None:
         es = self.elasticsearch_client()
@@ -185,9 +204,19 @@ class ArchEraser(ElasticMixin, Queuer):
                     else:
                         es.delete(index=document_index, id=document_id)
                         total_deleted += 1
+                        delay = random.uniform(self.min_delay, self.max_delay)
+                        logger.info(
+                            "Waiting %0.2f seconds before deleting the next document...",
+                            delay,
+                        )
                 if bulk_actions:
                     es.bulk(index=self.indices, body=bulk_actions)
                     total_deleted += len(bulk_actions)
+                    delay = random.uniform(self.min_delay, self.max_delay)
+                    logger.info(
+                        "Waiting %0.2f seconds before deleting the next batch...", delay
+                    )
+                    time.sleep(delay)
                 search_after = hits[-1]["sort"]
         except Exception as e:
             logger.exception(e)
