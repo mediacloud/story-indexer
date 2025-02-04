@@ -1,6 +1,7 @@
 #!/bin/sh
 
-. bin/func.sh
+SCRIPT_DIR="$(dirname "$0")"
+. "$SCRIPT_DIR/func.sh"
 
 is_valid_date() {
     case "$1" in
@@ -36,46 +37,52 @@ convert_date_to_int() {
 }
 
 print_erase_help(){
-    echo "Usage: $0 --erase <input_file_path> --elasticsearch-hosts=<host> --indices=<index1,index2,...>"
-    echo ""
-    echo "Description:"
-    echo " Removes documents from Elasticsearch based on URLs provided from an input file"
-    echo ""
-    echo "Options:"
-    echo "  --erase <input_file_path>       Path to the input file containing records to delete. This supports path to remote store i.e. S3,or B2, local file or a file containing a list URLs to delete (must start with @ to specify that it's an indirect file)"
-    echo "  --elasticsearch-hosts=<host>    Comma-separated list of Elasticsearch hosts (e.g., http://localhost:9200)."
-    echo "  --indices=<index1,index2,...>   Comma-separated list of indices to target in Elasticsearch."
     echo ""
     echo ""
-    echo "Optional:"
-    echo "  --batch-delete                  Perform batch deletions in Elasticsearch instead of single requests (default: False)."
-    echo "  --fetch-batch-size=<size>       Number of records to fetch in each batch for deletion (default: 1000)."
-    echo "  --dry-run                       Simulate the operation without making changes to Elasticsearch."
+    echo "--erase"
     echo ""
-    echo "Example:"
-    echo "  $0 --erase @arch-eraser/output.txt --elasticsearch-hosts=http://localhost:9200 --indices=index1,index2 --batch-delete --fetch-batch-size=5000 --dry-run"
-    exit 1
+    echo " Usage: $0 --erase <input_file_path> --elasticsearch-hosts=<host> --indices=<index1,index2,...>"
+    echo ""
+    echo " Description:"
+    echo "  Removes documents from Elasticsearch based on URLs provided from an input file"
+    echo ""
+    echo " Options:"
+    echo "   --erase <input_file_path>       Path to the input file containing records to delete. This supports path to remote store i.e. S3,or B2, local file, and indirect files)"
+    echo "   --elasticsearch-hosts=<host>    Comma-separated list of Elasticsearch hosts (e.g., http://localhost:9200)."
+    echo "   --indices=<index1,index2,...>   Comma-separated list of indices to target in Elasticsearch."
+    echo ""
+    echo ""
+    echo " Optional:"
+    echo "   --batch-delete                  Perform batch deletions in Elasticsearch instead of single requests (default: False)."
+    echo "   --fetch-batch-size=<size>       Number of records to fetch in each batch for deletion (default: 1000)."
+    echo "   --dry-run                       Simulate the operation without making changes to Elasticsearch."
+    echo ""
+    echo " Example:"
+    echo "   $0 --erase @arch-eraser/output.txt --elasticsearch-hosts=http://localhost:9200 --indices=index1,index2 --batch-delete --fetch-batch-size=5000 --dry-run"
 }
 
 print_generate_erase_list_help(){
-    echo "Usage: $0 --generate-erase-list <start_date> <end_date> <pattern> --output-file=<path>"
     echo ""
-    echo "Description:"
-    echo "  Generates a list of records to be erased based on the specified date range and pattern."
     echo ""
-    echo "Arguments:"
-    echo "  <start_date>                    Start date for filtering records (format: YYYY/MM/DD)."
-    echo "  <end_date>                      End date for filtering records (format: YYYY/MM/DD)."
-    echo "  <pattern>                       String pattern used to construct file paths (e.g., 'b2://archives/{pattern}/mchist2022')"
-    echo "  --output-file=<path>            Path to save the generated erase list."
+    echo "--generate-erase-list"
     echo ""
-    echo "Requirements:"
-    echo "  - The start and end dates must be in the format YYYY/MM/DD."
-    echo "  - The --output-file argument is required and must specify a valid path."
+    echo " Usage: $0 --generate-erase-list <start_date> <end_date> <pattern> --output-file=<path>"
     echo ""
-    echo "Example:"
-    echo "  $0 --generate-erase-list 2024/12/15 2024/12/31 'b2://archives/{pattern}/mchist2022' --output-file=arch-eraser/erase-list.txt"
-    exit 1
+    echo " Description:"
+    echo "   Generates a list of records to be erased based on the specified date range and pattern."
+    echo ""
+    echo " Arguments:"
+    echo "   <start_date>                    Start date for filtering records (format: YYYY/MM/DD)."
+    echo "   <end_date>                      End date for filtering records (format: YYYY/MM/DD)."
+    echo "   <pattern>                       String pattern used to construct file paths (e.g., 'b2://archives/{pattern}/mchist2022')"
+    echo "   --output-file=<path>            Path to save the generated erase list."
+    echo ""
+    echo " Requirements:"
+    echo "   - The start and end dates must be in the format YYYY/MM/DD."
+    echo "   - The --output-file argument is required and must specify a valid path."
+    echo ""
+    echo " Example:"
+    echo "   $0 --generate-erase-list 2024/12/15 2024/12/31 'b2://archives/{pattern}/mchist2022' --output-file=arch-eraser/erase-list.txt"
 }
 
 print_help(){
@@ -85,20 +92,13 @@ print_help(){
     echo "  --generate-erase-list           Generates an erase list based on date range and pattern."
     echo "  --erase                         Deletes records from Elasticsearch."
     echo "  -h, --help                      Show this help message."
-    echo "  -h --generate-erase-list        Show help for the --generate-erase-list action."
-    echo "  -h --erase                      Show help for the --erase action."
-    exit 0
 }
 
 # Handle help flag
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    if [ "$2" = "--generate-erase-list" ]; then
-        print_generate_erase_list_help
-    elif [ "$2" = "--erase" ]; then
-        print_erase_help
-    else
-        print_help
-    fi
+    print_help
+    print_generate_erase_list_help
+    print_erase_help
     exit 0
 fi
 

@@ -14,5 +14,3 @@ docker/deploy.log
 docker/docker-compose.yml
 docker/docker-compose.yml.dump
 docker/docker-compose.yml.save-*
-*.sqlite3
-arch-eraser/*
