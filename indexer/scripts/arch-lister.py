@@ -77,20 +77,24 @@ to read the files of URLs.
 
 import argparse
 import logging
+import os
 import random
 import time
-from typing import BinaryIO, List, Optional
+from contextlib import nullcontext
+from io import TextIOWrapper
+from typing import BinaryIO, List, Optional, TextIO, Union
 
 from elasticsearch import Elasticsearch
 
 from indexer.elastic import ElasticMixin
+from indexer.path import app_data_dir
 from indexer.queuer import Queuer
 from indexer.story_archive_writer import StoryArchiveReader
 
 logger = logging.getLogger("arch-eraser")
 
 
-class ArchEraser(ElasticMixin, Queuer):
+class ArchLister(ElasticMixin, Queuer):
     APP_BLOBSTORE = "HIST"  # first choice for blobstore conf vars
     HANDLE_GZIP = False  # StoryArchiveReader handles compression
 
@@ -105,6 +109,10 @@ class ArchEraser(ElasticMixin, Queuer):
         self.indices: str = ""
         self.min_delay: float = 0
         self.max_delay: float = 0
+        self.url_output_dir = app_data_dir(os.path.join(self.process_name, "url_list"))
+        self.warc_output_dir = app_data_dir(
+            os.path.join(self.process_name, "warc_list")
+        )
 
     def qconnect(self) -> None:
         return
@@ -115,43 +123,15 @@ class ArchEraser(ElasticMixin, Queuer):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--fetch-batch-size",
-            dest="fetch_batch_size",
-            type=int,
-            default=1000,
-            help="The number of documents to fetch from Elasticsearch in each batch (default: 1000)",
+            "-o",
+            dest="output_file",
+            help="The path to the output file where the archive list will be written",
         )
         ap.add_argument(
-            "--indices",
-            dest="indices",
-            help="The name of the Elasticsearch indices to delete",
-        )
-        ap.add_argument(
-            "--keep-alive",
-            dest="keep_alive",
-            default="1m",
-            help="How long should Elasticsearch keep the PIT alive e.g. 1m -> 1 minute",
-        )
-        ap.add_argument(
-            "--batch-delete",
-            dest="is_batch_delete",
+            "-w",
+            dest="list_warc_files_only",
             action="store_true",
-            default=False,
-            help="Enable batch deletion of documents (default: False)",
-        )
-        ap.add_argument(
-            "--min-delay",
-            dest="min_delay",
-            type=int,
-            default=0.5,
-            help="The minimum time to wait between delete operations (default: 0.5 seconds)",
-        )
-        ap.add_argument(
-            "--max-delay",
-            dest="max_delay",
-            type=int,
-            default=3.0,
-            help="The maximum time to wait between delete operations (default: 3.0 seconds)",
+            help="Write list of discovered WARC files to the specified output file (-o) without processing their contents.",
         )
 
     def process_args(self) -> None:
@@ -160,12 +140,6 @@ class ArchEraser(ElasticMixin, Queuer):
         """
         super().process_args()
         assert self.args
-        self.fetch_batch_size = self.args.fetch_batch_size
-        self.indices = self.args.indices
-        self.keep_alive = self.args.keep_alive
-        self.is_batch_delete = self.args.is_batch_delete
-        self.min_delay = self.args.min_delay
-        self.max_delay = self.args.max_delay
 
     def delete_documents(self, urls: List[Optional[str]]) -> None:
         es = self.elasticsearch_client()
@@ -248,14 +222,50 @@ class ArchEraser(ElasticMixin, Queuer):
             urls.append(story.content_metadata().url)
         logger.info("collected %d urls from %s", len(urls), fname)
         if not self.args.dry_run:
-            logger.warning("deleting %d urls from %s here!", len(urls), fname)
-            start_time = time.time()
-            self.delete_documents(urls)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            logger.info("Time taken: %.2f seconds", elapsed_time)
+            logger.warning("marked %d urls for deletion %s here!", len(urls), fname)
+            if self.args.output_file:
+                output_path = self.args.output_file
+            else:
+                output_path = os.path.join(
+                    self.url_output_dir, f"{fname.split('/')[-1]}.txt"
+                )
+            self.write_to_output_file(urls, output_path)
+
+    def maybe_process_file(self, fname: str) -> None:
+        assert self.args
+        if self.args.list_warc_files_only:
+            self.write_to_output_file(
+                fname, os.path.join(self.warc_output_dir, self.args.output_file)
+            )
+        else:
+            super().maybe_process_file(fname)
+
+    def write_to_output_file(
+        self, content: Union[str, List[Optional[str]]], output_file_path: str | None
+    ) -> None:
+        if output_file_path:
+            output_file: Union[TextIO, nullcontext] = open(output_file_path, "a")
+        else:
+            output_file = nullcontext()
+
+        with output_file as file:
+            if isinstance(file, TextIOWrapper):
+                if isinstance(content, list):
+                    logger.info(
+                        "writing %d files to %s", len(content), output_file_path
+                    )
+                    for item in content:
+                        if item is not None:
+                            file.write(f"{item}\n")
+                            logger.info("writing %s to %s", item, output_file_path)
+                else:
+                    logger.info("writing %s to %s", content, output_file_path)
+                    file.write(f"{content}\n")
 
 
 if __name__ == "__main__":
-    app = ArchEraser("arch-eraser", "remove stories loaded from archive files from ES")
+    app = ArchLister(
+        "arch-lister",
+        "generates a list of stories from archive files for removal from ES.",
+    )
     app.main()

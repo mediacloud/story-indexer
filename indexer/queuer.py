@@ -27,9 +27,7 @@ import logging
 import os
 import sys
 import tempfile
-from contextlib import nullcontext
-from io import TextIOWrapper
-from typing import BinaryIO, TextIO, Union, cast
+from typing import BinaryIO, cast
 
 import requests
 
@@ -73,7 +71,6 @@ class Queuer(ShufflingStoryProducer):
             help="clean up old, incompletely processed files",
         )
         ap.add_argument("input_files", nargs="*", default=None)
-        ap.add_argument("--output-file", dest="output_file", default=None)
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         """
@@ -192,18 +189,8 @@ class Queuer(ShufflingStoryProducer):
                     # more likely a queuer might actually need
                     # multiple keys (eg; reading CSVs from one bucket
                     # that reference objects in another bucket).
-
-                    if self.args and self.args.output_file:
-                        output_file: Union[TextIO, nullcontext] = open(
-                            self.args.output_file, "a"
-                        )
-                    else:
-                        output_file = nullcontext()
-                    with output_file as file:
-                        for key in sorted(bs.list_objects(prefix), reverse=True):
-                            if isinstance(file, TextIOWrapper):
-                                file.write(f"{scheme}://{bs.bucket}/{key}\n")
-                            self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
+                    for key in sorted(bs.list_objects(prefix), reverse=True):
+                        self.maybe_process_file(f"{scheme}://{bs.bucket}/{key}")
                     break  # found working config: for store .... loop
 
                 except tuple(bs.EXCEPTIONS) as e:
