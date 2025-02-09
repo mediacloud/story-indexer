@@ -26,6 +26,18 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     exit 0
 fi
 
+# We expect (1) argument when we want to process files and list URLs
+if [ $# -lt 1 ]; then
+  print_help
+  exit 1
+fi
+
+# Verify that the input file path exists
+if [ ! -f "$1" ]; then
+   echo "Error: The input file '$1' does not exist, please check the path and try again"
+   exit 1
+fi
+
 OUTPUT_PARAM=""
 if [ -n "$2" ]; then
     OUTPUT_PARAM="-o $2"

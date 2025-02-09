@@ -61,7 +61,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     exit 0
 fi
 
-# We expect (4) arguments when we want to process files by date
+# We expect (4) arguments when we want to list files by date
 if [ $# -lt 4 ]; then
   print_help
   exit 1

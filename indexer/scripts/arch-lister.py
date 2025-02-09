@@ -78,23 +78,18 @@ to read the files of URLs.
 import argparse
 import logging
 import os
-import random
-import time
 from contextlib import nullcontext
 from io import TextIOWrapper
 from typing import BinaryIO, List, Optional, TextIO, Union
 
-from elasticsearch import Elasticsearch
-
-from indexer.elastic import ElasticMixin
 from indexer.path import app_data_dir
 from indexer.queuer import Queuer
 from indexer.story_archive_writer import StoryArchiveReader
 
-logger = logging.getLogger("arch-eraser")
+logger = logging.getLogger("arch-lister")
 
 
-class ArchLister(ElasticMixin, Queuer):
+class ArchLister(Queuer):
     APP_BLOBSTORE = "HIST"  # first choice for blobstore conf vars
     HANDLE_GZIP = False  # StoryArchiveReader handles compression
 
@@ -103,12 +98,6 @@ class ArchLister(ElasticMixin, Queuer):
 
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
-        self.is_batch_delete: bool = False
-        self.keep_alive: str = ""
-        self.fetch_batch_size: Optional[int] = None
-        self.indices: str = ""
-        self.min_delay: float = 0
-        self.max_delay: float = 0
         self.url_output_dir = app_data_dir(os.path.join(self.process_name, "url_list"))
         self.warc_output_dir = app_data_dir(
             os.path.join(self.process_name, "warc_list")
@@ -140,76 +129,6 @@ class ArchLister(ElasticMixin, Queuer):
         """
         super().process_args()
         assert self.args
-
-    def delete_documents(self, urls: List[Optional[str]]) -> None:
-        es = self.elasticsearch_client()
-        pit_id = None
-        total_deleted = 0
-        try:
-            pit_id = es.open_point_in_time(
-                index=self.indices, keep_alive=self.keep_alive
-            ).get("id")
-            logger.info("Opened Point-in-Time with ID %s", pit_id)
-            query = {
-                "size": self.fetch_batch_size,
-                "query": {"terms": {"original_url": urls}},
-                "pit": {"id": pit_id, "keep_alive": self.keep_alive},
-                "sort": [{"_doc": "asc"}],
-            }
-            search_after = None
-            while True:
-                if search_after:
-                    query["search_after"] = search_after
-                # Fetch the next batch of documents
-                response = es.search(body=query)
-                hits = response["hits"]["hits"]
-                # Each result will return a PIT ID which may change, thus we just need to update it
-                pit_id = response.get("pit_id")
-                if not hits:
-                    break
-                bulk_actions = []
-                for hit in hits:
-                    document_index = hit["_index"]
-                    document_id = hit["_id"]
-                    if self.is_batch_delete:
-                        bulk_actions.append(
-                            {"delete": {"_index": document_index, "_id": document_id}}
-                        )
-                    else:
-                        es.delete(index=document_index, id=document_id)
-                        total_deleted += 1
-                        delay = random.uniform(self.min_delay, self.max_delay)
-                        logger.info(
-                            "Waiting %0.2f seconds before deleting the next document...",
-                            delay,
-                        )
-                        time.sleep(delay)
-                if bulk_actions:
-                    es.bulk(index=self.indices, body=bulk_actions)
-                    total_deleted += len(bulk_actions)
-                    delay = random.uniform(self.min_delay, self.max_delay)
-                    logger.info(
-                        "Waiting %0.2f seconds before deleting the next batch...", delay
-                    )
-                    time.sleep(delay)
-                search_after = hits[-1]["sort"]
-        except Exception as e:
-            logger.exception(e)
-        finally:
-            log_level = logging.INFO
-            total_urls = len(urls)
-            if total_deleted != total_urls:
-                log_level = logging.WARNING
-            logger.log(
-                log_level,
-                "Deleted [%s] out of [%s] documents.",
-                total_deleted,
-                total_urls,
-            )
-            if isinstance(es, Elasticsearch) and pit_id:
-                response = es.close_point_in_time(id=pit_id)
-                if response.get("succeeded"):
-                    logger.info("Successfully closed Point-in-Time with ID %s", pit_id)
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
         assert self.args
