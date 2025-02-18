@@ -40,7 +40,7 @@ convert_date_to_int() {
 
 print_help(){
     echo ""
-    echo "Usage: $0 <start_date> <end_date> <pattern>"
+    echo "Usage: $0 <start_date> <end_date> <pattern> <output>"
     echo ""
     echo "Description:"
     echo " Outputs a list of files from archives based on a specified date range and matching pattern."
