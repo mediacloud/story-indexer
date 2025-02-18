@@ -140,9 +140,12 @@ class ArchLister(Queuer):
         for story in reader.read_stories():
             urls.append(story.content_metadata().url)
         logger.info("collected %d urls from %s", len(urls), fname)
-        if not self.args.dry_run:
-            logger.warning("marked %d urls for deletion %s here!", len(urls), fname)
-            if self.args.output_file:
+        if self.args.dry_run:
+            return
+        
+        # Not a dry run, do the actual delete    
+        logger.warning("marked %d urls for deletion %s here!", len(urls), fname)
+        if self.args.output_file:
                 output_path = self.args.output_file
             else:
                 output_path = os.path.join(
