@@ -228,13 +228,16 @@ class ArchEraser(ElasticMixin, Queuer):
                 urls.append(line.strip())
         logger.info("collected %d urls from %s", len(urls), fname)
 
-        if not self.args.dry_run:
-            logger.warning("deleting %d urls from %s here!", len(urls), fname)
-            start_time = time.time()
-            self.delete_documents(urls)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            logger.info("Time taken: %.2f seconds", elapsed_time)
+        if self.args.dry_run:
+            return
+
+        # Not a dry run, do the actual deletion
+        logger.warning("deleting %d urls from %s here!", len(urls), fname)
+        start_time = time.time()
+        self.delete_documents(urls)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logger.info("Time taken: %.2f seconds", elapsed_time)
 
 
 if __name__ == "__main__":
