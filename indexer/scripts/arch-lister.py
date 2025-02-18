@@ -142,15 +142,15 @@ class ArchLister(Queuer):
         logger.info("collected %d urls from %s", len(urls), fname)
         if self.args.dry_run:
             return
-        
-        # Not a dry run, do the actual delete    
+
+        # Not a dry run, do the actual delete
         logger.warning("marked %d urls for deletion %s here!", len(urls), fname)
         if self.args.output_file:
-                output_path = self.args.output_file
-            else:
-                output_path = os.path.join(
-                    self.url_output_dir, f"{fname.split('/')[-1]}.txt"
-                )
+            output_path = self.args.output_file
+        else:
+            output_path = os.path.join(
+                self.url_output_dir, f"{fname.split('/')[-1]}.txt"
+            )
             self.write_to_output_file(urls, output_path)
 
     def maybe_process_file(self, fname: str) -> None:
