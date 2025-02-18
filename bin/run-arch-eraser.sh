@@ -16,7 +16,6 @@ print_help(){
     echo "  --min-delay              The minimum time to wait between delete operations (default: 0.5 seconds)"
     echo "  --max-delay              The maximum time to wait between delete operations (default: 3.0 seconds)"
     echo "  --fetch-batch-size       The number of documents to fetch from Elasticsearch in each batch (default: 1000)"
-    echo "  --batch-delete           Enable batch deletion of documents (default: False)"
     echo "  --buffer                 The maximum number of delete operations to buffer before flushing to Elasticsearch (default: 2000)"
     echo ""
     echo " Example:"

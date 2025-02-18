@@ -1,24 +1,28 @@
 import argparse
 import logging
 import random
+import sys
 import time
-from typing import Any, BinaryIO, Dict, List, Optional
+from typing import Any, BinaryIO, Dict, Generator, List, Optional
 
+import mcmetadata
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
 from indexer.elastic import ElasticMixin
-from indexer.workers.fetcher.csv_queuer import CSVQueuer
+from indexer.queuer import Queuer
 
 logger = logging.getLogger("arch-eraser")
 
 
-class ArchEraser(ElasticMixin, CSVQueuer):
+class ArchEraser(ElasticMixin, Queuer):
     """
     A class for deleting documents from Elasticsearch based on URLs from txt files.
     Supports both single and batch deletion operations with configurable delays.
     """
 
+    HANDLE_GZIP = False
+    APP_BLOBSTORE = ""
     MAX_RETRY_TIME = 60
 
     def __init__(self, process_name: str, descr: str):
@@ -33,7 +37,7 @@ class ArchEraser(ElasticMixin, CSVQueuer):
         self.max_delay: float = 0
         self.buffer: List[Dict[str, Any]] = []
         self.buffer_size: int = 0
-        self.successful_operations_count = 0
+        self.successful_operations_count: int = 0
 
     def qconnect(self) -> None:
         return
@@ -69,13 +73,6 @@ class ArchEraser(ElasticMixin, CSVQueuer):
             help="How long should Elasticsearch keep the PIT alive e.g. 1m -> 1 minute",
         )
         ap.add_argument(
-            "--batch-delete",
-            dest="is_batch_delete",
-            action="store_true",
-            default=False,
-            help="Enable batch deletion of documents (default: False)",
-        )
-        ap.add_argument(
             "--min-delay",
             dest="min_delay",
             type=float,
@@ -96,7 +93,6 @@ class ArchEraser(ElasticMixin, CSVQueuer):
         self.fetch_batch_size = self.args.fetch_batch_size
         self.indices = self.args.indices
         self.keep_alive = self.args.keep_alive
-        self.is_batch_delete = self.args.is_batch_delete
         self.min_delay = self.args.min_delay
         self.max_delay = self.args.max_delay
         self.buffer_size = self.args.buffer_size
@@ -111,15 +107,15 @@ class ArchEraser(ElasticMixin, CSVQueuer):
         self._open_pit()
         try:
             total_urls = len(urls)
-            for hit in self._fetch_documents_to_delete(urls):
-                if self.is_batch_delete:
-                    self.queue_delete_op(hit)
-                else:
-                    self._delete_single_document(hit)
-                    self.successful_operations_count += 1
-                    self._apply_delay("document")
-            if self.is_batch_delete and self.buffer:
+            ids = []
+            for url in urls:
+                ids.append(mcmetadata.urls.unique_url_hash(url))
+
+            for hit in self._fetch_documents_to_delete(ids):
+                self.queue_delete_op(hit)
+            if self.buffer:
                 self._bulk_delete()
+                self._apply_delay()
 
             if self.successful_operations_count != total_urls:
                 log_level = logging.WARNING
@@ -136,11 +132,13 @@ class ArchEraser(ElasticMixin, CSVQueuer):
         finally:
             self._close_pit()
 
-    def _fetch_documents_to_delete(self, urls: List[str]):
+    def _fetch_documents_to_delete(
+        self, ids: List[str]
+    ) -> Generator[Dict[str, Any], None, None]:
         try:
             query = {
                 "size": self.fetch_batch_size,
-                "query": {"terms": {"original_url": urls}},
+                "query": {"terms": {"_id": ids}},
                 "pit": {"id": self.pit_id, "keep_alive": self.keep_alive},
                 "sort": [{"_doc": "asc"}],
             }
@@ -164,19 +162,6 @@ class ArchEraser(ElasticMixin, CSVQueuer):
         except Exception as e:
             logger.exception(e)
 
-    def _delete_single_document(self, hit: Dict[str, Any]) -> None:
-        sec = 1 / 16
-        while True:
-            try:
-                self.es_client.delete(index=hit["_index"], id=hit["_id"])
-                return
-            except Exception:
-                sec *= 2
-                if sec > self.MAX_RETRY_TIME:
-                    raise
-                logger.exception("retry deleting %s after: %s(s)", hit["_id"], sec)
-                time.sleep(sec)
-
     def queue_delete_op(self, hit: Dict[str, Any]) -> None:
         try:
             delete_action = {
@@ -187,6 +172,7 @@ class ArchEraser(ElasticMixin, CSVQueuer):
             self.buffer.append(delete_action)
             if len(self.buffer) >= self.buffer_size:
                 self._bulk_delete()
+                self._apply_delay()
         except Exception as e:
             logger.exception("Error processing document %s: %s", hit.get("id"), e)
 
@@ -206,33 +192,32 @@ class ArchEraser(ElasticMixin, CSVQueuer):
                 self.successful_operations_count += success
                 self.buffer = []
                 return
-            except Exception:
+            except Exception as e:
                 sec *= 2
                 if sec > self.MAX_RETRY_TIME:
-                    raise
-                logger.exception("retry bulk delete: after %s(s)", sec)
+                    # If an exception occurs we are going to exit to ensure that the file tracker
+                    # doesn't mark a file as processed in the end of processing
+                    logger.exception(e)
+                    sys.exit(1)
+                logger.warning("retry bulk delete: after %s(s)", sec)
                 time.sleep(sec)
 
-    def _open_pit(self):
+    def _open_pit(self) -> None:
         response = self.es_client.open_point_in_time(
             index=self.indices, keep_alive=self.keep_alive
         )
         self.pit_id = response.get("id")
         logger.info("Opened Point-in-Time with ID %s", self.pit_id)
 
-    def _close_pit(self):
+    def _close_pit(self) -> None:
         if isinstance(self.es_client, Elasticsearch) and self.pit_id:
             response = self.es_client.close_point_in_time(id=self.pit_id)
             if response.get("succeeded"):
                 logger.info("Successfully closed Point-in-Time with ID %s", self.pit_id)
 
-    def _apply_delay(self, operation_type: str):
+    def _apply_delay(self) -> None:
         delay = random.uniform(self.min_delay, self.max_delay)
-        logger.info(
-            "Waiting %0.2f seconds before deleting the next %s...",
-            delay,
-            operation_type,
-        )
+        logger.info("Waiting %0.2f seconds before deleting the next batch...", delay)
         time.sleep(delay)
 
     def process_file(self, fname: str, fobj: BinaryIO) -> None:
