@@ -15,11 +15,10 @@ print_help(){
     echo "  --indices                The name of the Elasticsearch indices to delete documents from"
     echo "  --min-delay              The minimum time to wait between delete operations (default: 0.5 seconds)"
     echo "  --max-delay              The maximum time to wait between delete operations (default: 3.0 seconds)"
-    echo "  --fetch-batch-size       The number of documents to fetch from Elasticsearch in each batch (default: 1000)"
-    echo "  --buffer                 The maximum number of delete operations to buffer before flushing to Elasticsearch (default: 2000)"
+    echo "  --batch-size             The number of documents to send in a delete request to Elasticsearch. (default: 1000)"
     echo ""
     echo " Example:"
-    echo "  $0  data/arch-lister/url_list --elasticsearch-hosts=http://localhost:9200 --indices=index1,index2 --fetch-batch-size=5000 --min-delay=1 --max-delay=3 --buffer=1000"
+    echo "  $0  data/arch-lister/url_list --elasticsearch-hosts=http://localhost:9200 --indices=index1,index2 --batch-size=1000 --min-delay=1 --max-delay=3"
 }
 
 # Handle help flag

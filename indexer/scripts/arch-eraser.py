@@ -3,11 +3,10 @@ import logging
 import random
 import sys
 import time
-from typing import Any, BinaryIO, Dict, Generator, List, Optional
+from typing import BinaryIO, List, Optional
 
 import mcmetadata
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk
 
 from indexer.elastic import ElasticMixin
 from indexer.queuer import Queuer
@@ -28,16 +27,12 @@ class ArchEraser(ElasticMixin, Queuer):
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
         self._es_client: Optional[Elasticsearch] = None
-        self.pit_id: Optional[str] = None
-        self.is_batch_delete: bool = False
-        self.keep_alive: str = ""
-        self.fetch_batch_size: Optional[int] = None
         self.indices: str = ""
         self.min_delay: float = 0
         self.max_delay: float = 0
-        self.buffer: List[Dict[str, Any]] = []
-        self.buffer_size: int = 0
+        self.batch_size: int = 0
         self.successful_operations_count: int = 0
+        self.display_stats: bool = True
 
     def qconnect(self) -> None:
         return
@@ -48,29 +43,16 @@ class ArchEraser(ElasticMixin, Queuer):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument(
-            "--fetch-batch-size",
-            dest="fetch_batch_size",
+            "--batch-size",
+            dest="batch_size",
             type=int,
             default=1000,
-            help="The number of documents to fetch from Elasticsearch in each batch (default: 1000)",
-        )
-        ap.add_argument(
-            "--buffer",
-            dest="buffer_size",
-            type=int,
-            default=2000,
-            help="The maximum number of delete operations to buffer before flushing to Elasticsearch",
+            help="The number of documents to send in a delete request to Elasticsearch.",
         )
         ap.add_argument(
             "--indices",
             dest="indices",
             help="The name of the Elasticsearch indices to delete from",
-        )
-        ap.add_argument(
-            "--keep-alive",
-            dest="keep_alive",
-            default="1m",
-            help="How long should Elasticsearch keep the PIT alive e.g. 1m -> 1 minute",
         )
         ap.add_argument(
             "--min-delay",
@@ -90,12 +72,10 @@ class ArchEraser(ElasticMixin, Queuer):
     def process_args(self) -> None:
         super().process_args()
         assert self.args
-        self.fetch_batch_size = self.args.fetch_batch_size
         self.indices = self.args.indices
-        self.keep_alive = self.args.keep_alive
         self.min_delay = self.args.min_delay
         self.max_delay = self.args.max_delay
-        self.buffer_size = self.args.buffer_size
+        self.batch_size = self.args.batch_size
 
     @property
     def es_client(self) -> Elasticsearch:
@@ -104,116 +84,66 @@ class ArchEraser(ElasticMixin, Queuer):
         return self._es_client
 
     def delete_documents(self, urls: List[str]) -> None:
-        self._open_pit()
+        total_urls = len(urls)
         try:
-            total_urls = len(urls)
             ids = []
             for url in urls:
                 ids.append(mcmetadata.urls.unique_url_hash(url))
-
-            for hit in self._fetch_documents_to_delete(ids):
-                self.queue_delete_op(hit)
-            if self.buffer:
-                self._bulk_delete()
-                self._apply_delay()
-
-            if self.successful_operations_count != total_urls:
-                log_level = logging.WARNING
-            else:
-                log_level = logging.INFO
-            logger.log(
-                log_level,
-                "Deleted [%s] out of [%s] documents.",
-                self.successful_operations_count,
-                total_urls,
-            )
+                if len(ids) >= self.batch_size:
+                    delete_count = self._delete_documents_by_ids(ids)
+                    self._update_stats(delete_count)
+                    self._apply_delay()
+                    ids.clear()
+            if ids:
+                delete_count = self._delete_documents_by_ids(ids)
+                self._update_stats(delete_count)
         except Exception as e:
             logger.exception(e)
         finally:
-            self._close_pit()
+            self._log_deletion_stats(total_urls)
 
-    def _fetch_documents_to_delete(
-        self, ids: List[str]
-    ) -> Generator[Dict[str, Any], None, None]:
-        try:
-            query = {
-                "size": self.fetch_batch_size,
-                "query": {"terms": {"_id": ids}},
-                "pit": {"id": self.pit_id, "keep_alive": self.keep_alive},
-                "sort": [{"_doc": "asc"}],
-            }
-            search_after = None
-            while True:
-                if search_after:
-                    query["search_after"] = search_after
-                # Fetch the next batch of documents
-                response = self.es_client.search(body=query)
-                hits = response["hits"]["hits"]
-                # Each result will return a PIT ID which may change, thus we just need to update it
-                self.pit_id = response.get("pit_id")
-                if not hits:
-                    break
-                for hit in hits:
-                    yield {
-                        "_index": hit["_index"],
-                        "_id": hit["_id"],
-                    }
-                search_after = hits[-1]["sort"]
-        except Exception as e:
-            logger.exception(e)
-
-    def queue_delete_op(self, hit: Dict[str, Any]) -> None:
-        try:
-            delete_action = {
-                "_op_type": "delete",
-                "_index": hit["_index"],
-                "_id": hit["_id"],
-            }
-            self.buffer.append(delete_action)
-            if len(self.buffer) >= self.buffer_size:
-                self._bulk_delete()
-                self._apply_delay()
-        except Exception as e:
-            logger.exception("Error processing document %s: %s", hit.get("id"), e)
-
-    def _bulk_delete(self) -> None:
-        if not self.buffer:
-            return
+    def _delete_documents_by_ids(self, ids: List[str]) -> int | None:
         sec = 1 / 16
         while True:
             try:
-                assert self.es_client
-                success, _ = bulk(
-                    client=self.es_client,
-                    actions=self.buffer,
-                    refresh=False,
-                    raise_on_error=False,
+                response = self.es_client.delete_by_query(
+                    index=self.indices,
+                    body={"query": {"terms": {"_id": ids}}},
+                    wait_for_completion=True,
                 )
-                self.successful_operations_count += success
-                self.buffer = []
-                return
+                if self.display_stats and response.get("deleted") is not None:
+                    return int(response.get("deleted"))
+                return None
             except Exception as e:
+                self.display_stats = False  # If there is an exception we lose all stats and should not display them
                 sec *= 2
                 if sec > self.MAX_RETRY_TIME:
                     # If an exception occurs we are going to exit to ensure that the file tracker
                     # doesn't mark a file as processed in the end of processing
                     logger.exception(e)
                     sys.exit(1)
-                logger.warning("retry bulk delete: after %s(s)", sec)
+                logger.warning("retry delete operation: after %s(s)", sec)
                 time.sleep(sec)
 
-    def _open_pit(self) -> None:
-        response = self.es_client.open_point_in_time(
-            index=self.indices, keep_alive=self.keep_alive
-        )
-        self.pit_id = response.get("id")
-        logger.info("Opened Point-in-Time with ID %s", self.pit_id)
+    def _update_stats(self, delete_count: int | None) -> None:
+        if delete_count is None or not self.display_stats:
+            return
+        self.successful_operations_count += delete_count
 
-    def _close_pit(self) -> None:
-        if isinstance(self.es_client, Elasticsearch) and self.pit_id:
-            response = self.es_client.close_point_in_time(id=self.pit_id)
-            if response.get("succeeded"):
-                logger.info("Successfully closed Point-in-Time with ID %s", self.pit_id)
+    def _log_deletion_stats(self, total_urls: int) -> None:
+        if self.display_stats:
+            if self.successful_operations_count == total_urls:
+                log_level = logging.INFO
+            else:
+                log_level = logging.WARNING
+            logger.log(
+                log_level,
+                "Deleted [%s] out of [%s] documents.",
+                self.successful_operations_count,
+                total_urls,
+            )
+        else:
+            logger.warning("Unable to get deletion stats")
 
     def _apply_delay(self) -> None:
         delay = random.uniform(self.min_delay, self.max_delay)
