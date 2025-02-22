@@ -1,0 +1,23 @@
+---
+- name: ES install playbook
+  hosts: elasticsearch
+  vars_files:
+   - es-vars.yml
+  become: true  # TEMP for docker container
+  pre_tasks:
+   - name: install packages for ES
+     ansible.builtin.apt:
+       pkg:
+        - unzip # for elasticsearch-certificates.yml
+        # PLEASE KEEP ABOVE LIST IN SORTED ORDER!
+  roles:
+   - name: mc.elasticsearch
+
+#  post_tasks:
+#   - name: install statsd agent
+#     ansible.builtin.include_tasks:
+#       file: "install-statsd-agent.yml"
+   # put tasks here to:
+   # 1. establish cluster
+   # 2. change params via API?
+   #    ie; https://discuss.elastic.co/t/how-to-disable-geoip-usage-in-7-14-0/281076/9
