@@ -9,7 +9,7 @@
       pkg:
        - unzip # for elasticsearch-certificates.yml
        # PLEASE KEEP ABOVE LIST IN SORTED ORDER!
-
+   # maybe use ansible.builtin.git here to get ansible-elasticsearch??
   roles:
    - "./roles/ansible-elasticsearch"
 

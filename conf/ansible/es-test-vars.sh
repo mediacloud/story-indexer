@@ -8,4 +8,5 @@ venv/bin/ansible-playbook \
     --connection local \
     -i es-inventory.yml \
     -e interpreter_python=/usr/bin/python3 \
+    $* \
     es-test-vars.yml

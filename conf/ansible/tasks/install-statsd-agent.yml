@@ -20,6 +20,8 @@
     update_cache: true
 
 # NOTE! command failure(s) not detected!!!
+# should re-write using ansible to do as much as possible!
+# ie; ansible.builtin.git??
 - name: install server monitoring agent
   ansible.builtin.command:
     cmd: /bin/sh
