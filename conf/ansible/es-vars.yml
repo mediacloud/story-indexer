@@ -1,7 +1,27 @@
 # TEMPLATE VARIABLES: PLEASE KEEP SORTED!!
+
+# NOTE! variables expanded lazily (when variable referenced/expanded)
+# so values can come from:
+# * es-inventory.yml (per-group, or per-node)
+# * here, or another vars file (overrides inventory)
+# * "set_fact" in playbook
+# [IMO it's the ONLY thing about ansible that's better than shell scripts!]
+
+# key/values copied to elasticsearch.yml output file:
+es_config:
+  # PLEASE ADD ITEMS IN SORTED ORDER!
+  bootstrap.memory_lock: true
+  cluster.name: "{{ mc_es_cluster_name }}"
+  discovery.seed_hosts: "{{ mc_es_seed_hosts }}"
+  http.host: 0.0.0.0
+  network.host: "{{ mc_es_network_host }}"
+  # node.name defaults to inventory_hostname
+  node.roles: "{{ mc_es_node_roles }}"
+  # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
+
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
-es_java: openjdk-21-jre-headless
+es_java: openjdk-21-jre-headless # Ubuntu 22.04 specific
 es_java_install: true
 es_log_dir: "/data/elasticsearch/logs"
 es_start_service: false   # TEMP?
@@ -10,7 +30,19 @@ es_templates_fileglob: ""
 es_version: 8.17.2
 es_version_lock: true
 
+# quiet ssh complaints (ansible setting, not ES specific)
 host_key_checking: false
 
-mc_es_network_host: _eno8303_ # override by setting per-host
-# PLEASE ADD ITEMS IN SORTED ORDER!
+################ MC specific vars (start with mc_)
+
+# default: can override in "vars" section of groups in es-inventory.yml (BUT WHY?)
+mc_es_cluster_name: elasticsearch
+
+mc_es_master: "{{ inventory_hostname in mc_es_seed_hosts }}"
+mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_hot }}{% endif %}"
+
+mc_es_node_roles_hot: ["data_content", "data_hot"]
+mc_es_node_roles_master: ["master", "data_content", "data_hot"]
+
+# PLEASE KEEP THIS FILE IN SORTED ORDER!
+# (KEEP THIS LINE LAST!)

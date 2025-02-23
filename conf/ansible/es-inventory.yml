@@ -1,59 +1,38 @@
 ---
 # COULD be a general inventory.yml file...
 # to check this file run "venv/bin/ansible-inventory -i es-inventory.yml --list"
+
+# used by es-test-vars.yml/sh
 local:
   hosts:
-    localhost:
-
-# dummy group for defining "anchors" for later (re)use
-ignore_this_group:
+    host1:
+    host2:
+      mc_es_network_host: _bar_
   vars:
-    # base values in "es_config" dict (copied to elasticsearch.yml) for all nodes
-    x-es-config-base: &ES_CONFIG-BASE
-      # PLEASE ADD ITEMS IN SORTED ORDER!
-      bootstrap.memory_lock: true
-      #cluster.initial_master_nodes: MAY BE NEEDED ONE TIME? copy from seed_hosts???
-      #cluster.name: elasticsearch
-      discovery.seed_hosts: "es01.newscribe.angwin,es02.newscribe.angwin,es03.newscribe.angwin" # WISH: create on the fly!
-      http.host: 0.0.0.0
-      network.host: "{{ mc_es_network_host }}" # NOTE! expanded lazily, so can be overridden per-node
-      # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
+    mc_es_network_host: _foo_
+    mc_es_seed_hosts:
+      - host1
 
-    # es_config dict values for master nodes
-    x-es-config-master: &ES_CONFIG-MASTER
-      <<: *ES_CONFIG-BASE
-      node.roles: ["master", "data_content", "data_hot"]
-      # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
-
-    # es_config dict values for (hot) data nodes
-    x-es-config-data: &ES_CONFIG-DATA
-      <<: *ES_CONFIG-BASE
-      node.roles: ["data_content", "data_hot"]
-      # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
-
+# TEMP FOR TESTING w/ docker container
 elasticsearch:
   hosts:
-    # TESTING against docker container
     docker-container:
       ansible_host: ifill.angwin
       ansible_port: 2222
       ansible_user: phil
       ansible_become_password: philpassword
-      es_config:
-        <<: *ES_CONFIG-MASTER
-      # TEMP for install only testing (no systemd in container)
-      mc_es_network_host: 1.2.3.4
+      become: true  # this may not have worked...
+      mc_es_network_host: _foo_
+  vars:
+    mc_es_seed_hosts:
+#     - docker-container
+
 es:
   hosts:
     es01.newsscribe.angwin:
-      es_config:
-        <<: *ES_CONFIG-MASTER
+      # host specific settings here ...
     es02.newsscribe.angwin:
-      es_config:
-        <<: *ES_CONFIG-MASTER
     es03.newsscribe.angwin:
-      es_config:
-        <<: *ES_CONFIG-MASTER
     es04.newsscribe.angwin:
     es05.newsscribe.angwin:
     es06.newsscribe.angwin:
@@ -61,7 +40,9 @@ es:
     es08.newsscribe.angwin:
   vars:
     # defaults for all members of group.
-    # default to (hot) data node settings:
-    es_config:
-      <<: *ES_CONFIG-DATA
     # see es-vars.yml for all other defaults
+    mc_es_network_host: _eno8303_    # can override per host above, as needed
+    mc_es_seed_hosts:
+      - es01.newscribe.angwin
+      - es02.newscribe.angwin
+      - es03.newscribe.angwin
