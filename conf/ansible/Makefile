@@ -12,7 +12,6 @@ VENVBIN=$(VENVDIR)/bin
 VENVDONE=$(VENVDIR)/.done
 
 ALL=$(VENVDONE) $(ES_ROLE_DIR)
-CLEAN_REMOVE=$(ES_ROLE_DIR) $(VENVDIR)
 
 all:	$(ALL)
 
@@ -36,4 +35,5 @@ $(VENVDIR):
 ################ housekeeping
 
 clean:
-	rm -rf $(CLEAN_REMOVE)
+	rm -rf $(VENVDIR)
+	test "x`cd $(ES_ROLE_DIR); git diff --stat`" = 'x' && rm -rf $(ES_ROLE_DIR)
