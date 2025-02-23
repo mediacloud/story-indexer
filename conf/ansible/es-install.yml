@@ -4,7 +4,7 @@
   vars_files:
    - es-vars.yml # NOTE! overrides vars from inventory.yml
   pre_tasks:
-   - name: Install packages for mc.elasticsearch (ansible-elasticsearch)
+   - name: Install packages for ansible-elasticsearch role
      ansible.builtin.apt:
       pkg:
        - unzip # for elasticsearch-certificates.yml
