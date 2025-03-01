@@ -278,6 +278,10 @@ services:
       <<: *worker-environment-vars
       RUN: {{queuer_type}}
       ARGS: "{{queuer_args}}"
+      ARCHIVER_B2_BUCKET: {{archiver_b2_bucket}}
+      ARCHIVER_B2_REGION: {{archiver_b2_region}}
+      ARCHIVER_B2_ACCESS_KEY_ID: {{archiver_b2_access_key_id}}
+      ARCHIVER_B2_SECRET_ACCESS_KEY: {{archiver_b2_secret_access_key}}
       QUEUER_S3_ACCESS_KEY_ID: {{queuer_s3_access_key_id}}
       QUEUER_S3_REGION: {{queuer_s3_region}}
       QUEUER_S3_SECRET_ACCESS_KEY: {{queuer_s3_secret_access_key}}
