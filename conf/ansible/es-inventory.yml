@@ -22,8 +22,6 @@ elasticsearch:
       ansible_host: localhost
       ansible_port: 2222
       ansible_user: xodhiambo
-      ansible_password: pass#123
-      ansible_become_password: pass#123
       become: true  # this may not have worked...
       mc_es_network_host: _foo_
   vars:
