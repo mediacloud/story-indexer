@@ -19,7 +19,7 @@ local:
 elasticsearch:
   hosts:
     docker-container:
-      ansible_host: posey.angwin
+      ansible_host: localhost
       ansible_port: 2222
       ansible_user: xodhiambo
       ansible_become_password: xavier
