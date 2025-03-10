@@ -31,8 +31,7 @@ es_config:
 
   # Disable X-Pack features
   xpack.security.enabled: false
-  xpack.monitoring.enabled: false
-  xpack.ml.enabled: false
+  xpack.security.enrollment.enabled: false
 
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
