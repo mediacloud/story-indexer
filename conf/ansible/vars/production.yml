@@ -33,16 +33,6 @@ es_config:
   xpack.security.enabled: false
   xpack.security.enrollment.enabled: false
   # Enable encryption for HTTP API client connections, such as Kibana, Logstash, and Agents
-  xpack.security.http.ssl:
-    enabled: false
-    keystore.path: certs/http.p12
-
-  # Enable encryption and mutual authentication between cluster nodes
-  xpack.security.transport.ssl:
-    enabled: false
-    verification_mode: certificate
-    keystore.path: certs/transport.p12
-    truststore.path: certs/transport.p12
 
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
