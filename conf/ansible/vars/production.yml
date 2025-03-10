@@ -26,7 +26,7 @@ es_config:
   http.port: "{{ mc_es_http_port | default('9200') }}"
 
   # must be set per-host in es-inventory:
-  network.host: "{{ mc_es_network_host | default('NEED_NETWORK_HOST') }}"
+  network.host: "{{ mc_es_network_host | default('_eno8303_') }}"
 
   # node.name defaults to inventory_hostname
 

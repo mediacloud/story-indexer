@@ -5,7 +5,7 @@ es_config:
   discovery.seed_hosts: "{{ mc_es_seed_hosts }}"
   http.host: 0.0.0.0
   http.port: "{{ mc_es_http_port | default('9200') }}"
-  network.host: "{{ mc_es_network_host | default('NEED_NETWORK_HOST') }}"
+  network.host: "{{ mc_es_network_host | default('_eth0_') }}"
   node.roles: "{{ mc_es_node_roles }}"
   transport.host: 0.0.0.0
   transport.port: "{{ mc_es_transport_port | default('9300') }}"

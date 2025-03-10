@@ -1,0 +1,17 @@
+- name: Playbook to test es-inventory and es-vars settings
+  vars_files:
+   - vars/staging.yml
+  hosts: staging
+  tasks:
+   - name: Display inventory_hostname
+     ansible.builtin.debug:
+      msg: "{{ inventory_hostname }}"
+   - name: Display mc_es_seed_hosts
+     ansible.builtin.debug:
+      msg: "{{ mc_es_seed_hosts }}"
+   - name: Display mc_es_master
+     ansible.builtin.debug:
+      msg: "{{ mc_es_master }}"
+   - name: Display es_config
+     ansible.builtin.debug:
+      msg: "{{ es_config }}"
