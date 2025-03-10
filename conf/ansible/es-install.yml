@@ -1,6 +1,6 @@
 ---
 - name: ES install playbook
-  hosts: production  # selects group from inventory.yml
+  hosts: elasticsearch  # selects group from inventory.yml
   vars_files:
    - vars/production.yml # NOTE! overrides vars from inventory.yml
   pre_tasks:

@@ -3,6 +3,6 @@
 make
 # run es-install.yml playbook:
 venv/bin/ansible-playbook \
-    -i es-inventory.yml \
+    -i inventories/hosts.yml \
     $* \
     es-install.yml
