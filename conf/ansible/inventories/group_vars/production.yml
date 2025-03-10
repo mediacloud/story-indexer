@@ -10,3 +10,5 @@ mc_es_initial_master_nodes:
   - es01.newsscribe.angwin:{{ mc_es_transport_port }}
   - es02.newsscribe.angwin:{{ mc_es_transport_port }}
   - es03.newsscribe.angwin:{{ mc_es_transport_port }}
+vars_files:
+  - secrets.yml
