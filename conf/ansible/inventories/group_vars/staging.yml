@@ -1,0 +1,8 @@
+---
+ansible_user: ansible_user
+ansible_become: true
+ansible_become_password: pass#123
+mc_es_seed_hosts:
+  - es01
+  - es02
+  - es03

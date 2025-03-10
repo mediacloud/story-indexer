@@ -6,6 +6,6 @@
 make
 venv/bin/ansible-playbook \
     --connection local \
-    -i es-inventory.yml \
+    -i inventories/hosts.yml \
     $* \
-    es-test-vars.yml
+    vars/es-test-vars.yml

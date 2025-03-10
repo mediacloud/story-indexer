@@ -1,8 +1,8 @@
 ---
 - name: ES install playbook
-  hosts: elasticsearch # selects group from inventory.yml
+  hosts: production  # selects group from inventory.yml
   vars_files:
-   - es-vars.yml # NOTE! overrides vars from inventory.yml
+   - vars/production.yml # NOTE! overrides vars from inventory.yml
   pre_tasks:
    - name: Install packages for ansible-elasticsearch role
      ansible.builtin.apt:

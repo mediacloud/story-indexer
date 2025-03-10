@@ -1,0 +1,12 @@
+---
+ansible_user: ansible_user
+ansible_become: true
+ansible_become_password: "{{ vault_ansible_become_password }}"
+mc_es_seed_hosts:
+  - es01.newsscribe.angwin:{{ mc_es_transport_port }}
+  - es02.newsscribe.angwin:{{ mc_es_transport_port }}
+  - es03.newsscribe.angwin:{{ mc_es_transport_port }}
+mc_es_initial_master_nodes:
+  - es01.newsscribe.angwin:{{ mc_es_transport_port }}
+  - es02.newsscribe.angwin:{{ mc_es_transport_port }}
+  - es03.newsscribe.angwin:{{ mc_es_transport_port }}

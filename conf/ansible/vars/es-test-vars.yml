@@ -1,7 +1,7 @@
 - name: Playbook to test es-inventory and es-vars settings
   vars_files:
    - es-vars.yml
-  hosts: local
+  hosts: staging
   tasks:
    - name: Display inventory_hostname
      ansible.builtin.debug:

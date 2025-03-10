@@ -18,6 +18,8 @@ es_config:
   # (NOTE! if you add ports to mc_es_seed_hosts you'll break the mc_es_master test below)
   discovery.seed_hosts: "{{ mc_es_seed_hosts }}"
 
+  cluster.initial_master_nodes: "{{ mc_es_initial_master_nodes }}"
+
   http.host: 0.0.0.0 # allow from off-host connections
 
   # to override, set in es-inventory group vars section:
@@ -33,6 +35,11 @@ es_config:
   # to override, set in es-inventory group vars section:
   transport.port: "{{ mc_es_transport_port | default('9300') }}"
   # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
+
+  # Disable X-Pack features
+  xpack.security.enabled: false
+  xpack.monitoring.enabled: false
+  xpack.ml.enabled: false
 
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
@@ -53,10 +60,10 @@ host_key_checking: false
 # elastic search specific vars (just about everything) should start with mc_es_
 
 mc_es_master: "{{ inventory_hostname in mc_es_seed_hosts }}"
-mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_hot }}{% endif %}"
+mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 
-mc_es_node_roles_hot: ["data_content", "data_hot"]
-mc_es_node_roles_master: ["master", "data_content", "data_hot"]
+mc_es_node_roles_data: ["data"]
+mc_es_node_roles_master: ["master"]
 
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
