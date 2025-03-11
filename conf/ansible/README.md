@@ -3,7 +3,7 @@ Start of ansible scripting for ES installation
 Putting this directly in the "conf" directory so that if ansible is
 used for more than just ES, the directory can house that too.
 
-### Key Files and Directories
+## Key Files and Directories
 
 ### Makefile
 
@@ -64,3 +64,26 @@ compute server(s) and web server(s).
 ### requirements.txt
 
 Python requirements for building venv
+
+## Variables and Secrets
+
+### Global Variables
+
+Defined in `inventories/group_vars/all.yml` and `invventories/group_vars.vault.yml`
+
+Example
+
+```
+ansible_user: "{{ staging_vault_ansible_user }}"
+ansible_become: true
+ansible_become_password: "{{ staging_vault_ansible_become_password }}"
+```
+
+### Vault Encrypted Secrets
+
+Sensitive variables (e.g usernames and passowords) are stored in the encrypted `inventories/group_vars.vault.yml`
+
+To edit the vault file
+```
+ansible-vault edit inventories/group_vars/vault.yml
+```
