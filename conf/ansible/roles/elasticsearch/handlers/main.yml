@@ -1,0 +1,24 @@
+---
+- name: reload systemd configuration
+  become: true
+  systemd:
+    daemon_reload: true
+
+- name: restart elasticsearch
+  become: true
+  service:
+    name: elasticsearch
+    state: restarted
+    enabled: yes
+  when:
+    - es_restart_on_change | default(true)
+    - es_start_service | default(true)
+  register: es_restarted
+
+- name: wait for elasticsearch to start
+  wait_for:
+    host: "{{ mc_es_network_host | default('localhost') }}"
+    port: "{{ mc_es_http_port | default(9200) }}"
+    delay: 10
+    timeout: 60
+  when: es_restarted is defined and es_restarted.changed

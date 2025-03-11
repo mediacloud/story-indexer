@@ -1,0 +1,42 @@
+---
+# Install Java
+- name: set fact java_state to present
+  set_fact:
+    java_state: "present"
+  tags:
+    - java
+
+- name: set fact java_state to latest
+  set_fact:
+    java_state: "latest"
+    when: update_java == true
+  tags:
+    - java
+
+- name: Refresh apt cache
+  apt:
+    update_cache: yes
+  changed_when: false
+
+- name: Ensure Java is installed
+  apt:
+    name: "{{ es_java }}"
+    state: "{{ java_state }}"
+  tags:
+    - java
+
+- name: Register OpenJDK version
+  shell: java -version 2>&1 | grep OpenJDK
+  register: open_jdk
+  ignore_errors: true
+  changed_when: false
+  check_mode: no
+  tags:
+    - java
+
+- name: Refresh Java CA certificates (if OpenJDK is installed)
+  command: /var/lib/dpkg/info/ca-certificates-java.postinst configure
+  when: open_jdk.rc == 0
+  changed_when: false
+  tags:
+    - java

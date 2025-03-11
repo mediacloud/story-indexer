@@ -1,0 +1,31 @@
+---
+- name: Install and configure Elasticsearch cluster
+  hosts: elasticsearch
+  vars_files:
+    - ../roles/elasticsearch/vars/{{ env | default('production') }}.yml
+  become: true
+  pre_tasks:
+    - name: Check OS compatibility
+      fail:
+        msg: "This playbook is only compatible with Ubuntu. Detected OS: {{ ansible_distribution }}"
+      when: ansible_distribution != 'Ubuntu'
+      tags:
+        - always
+
+    - name: Display Ubuntu version
+      debug:
+        msg: "Running on Ubuntu {{ ansible_distribution_version }}"
+      tags:
+        - always
+
+    - name: Set Elasticsearch major version fact
+      set_fact:
+        es_major_version: "{{ es_version.split('.')[0] }}.x"
+      when: es_major_version is undefined
+      tags:
+        - always
+
+  roles:
+    - role: ../roles/elasticsearch
+      tags:
+        - elasticsearch

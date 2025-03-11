@@ -4,6 +4,6 @@ ansible_become: true
 ansible_become_password: pass#123
 ansible_ssh_private_key_file: ~/.ssh/ansible/id_ed25519
 mc_es_seed_hosts:
-  - es01
-  - es02
-  - es03
+  - node01
+  - node02
+  - node03

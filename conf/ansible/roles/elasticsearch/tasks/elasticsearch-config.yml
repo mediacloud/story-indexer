@@ -1,0 +1,95 @@
+---
+# Configure Elasticsearch Nodes
+#Create conf directory
+- name: Create Configuration Directory
+  become: true
+  file:
+    path: "{{ es_conf_dir }}"
+    state: directory
+    owner: root
+    group: "{{ es_group }}"
+    mode: "2750"
+
+#Create pid directory
+- name: Create PID Directory
+  become: true
+  file:
+    path: "{{ es_pid_dir }}"
+    state: directory
+    owner: "{{ es_user }}"
+    group: "{{ es_group }}"
+    mode: "755"
+
+#Create required directories
+- name: Create Others Directories
+  become: true
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ es_user }}"
+    group: "{{ es_group }}"
+    mode: "2750"
+  with_items:
+    - "{{ es_log_dir }}"
+    - "{{ es_data_dirs }}"
+
+#Copy the config template
+- name: Copy Configuration File
+  become: true
+  template:
+    src: elasticsearch.yml.j2
+    dest: "{{ es_conf_dir }}/elasticsearch.yml"
+    owner: root
+    group: "{{ es_group }}"
+    mode: "660"
+    force: yes
+    backup: yes
+  register: system_change
+  notify: restart elasticsearch
+
+#Copy the default file
+- name: Copy Default File
+  become: true
+  template:
+    src: "{{ es_config_default }}"
+    dest: "{{ default_file }}"
+    owner: root
+    group: "{{ es_group }}"
+    mode: "660"
+    force: yes
+    backup: yes
+  notify: restart elasticsearch
+
+#Copy the systemd specific file if systemd is installed
+- when: use_system_d and (m_lock_enabled or es_max_open_files is defined)
+  become: true
+  block:
+    - name: Make sure destination dir exists
+      file:
+        path: "{{ sysd_config_file | dirname }}"
+        state: directory
+        mode: "755"
+
+    - name: Copy specific ElasticSearch Systemd config file
+      template:
+        src: "override.conf.j2"
+        dest: "{{ sysd_config_file }}"
+        owner: root
+        group: "{{ es_group }}"
+        mode: "644"
+        force: yes
+      notify:
+       - reload systemd configuration
+       - restart elasticsearch
+
+- name: Copy jvm.options File
+  become: true
+  template:
+    src: "{{ es_config_jvm }}"
+    dest: "{{ es_conf_dir }}/jvm.options"
+    owner: root
+    group: "{{ es_group }}"
+    mode: "660"
+    force: yes
+    backup: yes
+  notify: restart elasticsearch
