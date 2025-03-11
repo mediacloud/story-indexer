@@ -54,7 +54,7 @@ host_key_checking: false
 
 # elastic search specific vars (just about everything) should start with mc_es_
 
-mc_es_master: "{{ inventory_hostname in mc_es_seed_hosts }}"
+mc_es_master: "{{ ansible_host in mc_es_seed_hosts }}"
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 
 mc_es_node_roles_data: ["data"]
