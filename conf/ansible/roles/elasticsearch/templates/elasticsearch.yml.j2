@@ -7,7 +7,7 @@ cluster.name: elasticsearch
 {% endif %}
 
 {% if es_config['node.name'] is not defined %}
-node.name: {{ inventory_hostname }}
+node.name: {{ ansible_host }}
 {% endif %}
 
 #################################### Paths ####################################
