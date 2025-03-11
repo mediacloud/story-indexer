@@ -1,6 +1,6 @@
 ---
 - name: Update the server and install required packages
-  apt:
+  ansible.builtin.apt:
     name: apt-transport-https
     update_cache: yes
     state: present
@@ -8,34 +8,34 @@
     - packages
 
 - name: check-set-parameters
-  import_tasks: elasticsearch-parameters.yml
+  ansible.builtin.import_tasks: elasticsearch-parameters.yml
   tags:
       - always
 
 - name: Install Java
-  import_tasks: java.yml
+  ansible.builtin.import_tasks: java.yml
   when: es_java_install | default(true)
   tags:
     - java
 
 - name: Add ElasticSearch GPG key
-  apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+  ansible.builtin.apt_key:
+    url: "{{ es_apt_key }}"
     state: present
     keyring: /usr/share/keyrings/elasticsearch-keyring.gpg
   tags:
     - repository
 
 - name: Add ElasticSearch repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/{{ es_major_version }}/apt stable main"
+  ansible.builtin.apt_repository:
+    repo: "{{ es_apt_url }}"
     state: present
     filename: "elastic-{{ es_major_version }}"
   tags:
     - repository
 
 - name: Install ElasticSearch
-  apt:
+  ansible.builtin.apt:
     name: elasticsearch
     state: present
     update_cache: yes
@@ -43,13 +43,13 @@
     - install
 
 - name: Generate Elasticsearch configuration
-  import_tasks: elasticsearch-config.yml
+  ansible.builtin.import_tasks: elasticsearch-config.yml
   notify: restart elasticsearch
   tags:
     - config
 
 - name: Start Elasticsearch service
-  service:
+  ansible.builtin.service:
     name: elasticsearch
     state: started
     enabled: yes
@@ -57,19 +57,13 @@
     - service
 
 - name: Wait for Elasticsearch to start
-  uri:
+  ansible.builtin.uri:
     url: "{{ es_api_uri }}"
     status_code: 200
   register: result
   until: result.status == 200
-  retries: 60
+  retries: 6
   delay: 5
+  changed_when: false
   tags:
     - verify
-  ignore_errors: true
-
-- name: Install statsd agent
-  ansible.builtin.include_tasks:
-    file: "../../tasks/install-statsd-agent.yml"
-  tags:
-    - stats

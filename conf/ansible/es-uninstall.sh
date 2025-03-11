@@ -5,4 +5,4 @@ make setup_venv
 venv/bin/ansible-playbook \
     -i inventories/hosts.yml \
     $* \
-    playbooks/es-install.yml
+    playbooks/es-uninstall.yml

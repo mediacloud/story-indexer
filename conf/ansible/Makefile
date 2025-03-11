@@ -24,6 +24,7 @@ $(ROLESDIR):
 	mkdir $(ROLESDIR)
 
 ################ create venv
+setup_venv: $(VENVDONE)
 
 $(VENVDONE): $(VENVDIR) Makefile requirements.txt
 	$(VENVBIN)/python3 -m pip install -r requirements.txt

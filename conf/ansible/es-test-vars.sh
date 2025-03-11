@@ -3,7 +3,7 @@
 # command to run es-test-vars.yml playbook
 # for testing es-inventory.yml and es-vars.yml
 
-make
+make setup_venv
 venv/bin/ansible-playbook \
     -i inventories/hosts.yml \
     $* \
