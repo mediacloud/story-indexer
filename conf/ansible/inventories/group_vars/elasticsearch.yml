@@ -3,6 +3,6 @@ ansible_user: xodhiambo #TEMP
 ansible_become: true
 ansible_become_password: "pass#123"
 mc_es_seed_hosts:
-  - es01.newsscribe.angwin:{{ mc_es_transport_port }}
-  - es02.newsscribe.angwin:{{ mc_es_transport_port }}
-  - es03.newsscribe.angwin:{{ mc_es_transport_port }}
+  - es01.newsscribe.angwin
+  - es02.newsscribe.angwin
+  - es03.newsscribe.angwin
