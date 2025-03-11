@@ -3,40 +3,64 @@ Start of ansible scripting for ES installation
 Putting this directly in the "conf" directory so that if ansible is
 used for more than just ES, the directory can house that too.
 
-* Makefile
+### Key Files and Directories
+
+### Makefile
 
 "make" to install create venv with ansible installed, plus populate
 role/mc.elasticsearch with a clone of the (ever so slightly) MC
 modified fork of a fork of the abondoned elastic developed
 ansible-elasticsearch installation role.
 
-* es-install.sh
+### es-install.sh
 
-Script to run ansible to install ES cluster, runs es-install.yml playbook.
+Script to run ansible to install ES cluster, runs playbooks/es-install.yml playbook.
 
-* es-install.yml
+To run
+```
+./es-install.sh --ask-vault-pass
+```
+The `--ask-vault-pass` argument prompts for Ansible Vault password to decrypt deployment secrets/variables in `vault.yml`
 
-Start of playbook to install ES cluster.  Currently only installs ES,
-Java, statsd-agent, and preliminary config.
+### es-uninstall.sh
 
-Does not start ES or attempt to establish a cluster!
+Script to run the Ansible playbook for uninstalling the ES cluster.
+Usage
+```
+./es-uninstall.sh --ask-vault-pass
+```
+### inventories/
 
-* es-inventory.yml
+Contains inventory and variable files for the Ansible playbooks
 
-YAML inventory file (host list) for running es-install.yml.  Could be
-merged into a single inventory.yml, but currently only ES hosts AND
-per-host config settings!
+Files:
 
-* es-vars.yml
+* hosts.yml - Defines the hosts and groups for the ES cluster (staging/production)
 
-Global vars for ES install.
+* group_vars/ - Contains group-specific variables (e.g vault.yml for encrypted secrets)
 
-* install-statsd-agent.yml
+### Playbooks
+
+Contains Ansible playbooks for managing the ES cluster
+
+Files:
+
+* es-install.yml - Playbook to install ES cluster, utilizes the elasticsearch role. Installs stats-d agent
+
+* es-uninstall.yml - Playbook teardown ES cluster
+
+### roles/elasticsearch
+
+Contains custom Elasticsearch role used in the installation
+PS: This is a cherry pocked from the abandoned `ansible-elasticsearch` rol, tailored for current use case
+
+
+### tasks/install-statsd-agent.yml
 
 Tasks file to install agent to report system stats to
 statsd/graphite/grafana.  Could be used by installs for both pipeline
 compute server(s) and web server(s).
 
-* requirements.txt
+### requirements.txt
 
 Python requirements for building venv

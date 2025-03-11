@@ -1,7 +1,8 @@
 - name: Playbook to test es-inventory and es-vars settings
   vars_files:
-   - roles/elasticsearch/vars/{{ env | default('production') }}.yml
-  hosts: elasticsearch
+   - inventories/group_vars/vault.yml
+   - roles/elasticsearch/vars/{{ env | default('staging') }}.yml
+  hosts: staging
   tasks:
    - name: Display inventory_hostname
      ansible.builtin.debug:

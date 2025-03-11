@@ -2,6 +2,7 @@
 - name: Install and configure Elasticsearch cluster
   hosts: elasticsearch
   vars_files:
+    - ../inventories/group_vars/vault.yml
     - ../roles/elasticsearch/vars/{{ env | default('production') }}.yml
   become: true
 

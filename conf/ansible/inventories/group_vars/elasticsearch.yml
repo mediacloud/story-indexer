@@ -1,7 +1,7 @@
 ---
-ansible_user: xodhiambo #TEMP
+ansible_user: "{{ vault_ansible_user }}"
 ansible_become: true
-ansible_become_password: "pass#123"
+ansible_become_password: "{{ vault_ansible_become_password }}"
 mc_es_seed_hosts:
   - es01.newsscribe.angwin
   - es02.newsscribe.angwin
