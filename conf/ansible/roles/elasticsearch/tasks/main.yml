@@ -28,7 +28,7 @@
 
 - name: Add ElasticSearch repository
   ansible.builtin.apt_repository:
-    repo: "{{ es_apt_url }}"
+    repo: "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/{{ es_major_version }}/apt stable main"
     state: present
     filename: "elastic-{{ es_major_version }}"
   tags:
