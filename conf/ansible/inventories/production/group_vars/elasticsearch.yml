@@ -2,6 +2,8 @@
 ansible_user: "{{ vault_ansible_user }}"
 ansible_become: true
 ansible_become_password: "{{ vault_ansible_become_password }}"
+mc_es_http_port: 9200
+mc_es_transport_port: 9300
 mc_es_seed_hosts:
   - es01.newsscribe.angwin
   - es02.newsscribe.angwin

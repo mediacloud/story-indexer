@@ -2,7 +2,7 @@
   vars_files:
    - inventories/group_vars/vault.yml
    - roles/elasticsearch/vars/{{ env | default('staging') }}.yml
-  hosts: staging
+  hosts: elasticsearch
   tasks:
    - name: Display inventory_hostname
      ansible.builtin.debug:

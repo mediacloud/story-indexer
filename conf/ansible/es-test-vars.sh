@@ -5,6 +5,6 @@
 
 make setup_venv
 venv/bin/ansible-playbook \
-    -i inventories/hosts.yml \
+    -i inventories/staging/hosts.yml \
     "$@" \
     es-test-vars.yml

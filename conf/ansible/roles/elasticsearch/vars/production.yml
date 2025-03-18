@@ -22,7 +22,7 @@ es_config:
   # to override, set in es-inventory group vars section:
   http.port: "{{ mc_es_http_port | default('9200') }}"
   # must be set per-host in es-inventory:
-  network.host: "{{ mc_es_network_host | default('_eno8303_') }}"
+  network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
   # node.name defaults to inventory_hostname
   node.roles: "{{ mc_es_node_roles }}"
   # to override, set in es-inventory group vars section:
@@ -58,7 +58,7 @@ mc_es_master: "{{ ansible_host in mc_es_seed_hosts }}"
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 
 mc_es_node_roles_data: ["data"]
-mc_es_node_roles_master: ["master"]
+mc_es_node_roles_master: ["master", "data"]
 
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
