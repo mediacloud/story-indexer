@@ -1,0 +1,34 @@
+---
+- name: Load ILM policy template from file
+  ansible.builtin.include_vars:
+    file: "{{ es_ilm_policy_template_file }}"
+    name: ilm_policy_data
+
+- name: Configure ILM policy settings
+  ansible.builtin.set_fact:
+    configured_ilm_policy: >-
+      {{ ilm_policy_data | combine(
+          {'policy': {'phases': {'hot': {'actions': {'rollover': {
+              'max_age': es_ilm_max_age,
+              'max_primary_shard_size': es_ilm_max_shard_size
+          }}}}}},
+          recursive=true
+      ) }}
+
+- name: Create ILM policy
+  community.elasticsearch.elasticsearch_ilm:
+    name: "{{ configured_ilm_policy.name }}"
+    policy: "{{ configured_ilm_policy.policy }}"
+    state: present
+    host: "{{ es_api_host }}"
+    port: "{{ es_api_port }}"
+    scheme: "{{ es_api_scheme }}"
+    username: "{{ es_api_user | default(omit) }}"
+    password: "{{ es_api_password | default(omit) }}"
+    validate_certs: "{{ es_validate_certs | default(true) }}"
+  register: ilm_creation
+
+- name: Print ILM policy creation result
+  ansible.builtin.debug:
+    msg: "ILM policy created successfully."
+  when: ilm_creation.changed

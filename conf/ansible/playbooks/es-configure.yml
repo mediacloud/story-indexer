@@ -1,0 +1,27 @@
+---
+- name: Configure Elasticsearch
+  hosts: elasticsearch
+  become: false
+  vars_files:
+    - ../inventories/production/group_vars/vault.yml
+  collections:
+    - community.elasticsearch
+
+  tasks:
+    - name: Ensure Elasticsearch is accessible
+      community.elasticsearch.elasticsearch_info:
+        host: "{{ es_api_host }}"
+        port: "{{ es_api_port }}"
+        scheme: "{{ es_api_scheme }}"
+      register: es_info
+      until: es_info is defined
+      retries: 5
+      delay: 10
+
+    - name: Create index template
+      ansible.builtin.include_tasks: tasks/elasticsearch/create_index_template.yml
+      tags: es_template
+
+    - name: Create initial index
+      ansible.builtin.include_tasks: tasks/elasticsearch/create_initial_index.yml
+      tags: es_index

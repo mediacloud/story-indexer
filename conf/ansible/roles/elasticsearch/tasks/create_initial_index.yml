@@ -1,0 +1,40 @@
+---
+- name: Load initial index template from file
+  ansible.builtin.include_vars:
+    file: "./files/templates/initial_index.json"
+    name: initial_index_data
+  tags: always
+
+- name: Check if index exists
+  community.elasticsearch.elasticsearch_index_info:
+    name: "{{ initial_index_data.name }}"
+    host: "{{ es_api_host }}"
+    port: "{{ es_api_port }}"
+    scheme: "{{ es_api_scheme }}"
+  register: index_info
+  failed_when: false
+  tags: always
+
+- name: Create initial index
+  community.elasticsearch.elasticsearch_index:
+    name: "{{ initial_index_data.name }}"
+    aliases: "{{ initial_index_data.aliases }}"
+    state: present
+    host: "{{ es_api_host }}"
+    port: "{{ es_api_port }}"
+    scheme: "{{ es_api_scheme }}"
+  register: index_creation
+  when: initial_index_data.name not in index_info.indices
+  tags: create_index
+
+- name: Print index creation status
+  ansible.builtin.debug:
+    msg: "Index '{{ initial_index_data.name }}' already exists. Skipping creation."
+  when: initial_index_data.name in index_info.indices
+  tags: always
+
+- name: Print index creation result
+  ansible.builtin.debug:
+    msg: "Index '{{ initial_index_data.name }}' created successfully."
+  when: initial_index_data.name not in index_info.indices and index_creation.changed
+  tags: always

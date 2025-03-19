@@ -1,0 +1,30 @@
+---
+- name: Load index template from file
+  ansible.builtin.include_vars:
+    file: "./files/templates/index_template.json"
+    name: index_template_data
+
+- name: Configure index template shards and replicas
+  ansible.builtin.set_fact:
+    configured_template: >-
+      {{ index_template_data | combine(
+          {'template': {'settings': {'number_of_shards': mc_es_shards, 'number_of_replicas': mc_es_replicas}}},
+          recursive=true
+      ) }}
+
+- name: Create or update index template using Elasticsearch API
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ configured_template.name }}"
+    method: PUT
+    body_format: json
+    body: "{{ configured_template }}"
+    status_code: [200,201]
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+  register: template_creation
+
+- name: Print index template creation result
+  ansible.builtin.debug:
+    msg: "Index template created successfully."
+  when: template_creation.status in [200, 201]

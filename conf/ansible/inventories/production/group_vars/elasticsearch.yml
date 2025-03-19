@@ -59,5 +59,14 @@ mc_es_seed_hosts:
   - es03.newsscribe.angwin
 mc_es_transport_port: 9309
 
+mc_es_snapshot_repo: "my_repo"
+mc_es_snapshot_repo_type: "s3"
+mc_es_snapshot_s3_bucket: "my_bucket"
+mc_es_snapshot_s3_endpoint: "my_endpoint"
+es_snapshot_fs_location: "/path/to/repo"
+mc_es_shards: 12
+mc_es_replicas: 1
+mc_es_ilm_max_age: "30d"
+mc_es_ilm_max_shard_size: "50gb"
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)

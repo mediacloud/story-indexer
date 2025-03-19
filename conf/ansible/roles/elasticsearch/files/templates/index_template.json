@@ -1,0 +1,52 @@
+{
+    "name": "mediacloud_search_template",
+    "index_patterns": "mc_search-*",
+    "template": {
+      "settings": {
+        "index.lifecycle.name": "mediacloud-lifecycle-policy",
+        "index.lifecycle.rollover_alias": "mc_search"
+      },
+      "mappings": {
+        "properties": {
+            "article_title": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                }
+            },
+            "canonical_domain": {
+                "type": "wildcard"
+            },
+            "full_language": {
+                "type": "keyword"
+            },
+            "indexed_date": {
+                "type": "date"
+            },
+            "language": {
+                "type": "keyword"
+            },
+            "original_url": {
+                "type": "keyword"
+            },
+            "publication_date": {
+                "type": "date",
+                "ignore_malformed": true
+            },
+            "text_content": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                }
+            },
+            "url": {
+                "type": "keyword"
+            }
+        }
+      }
+    }
+  }
