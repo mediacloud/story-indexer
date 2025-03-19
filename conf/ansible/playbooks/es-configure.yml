@@ -6,6 +6,11 @@
     - ../inventories/production/group_vars/vault.yml
 
   tasks:
+    - name: Load Elasticsearch role defaults
+      ansible.builtin.include_role:
+        name: ./roles/elasticsearch
+      tags: always
+
     - name: Ensure Elasticsearch is accessible
       ansible.builtin.uri:
         url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/"
@@ -18,12 +23,6 @@
       until: es_info.status == 200
       retries: 5
       delay: 10
-
-    - name: Load Elasticsearch role defaults
-      ansible.builtin.include_role:
-        name: ./roles/elasticsearch
-        tasks_from: defaults/main.yml
-      tags: always
 
     - name: Create index template
       ansible.builtin.include_role:
