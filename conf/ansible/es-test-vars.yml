@@ -1,18 +1,19 @@
 - name: Playbook to test es-inventory and es-vars settings
-  vars_files:
-   - inventories/group_vars/vault.yml
-   - roles/elasticsearch/vars/{{ env | default('staging') }}.yml
   hosts: elasticsearch
   tasks:
-   - name: Display inventory_hostname
-     ansible.builtin.debug:
-      msg: "{{ inventory_hostname }}"
-   - name: Display mc_es_seed_hosts
-     ansible.builtin.debug:
-      msg: "{{ mc_es_seed_hosts }}"
-   - name: Display mc_es_master
-     ansible.builtin.debug:
-      msg: "{{ mc_es_master }}"
-   - name: Display es_config
-     ansible.builtin.debug:
-      msg: "{{ es_config }}"
+    - name: Load production secrets if environment is production
+      ansible.builtin.include_vars:
+        file: inventories/group_vars/production/vault.yml
+      when: env == "production"
+    - name: Display inventory_hostname
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}"
+    - name: Display mc_es_seed_hosts
+      ansible.builtin.debug:
+        msg: "{{ mc_es_seed_hosts }}"
+    - name: Display mc_es_master
+      ansible.builtin.debug:
+        msg: "{{ mc_es_master }}"
+    - name: Display es_config
+      ansible.builtin.debug:
+        msg: "{{ es_config }}"
