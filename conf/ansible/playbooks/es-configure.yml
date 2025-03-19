@@ -4,8 +4,10 @@
   become: false
   vars_files:
     - ../inventories/production/group_vars/vault.yml
-  collections:
-    - community.elasticsearch
+  roles:
+    - role: ./roles/elasticsearch
+      tags:
+        - elasticsearch
 
   tasks:
     - name: Ensure Elasticsearch is accessible
