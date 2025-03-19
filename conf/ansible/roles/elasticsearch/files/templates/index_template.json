@@ -1,5 +1,4 @@
 {
-    "name": "mediacloud_search_template",
     "index_patterns": "mc_search-*",
     "template": {
       "settings": {

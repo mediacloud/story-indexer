@@ -14,7 +14,7 @@
 
 - name: Create or update index template using Elasticsearch API
   ansible.builtin.uri:
-    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ configured_template.name }}"
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_index_template_name }}"
     method: PUT
     body_format: json
     body: "{{ configured_template }}"
@@ -27,4 +27,4 @@
 - name: Print index template creation result
   ansible.builtin.debug:
     msg: "Index template created successfully."
-  when: template_creation.status in [200, 201]
+  when: template_creation.status_code in [200, 201]

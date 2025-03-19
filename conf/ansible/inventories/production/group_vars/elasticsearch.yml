@@ -58,7 +58,7 @@ mc_es_seed_hosts:
   - es02.newsscribe.angwin
   - es03.newsscribe.angwin
 mc_es_transport_port: 9309
-
+mc_index_template_name: "mediacloud_search_template"
 mc_es_snapshot_repo: "my_repo"
 mc_es_snapshot_repo_type: "s3"
 mc_es_snapshot_s3_bucket: "my_bucket"

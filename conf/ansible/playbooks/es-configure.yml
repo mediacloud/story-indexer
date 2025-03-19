@@ -7,7 +7,7 @@
 
   tasks:
     - name: Load Elasticsearch role defaults
-      ansible.builtin.include_role:
+      ansible.builtin.import_role:
         name: ./roles/elasticsearch
       tags: always
 
@@ -25,13 +25,13 @@
       delay: 10
 
     - name: Create index template
-      ansible.builtin.include_role:
+      ansible.builtin.import_role:
         name: ./roles/elasticsearch
         tasks_from: create_index_template.yml
       tags: es_template
 
     - name: Create initial index
-      ansible.builtin.include_role:
+      ansible.builtin.import_role:
         name: ./roles/elasticsearch
         tasks_from: create_initial_index.yml
       tags: es_index
