@@ -9,12 +9,15 @@
 
   tasks:
     - name: Ensure Elasticsearch is accessible
-      community.elasticsearch.elasticsearch_info:
-        host: "{{ es_api_host }}"
-        port: "{{ es_api_port }}"
-        scheme: "{{ es_api_scheme }}"
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/"
+        method: GET
+        status_code: 200
+        timeout: 30
+        headers:
+          Content-Type: "application/json"
       register: es_info
-      until: es_info is defined
+      until: es_info.status == 200
       retries: 5
       delay: 10
 

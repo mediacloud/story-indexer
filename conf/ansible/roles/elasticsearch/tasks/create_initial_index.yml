@@ -6,7 +6,7 @@
   tags: always
 
 - name: Check if index exists
-  community.elasticsearch.elasticsearch_index_info:
+  community.elastic.elastic_index_info:
     name: "{{ initial_index_data.name }}"
     host: "{{ es_api_host }}"
     port: "{{ es_api_port }}"
@@ -16,7 +16,7 @@
   tags: always
 
 - name: Create initial index
-  community.elasticsearch.elasticsearch_index:
+  community.elastic.elastic_index:
     name: "{{ initial_index_data.name }}"
     aliases: "{{ initial_index_data.aliases }}"
     state: present
