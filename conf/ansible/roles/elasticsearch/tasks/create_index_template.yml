@@ -12,6 +12,10 @@
           recursive=true
       ) }}
 
+- name: Debug configured index template
+  ansible.builtin.debug:
+    var: configured_template
+
 - name: Create or update index template using Elasticsearch API
   ansible.builtin.uri:
     url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_index_template_name }}"
