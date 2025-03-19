@@ -19,14 +19,20 @@
       retries: 5
       delay: 10
 
+    - name: Load Elasticsearch role defaults
+      ansible.builtin.include_role:
+        name: ./roles/elasticsearch
+        tasks_from: defaults/main.yml
+      tags: always
+
     - name: Create index template
       ansible.builtin.include_role:
-        name: elasticsearch
+        name: ./roles/elasticsearch
         tasks_from: create_index_template.yml
       tags: es_template
 
     - name: Create initial index
       ansible.builtin.include_role:
-        name: elasticsearch
+        name: ./roles/elasticsearch
         tasks_from: create_initial_index.yml
       tags: es_index
