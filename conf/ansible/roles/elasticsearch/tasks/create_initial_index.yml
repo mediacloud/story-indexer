@@ -26,10 +26,12 @@
     body:
       aliases: "{{ initial_index_data.aliases }}"
     body_format: json
-    status_code: 200
+    status_code: [200, 400]
   register: index_creation
   when: not index_exists
-  failed_when: not index_creation.json.acknowledged | default(false)
+  failed_when: >
+    index_creation.status != 200 and
+    (index_creation.json.error.type != 'resource_already_exists_exception')
   tags: create_index
 
 - name: Print index creation status

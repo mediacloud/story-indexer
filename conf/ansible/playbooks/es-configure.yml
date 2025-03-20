@@ -4,12 +4,14 @@
   become: false
   vars_files:
     - ../inventories/production/group_vars/vault.yml
+  roles:
+    - { role: ./roles/elasticsearch, tasks_from: null }
 
   tasks:
-    - name: Load Elasticsearch role defaults
-      ansible.builtin.import_role:
-        name: ./roles/elasticsearch
-      tags: always
+    # - name: Load Elasticsearch role defaults
+    #   ansible.builtin.import_role:
+    #     name: ./roles/elasticsearch
+    #   tags: always
 
     - name: Ensure Elasticsearch is accessible
       ansible.builtin.uri:
@@ -25,13 +27,23 @@
       delay: 10
 
     - name: Create index template
-      ansible.builtin.import_role:
-        name: ./roles/elasticsearch
-        tasks_from: create_index_template.yml
+      ansible.builtin.include_tasks:
+        file: ./roles/elasticsearch/tasks/create_index_template.yml
       tags: es_template
 
     - name: Create initial index
-      ansible.builtin.import_role:
-        name: ./roles/elasticsearch
-        tasks_from: create_initial_index.yml
+      ansible.builtin.include_tasks:
+        file: ./roles/elasticsearch/tasks/create_initial_index.yml
       tags: es_index
+
+    # - name: Create index template
+    #   ansible.builtin.import_role:
+    #     name: ./roles/elasticsearch
+    #     tasks_from: create_index_template.yml
+    #   tags: es_template
+
+    # - name: Create initial index
+    #   ansible.builtin.import_role:
+    #     name: ./roles/elasticsearch
+    #     tasks_from: create_initial_index.yml
+    #   tags: es_index
