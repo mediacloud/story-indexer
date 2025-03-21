@@ -11,8 +11,8 @@
     state: restarted
     enabled: yes
   when:
-    - es_restart_on_change | default(true)
-    - es_start_service | default(true)
+    - es_restart_on_change
+    - es_start_service
   register: es_restarted
 
 - name: wait for elasticsearch to start

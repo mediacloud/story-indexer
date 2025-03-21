@@ -38,7 +38,6 @@ es_config:
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
 es_log_dir: "/data/elasticsearch/logs"
-es_start_service: false   # TEMP?
 es_templates: false
 es_templates_fileglob: ""
 es_version: 8.17.3

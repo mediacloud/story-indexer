@@ -10,7 +10,6 @@
     headers:
       Content-Type: "application/json"
   register: reindex_result
-  when: whitelist_setup.status == 200
 
 - name: Store reindex task ID
   ansible.builtin.set_fact:
