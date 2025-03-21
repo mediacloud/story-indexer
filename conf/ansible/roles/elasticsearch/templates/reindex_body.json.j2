@@ -1,0 +1,27 @@
+{
+  "source": {
+    "remote": {
+      "host": "{{ es_api_scheme }}://{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
+    },
+    "index": "mc_search-000001",
+    "size": {{ es_reindex_batch_size }},
+    "query": {
+      "range": {
+        "indexed_date": {
+          "gte": "{{ mc_reindex_date_from ) }}",
+          "lte": "{{ mc_reindex_date_to ) }}"
+        }
+      }
+    }
+  },
+  "dest": {
+    "index": "mc_search-000001"
+  },
+  "script": {
+    "source": """
+        if (ctx._source.containsKey('full_language')) { ctx._source.remove('full_language'); }
+        if (ctx._source.containsKey('original_url')) { ctx._source.remove('original_url'); }
+        """,
+    "lang": "painless"
+  }
+}

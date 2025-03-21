@@ -1,6 +1,5 @@
 ---
 # Configure Elasticsearch Nodes
-#Create conf directory
 - name: Create Configuration Directory
   become: true
   file:
@@ -10,7 +9,6 @@
     group: "{{ es_group }}"
     mode: "2750"
 
-#Create pid directory
 - name: Create PID Directory
   become: true
   file:
@@ -20,7 +18,6 @@
     group: "{{ es_group }}"
     mode: "755"
 
-#Create required directories
 - name: Create Others Directories
   become: true
   file:
@@ -33,7 +30,6 @@
     - "{{ es_log_dir }}"
     - "{{ es_data_dirs }}"
 
-#Copy the config template
 - name: Copy Configuration File
   become: true
   template:
@@ -47,7 +43,6 @@
   register: system_change
   notify: restart elasticsearch
 
-#Copy the default file
 - name: Copy Default File
   become: true
   template:
@@ -60,7 +55,6 @@
     backup: yes
   notify: restart elasticsearch
 
-#Copy the systemd specific file if systemd is installed
 - when: use_system_d and (m_lock_enabled or es_max_open_files is defined)
   become: true
   block:

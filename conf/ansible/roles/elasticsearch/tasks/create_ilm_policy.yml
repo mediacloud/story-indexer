@@ -1,7 +1,7 @@
 ---
 - name: Load ILM policy template from file
   ansible.builtin.include_vars:
-    file: "{{ es_ilm_policy_template_file }}"
+    file: "./files/templates/ilm_policy.json"
     name: ilm_policy_data
 
 - name: Configure ILM policy settings
@@ -9,8 +9,8 @@
     configured_ilm_policy: >-
       {{ ilm_policy_data | combine(
           {'policy': {'phases': {'hot': {'actions': {'rollover': {
-              'max_age': es_ilm_max_age,
-              'max_primary_shard_size': es_ilm_max_shard_size
+              'max_age': mc_es_ilm_max_age,
+              'max_primary_shard_size': mc_es_ilm_max_shard_size
           }}}}}},
           recursive=true
       ) }}

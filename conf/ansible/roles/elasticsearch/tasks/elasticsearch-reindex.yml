@@ -1,0 +1,40 @@
+---
+- name: Configure remote cluster connection
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_cluster/settings"
+    method: PUT
+    body_format: json
+    body: |
+        {
+          "persistent": {
+            "reindex.remote.whitelist": "{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
+          }
+        }
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+  register: whitelist_setup
+
+- name: Re-index data from remote cluster (async)
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_reindex?wait_for_completion=false"
+    method: POST
+    body: "{{ lookup('template', './roles/elasticsearch/templates/reindex_body.json.j2') }}"
+    body_format: json
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+  register: reindex_result
+  when: whitelist_setup.status == 200
+
+- name: Store reindex task ID
+  ansible.builtin.set_fact:
+    reindex_task_id: "{{ reindex_result.json.task }}"
+  when: reindex_result.status == 200
+
+- name: Display reindex task information
+  ansible.builtin.debug:
+    msg: "Reindexing started with task ID: {{ reindex_task_id }}. You can monitor progress with: GET _tasks/{{ reindex_task_id }}"
+  when: reindex_task_id is defined

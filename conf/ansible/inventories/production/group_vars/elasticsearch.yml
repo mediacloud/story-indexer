@@ -70,3 +70,6 @@ mc_es_ilm_max_age: "30d"
 mc_es_ilm_max_shard_size: "50gb"
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
+# Remote Cluster ES settings
+mc_es_remote_cluster_host: "ramos.angwin"
+mc_es_remote_cluster_port: 9200

@@ -8,7 +8,7 @@
   tasks:
     - name: Load Elasticsearch role defaults
       ansible.builtin.include_vars:
-        file: ./roles/elasticsearch/defaults/main.yml
+        file: ../roles/elasticsearch/defaults/main.yml
       tags: always
 
     - name: Ensure Elasticsearch is accessible

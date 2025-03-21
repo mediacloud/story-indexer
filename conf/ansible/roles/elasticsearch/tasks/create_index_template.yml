@@ -31,4 +31,4 @@
 - name: Print index template creation result
   ansible.builtin.debug:
     msg: "Index template created successfully."
-  when: template_creation.status_code in [200, 201]
+  when: template_creation.status in [200, 201]

@@ -1,0 +1,51 @@
+---
+- name: Configure Data Re-Indexing from Remote Cluster
+  hosts: elasticsearch
+  become: false
+  vars_files:
+    - ../inventories/production/group_vars/vault.yml
+
+  vars:
+    # Default values that can be overridden via extra vars on playbook run
+    reindex_date_from: "{{ mc_reindex_date_from }}"
+    reindex_date_to: "{{ mc_reindex_date_to }}"
+    es_reindex_batch_size: "{{ es_reindex_batch_size | default(10000) }}"
+
+  tasks:
+    - name: Load Elasticsearch role defaults
+      ansible.builtin.include_vars:
+        file: ../roles/elasticsearch/defaults/main.yml
+      tags: always
+
+    - name: Display reindexing parameters
+      ansible.builtin.debug:
+        msg:
+          - "Re-indexing Configuration:"
+          - "  - Date Range: {{ reindex_date_from }} to {{ reindex_date_to }}"
+          - "  - Batch Size: {{ es_reindex_batch_size }}"
+          - "  - Wait for Completion: {{ es_reindex_wait_for_completion }}"
+      tags: always
+
+    - name: Ensure Elasticsearch is accessible
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/"
+        method: GET
+        status_code: 200
+        timeout: 30
+        headers:
+          Content-Type: "application/json"
+      register: es_info
+      until: es_info.status == 200
+      retries: 5
+      delay: 10
+      tags: always
+
+    - name: Execute Elasticsearch reindexing tasks
+      ansible.builtin.include_role:
+        name: ./roles/elasticsearch
+        tasks_from: reindex
+      vars:
+        reindex_date_from: "{{ reindex_date_from }}"
+        reindex_date_to: "{{ reindex_date_to }}"
+        es_reindex_batch_size: "{{ es_reindex_batch_size }}"
+      tags: es-reindex

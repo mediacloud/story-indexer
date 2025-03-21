@@ -27,9 +27,6 @@
             "language": {
                 "type": "keyword"
             },
-            "original_url": {
-                "type": "keyword"
-            },
             "publication_date": {
                 "type": "date",
                 "ignore_malformed": true
