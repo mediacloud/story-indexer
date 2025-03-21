@@ -1,21 +1,4 @@
 ---
-- name: Configure remote cluster connection
-  ansible.builtin.uri:
-    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_cluster/settings"
-    method: PUT
-    body_format: json
-    body: |
-        {
-          "persistent": {
-            "reindex.remote.whitelist": "{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
-          }
-        }
-    status_code: 200
-    timeout: 30
-    headers:
-      Content-Type: "application/json"
-  register: whitelist_setup
-
 - name: Re-index data from remote cluster (async)
   ansible.builtin.uri:
     url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_reindex?wait_for_completion=false"

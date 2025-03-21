@@ -20,6 +20,8 @@ es_config:
   network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
   # node.name defaults to inventory_hostname
   node.roles: "{{ mc_es_node_roles }}"
+  # Remote connection
+  reindex.remote.whitelist: "{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
   # to override, set in es-inventory group vars section:
   transport.port: "{{ mc_es_transport_port | default('9300') }}"
   # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!

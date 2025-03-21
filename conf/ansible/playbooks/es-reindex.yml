@@ -23,7 +23,6 @@
           - "Re-indexing Configuration:"
           - "  - Date Range: {{ reindex_date_from }} to {{ reindex_date_to }}"
           - "  - Batch Size: {{ es_reindex_batch_size }}"
-          - "  - Wait for Completion: {{ es_reindex_wait_for_completion }}"
       tags: always
 
     - name: Ensure Elasticsearch is accessible
@@ -43,7 +42,7 @@
     - name: Execute Elasticsearch reindexing tasks
       ansible.builtin.include_role:
         name: ./roles/elasticsearch
-        tasks_from: reindex
+        tasks_from: elasticsearch-reindex
       vars:
         reindex_date_from: "{{ reindex_date_from }}"
         reindex_date_to: "{{ reindex_date_to }}"
