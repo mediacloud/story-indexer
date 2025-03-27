@@ -6,23 +6,16 @@
         "index.lifecycle.rollover_alias": "mc_search"
       },
       "mappings": {
+        "dynamic": "false",
         "properties": {
             "article_title": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                }
+                "type": "text"
             },
             "canonical_domain": {
-                "type": "wildcard"
-            },
-            "full_language": {
                 "type": "keyword"
             },
             "indexed_date": {
-                "type": "date"
+                "type": "date_nanos"
             },
             "language": {
                 "type": "keyword"
@@ -32,15 +25,10 @@
                 "ignore_malformed": true
             },
             "text_content": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                }
+                "type": "text"
             },
             "url": {
-                "type": "keyword"
+                "type": "wildcard"
             }
         }
       }

@@ -3,8 +3,9 @@
     "remote": {
       "host": "{{ es_api_scheme }}://{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
     },
-    "index": "mc_search-000001",
+    "index": "{{ source_index }}",
     "size": {{ es_reindex_batch_size }},
+    "_source": ["article_title", "canonical_domain", "indexed_date", "language", "publication_date","text_content", "url"],
     "query": {
       "range": {
         "indexed_date": {
@@ -15,13 +16,6 @@
     }
   },
   "dest": {
-    "index": "mc_search-000001"
-  },
-  "script": {
-    "source": """
-        if (ctx._source.containsKey('full_language')) { ctx._source.remove('full_language'); }
-        if (ctx._source.containsKey('original_url')) { ctx._source.remove('original_url'); }
-        """,
-    "lang": "painless"
+    "index": "{{ dest_index }}"
   }
 }
