@@ -2,12 +2,24 @@ import json
 import os
 import pickle
 import re
+import sys
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from uuid import NAMESPACE_URL, uuid3
 
 import cchardet as chardet
+
+if TYPE_CHECKING:  # START OF STUFF TO REMOVE for Python >= 3.11
+    from typing_extensions import Self
+elif sys.version_info < (3, 11):
+    Self = Any
+else:
+    import warnings
+
+    warnings.warn("TIME TO REMOVE ALL THIS (and add Self to top from typing import...)")
+    from typing import Self
+# END OF STUFF TO REMOVE
 
 from indexer.path import DATAPATH_BY_DATE, STORIES
 
@@ -72,8 +84,7 @@ class StoryData:
         self.MEMBER_NAME = class_to_member_name(self.__class__)
         self.frozen = True
 
-    # Implementing typing on return:self is really finicky, just doing Any for now
-    def __enter__(self) -> Any:
+    def __enter__(self) -> Self:
         self.frozen = False
         return self
 
