@@ -1,0 +1,38 @@
+---
+- name: Configure Elasticsearch
+  hosts: elasticsearch
+  become: false
+  vars_files:
+    - ../inventories/production/group_vars/vault.yml
+
+  tasks:
+    - name: Load Elasticsearch role defaults
+      ansible.builtin.include_vars:
+        file: ../roles/elasticsearch/defaults/main.yml
+      tags: always
+
+    - name: Ensure Elasticsearch is accessible
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/"
+        method: GET
+        status_code: 200
+        timeout: 30
+        headers:
+          Content-Type: "application/json"
+      register: es_info
+      until: es_info.status == 200
+      retries: 5
+      delay: 10
+      tags: always
+
+    - name: Create index template
+      ansible.builtin.include_role:
+        name: ./roles/elasticsearch
+        tasks_from: create_index_template.yml
+      tags: es_template
+
+    - name: Create initial index
+      ansible.builtin.include_role:
+        name: ./roles/elasticsearch
+        tasks_from: create_initial_index.yml
+      tags: es_index
