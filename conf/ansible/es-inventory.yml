@@ -1,0 +1,63 @@
+---
+# COULD be a general inventory.yml file...
+# to check this file run "venv/bin/ansible-inventory -i es-inventory.yml --list"
+
+# used by es-test-vars.yml/sh
+local:
+  hosts:
+    host1:
+      mc_es_network_host: 1.2.3.1
+    host2:
+      mc_es_network_host: 1.2.3.2
+  vars:
+    mc_es_http_port: 9299
+    mc_es_transport_port: 9399
+    mc_es_seed_hosts:
+      - host1
+
+# TEMP FOR TESTING w/ docker container
+elasticsearch:
+  hosts:
+    docker-container:
+      ansible_host: ifill.angwin
+      ansible_port: 2222
+      ansible_user: phil
+      ansible_become_password: philpassword
+      become: true  # this may not have worked...
+      mc_es_network_host: _foo_
+  vars:
+    mc_es_seed_hosts:
+#     - docker-container
+
+es:
+  hosts:
+    es01.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.21
+    es02.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.22
+    es03.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.23
+    es04.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.24
+    es05.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.25
+    es06.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.26
+    es07.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.27
+    es08.newsscribe.angwin:
+      mc_es_network_host: 10.1.1.28
+  vars:
+    # defaults for all members of group.
+
+    mc_es_http_port: 9209 # TEMP WHILE TESTING!
+
+    # strings here MUST match entries in hosts map above!
+    mc_es_seed_hosts:
+      - es01.newscribe.angwin
+      - es02.newscribe.angwin
+      - es03.newscribe.angwin
+
+    mc_es_transport_port: 9309 # TEMP WHILE TESTING!
+
+    # PLEASE ADD VARS ABOVE IN SORTED ORDER
