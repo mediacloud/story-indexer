@@ -79,7 +79,7 @@ class QStats(IntervalMixin, QApp):
                 nodes = api.list_nodes()
                 for node in nodes:  # List
                     # leading part is cluster name, split and give second part??
-                    name = node.get("name").replace("@", "-")
+                    name = node.get("name", "").replace("@", "-")
                     self.g(node, "fd_used", "nodes", "fds", "name", name)
                     self.g(node, "mem_used", "nodes", "memory", "name", name)
                     self.g(node, "sockets_used", "nodes", "sockets", "name", name)
