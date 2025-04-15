@@ -1,22 +1,22 @@
 ---
-- name: reload systemd configuration
+- name: Reload systemd configuration
   become: true
   ansible.builtin.systemd_service:
     daemon_reload: true
 
-- name: restart elasticsearch
+- name: Restart elasticsearch
   become: true
   ansible.builtin.service:
     name: elasticsearch
     state: restarted
-    enabled: yes
+    enabled: true
   when:
     - es_restart_on_change
     - es_start_service
   register: es_restarted
 
-- name: wait for elasticsearch to start
-  wait_for:
+- name: Wait for elasticsearch to start
+  ansible.builtin.wait_for:
     host: "{{ mc_es_network_host | default('localhost') }}"
     port: "{{ mc_es_http_port | default(9200) }}"
     delay: 10

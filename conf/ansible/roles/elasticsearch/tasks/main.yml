@@ -44,7 +44,7 @@
 
 - name: Generate Elasticsearch configuration
   ansible.builtin.import_tasks: elasticsearch-config.yml
-  notify: restart elasticsearch
+  notify: Restart elasticsearch
   tags:
     - config
 

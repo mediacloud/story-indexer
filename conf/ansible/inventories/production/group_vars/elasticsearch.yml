@@ -51,6 +51,7 @@ host_key_checking: false
 # elastic search specific vars (just about everything) should start with mc_es_
 mc_es_http_port: 9209
 mc_es_master: "{{ ansible_host in mc_es_seed_hosts }}"
+mc_es_mappings_dynamic: false
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 mc_es_node_roles_data: ["data"]
 mc_es_node_roles_master: ["master", "data"]
@@ -67,8 +68,11 @@ mc_es_snapshot_s3_endpoint: "my_endpoint"
 es_snapshot_fs_location: "/path/to/repo"
 mc_es_shards: 12
 mc_es_replicas: 1
-mc_es_ilm_max_age: "30d"
+mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
+mc_es_ilm_max_age: "90d"
 mc_es_ilm_max_shard_size: "50gb"
+mc_es_ilm_max_docs: 200000000
+mc_es_index_alias: "mc_search"
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
 # Remote Cluster ES settings

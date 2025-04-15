@@ -1,34 +1,25 @@
 ---
-- name: Load index template from file
-  ansible.builtin.include_vars:
-    file: "./files/templates/index_template.json"
-    name: index_template_data
-
-- name: Configure index template shards and replicas
-  ansible.builtin.set_fact:
-    configured_template: >-
-      {{ index_template_data | combine(
-          {'template': {'settings': {'number_of_shards': mc_es_shards, 'number_of_replicas': mc_es_replicas}}},
-          recursive=true
-      ) }}
-
-- name: Debug configured index template
-  ansible.builtin.debug:
-    var: configured_template
-
 - name: Create or update index template using Elasticsearch API
   ansible.builtin.uri:
     url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_index_template_name }}"
     method: PUT
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/index.template.json.j2') }}"
     body_format: json
-    body: "{{ configured_template }}"
     status_code: [200,201]
     timeout: 30
     headers:
       Content-Type: "application/json"
   register: template_creation
+  retries: 3
+  delay: 5
+  until: template_creation.status in [200, 201]
+  tags: es_templates
 
-- name: Print index template creation result
-  ansible.builtin.debug:
-    msg: "Index template created successfully."
-  when: template_creation.status in [200, 201]
+- name: Validate template creation
+  ansible.builtin.assert:
+    that:
+      - template_creation.status in [200, 201]
+      - template_creation.json.acknowledged | default(false)
+    success_msg: "Index template '{{ mc_index_template_name }}' successfully configured"
+    fail_msg: "Failed to configure index template '{{ mc_index_template_name }}'"
+  tags: es_template

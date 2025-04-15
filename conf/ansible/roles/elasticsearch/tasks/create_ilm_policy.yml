@@ -1,34 +1,24 @@
 ---
-- name: Load ILM policy template from file
-  ansible.builtin.include_vars:
-    file: "./files/templates/ilm_policy.json"
-    name: ilm_policy_data
-
-- name: Configure ILM policy settings
-  ansible.builtin.set_fact:
-    configured_ilm_policy: >-
-      {{ ilm_policy_data | combine(
-          {'policy': {'phases': {'hot': {'actions': {'rollover': {
-              'max_age': mc_es_ilm_max_age,
-              'max_primary_shard_size': mc_es_ilm_max_shard_size
-          }}}}}},
-          recursive=true
-      ) }}
-
-- name: Create ILM policy
-  community.elasticsearch.elasticsearch_ilm:
-    name: "{{ configured_ilm_policy.name }}"
-    policy: "{{ configured_ilm_policy.policy }}"
-    state: present
-    host: "{{ es_api_host }}"
-    port: "{{ es_api_port }}"
-    scheme: "{{ es_api_scheme }}"
-    username: "{{ es_api_user | default(omit) }}"
-    password: "{{ es_api_password | default(omit) }}"
-    validate_certs: "{{ es_validate_certs | default(true) }}"
+- name: Create/Update ILM policy using Elasticsearch API
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_ilm/policy/{{ mc_es_ilm_policy_name }}"
+    method: PUT
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/ilm.policy.json.j2') }}"
+    body_format: json
+    status_code: [200, 201]
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
   register: ilm_creation
+  retries: 3
+  delay: 5
+  until: ilm_creation.status == 200
+  tags: es_ilm
 
-- name: Print ILM policy creation result
-  ansible.builtin.debug:
-    msg: "ILM policy created successfully."
-  when: ilm_creation.changed
+- name: Verify ILM policy configuration
+  ansible.builtin.assert:
+    that:
+      - ilm_validation.status == 200
+    success_msg: "ILM policy '{{ mc_es_ilm_policy_name }}' is properly configured"
+    fail_msg: "ILM policy validation failed for '{{ mc_es_ilm_policy_name }}'"
+  tags: es_ilm

@@ -1,0 +1,28 @@
+{
+    "name": "{{ ilm_policy_name | default('mediacloud-lifecycle-policy') }}",
+    "policy": {
+        "phases": {
+            "hot": {
+                "min_age": "{{ ilm_hot_phase_min_age | default('0ms') }}",
+                "actions": {
+                    "rollover": {
+                        {% if mc_es_ilm_max_shard_size is defined %}
+                        "max_primary_shard_size": "{{ mc_es_ilm_max_shard_size }}",
+                        {% endif %}
+                        {% if mc_es_ilm_max_age is defined %}
+                        "max_age": "{{ mc_es_ilm_max_age }}",
+                        {% endif %}
+                        {% if mc_es_ilm_max_docs is defined %}
+                        "max_docs": {{ mc_es_ilm_max_docs }},
+                        {% endif %}
+                    }
+                }
+            }
+        },
+        "_meta": {
+            "description": "ILM policy using the hot phase with configurable rollover conditions ",
+            "managed": true,
+            "created_by": "ansible"
+        }
+    }
+}
