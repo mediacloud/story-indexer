@@ -2,8 +2,6 @@
 - name: Configure Data Re-Indexing from Remote Cluster
   hosts: elasticsearch
   become: false
-  vars_files:
-    - ../inventories/production/group_vars/vault.yml
 
   vars:
     # Default values that can be overridden via extra vars on playbook run
@@ -11,7 +9,7 @@
     reindex_date_to: "{{ mc_reindex_date_to }}"
     source_index: "{{ source_index }}"
     dest_index: "{{ dest_index }}"
-    es_reindex_batch_size: "{{ es_reindex_batch_size | default(10000) }}"
+    es_reindex_batch_size: "{{ es_reindex_batch_size }}"
 
   tasks:
     - name: Load Elasticsearch role defaults

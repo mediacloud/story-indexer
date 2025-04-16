@@ -1,8 +1,8 @@
 ---
 # TEMPLATE VARIABLES: PLEASE KEEP SORTED!!
-ansible_user: "{{ vault_ansible_user }}"
+ansible_user: "{{ ansible_user }}"
 ansible_become: true
-ansible_become_password: "{{ vault_ansible_become_password }}"
+ansible_become_password: "{{ ansible_become_password }}"
 #### vars for ansible-elasticsearch (all start with es_)
 # key/values copied to elasticsearch.yml output file:
 es_config:
@@ -21,7 +21,7 @@ es_config:
   # node.name defaults to inventory_hostname
   node.roles: "{{ mc_es_node_roles }}"
   # Remote connection
-  reindex.remote.whitelist: "{{ mc_es_remote_cluster_host }}:{{ mc_es_remote_cluster_port }}"
+  reindex.remote.whitelist: "{{ mc_es_remote_cluster_hosts | join(',') }}"
   # to override, set in es-inventory group vars section:
   transport.port: "{{ mc_es_transport_port | default('9300') }}"
   # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
@@ -76,5 +76,7 @@ mc_es_index_alias: "mc_search"
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
 # Remote Cluster ES settings
-mc_es_remote_cluster_host: "ramos.angwin"
-mc_es_remote_cluster_port: 9200
+mc_es_remote_cluster_hosts:
+  - "ramos.angwin:9200"
+  - "bradley.angwin:9200"
+  - "woodward.angwin:9200"

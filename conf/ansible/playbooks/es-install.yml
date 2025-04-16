@@ -1,8 +1,6 @@
 ---
 - name: Install and configure Elasticsearch cluster
   hosts: elasticsearch
-  vars_files:
-    - ../inventories/production/group_vars/vault.yml
   become: true
 
   roles:
@@ -32,6 +30,6 @@
         - always
 
   post_tasks:
-   - name: Install statsd agent
-     ansible.builtin.include_tasks:
+    - name: Install statsd agent
+      ansible.builtin.include_tasks:
       file: "../tasks/install-statsd-agent.yml"

@@ -2,8 +2,6 @@
 - name: Configure Elasticsearch
   hosts: elasticsearch
   become: false
-  vars_files:
-    - ../inventories/production/group_vars/vault.yml
 
   tasks:
     - name: Load Elasticsearch role defaults
