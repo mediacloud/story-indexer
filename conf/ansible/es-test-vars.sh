@@ -8,7 +8,7 @@
 ENVIRONMENT=${1:-staging}
 make setup_venv
 shift
-venv/bin/ansible-playbook \
+ansible-playbook \
     -i "inventories/${ENVIRONMENT}/hosts.yml" \
     -e "env=${ENVIRONMENT}" \
     "$@" \

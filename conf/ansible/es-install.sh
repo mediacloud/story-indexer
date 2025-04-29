@@ -9,8 +9,8 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --inventory FILE    Inventory file (default: inventories/production/hosts.yml)"
-    echo "  --user USER         Ansible user (default: current user)"
-    echo "  --ask-become-pass   Prompt for become password"
+    echo "  --user USER         Ansible user (default: \$USER)"
+    echo "  --ask-become-pass   Prompt for become password (default: false)"
     echo "  --help              Show this help message"
 }
 
@@ -53,23 +53,27 @@ if [ ! -f "$inventory" ]; then
     exit 1
 fi
 
+[ -z "$user" ] && user="$USER"
+
 set -- playbooks/es-install.yml \
     -i "$inventory"
 
-[ -n "$user" ] && set -- "$@" -e "ansible_user=$user"
+set -- "$@" -e "ansible_user=$user"
 
 if [ "$ask_become_pass" = true ]; then
     stty -echo
-    printf "BECOME password: "
+    printf "BECOME password for $user: "
     read become_pass
     stty echo
     printf "\n"
-    set -- "$@" -e "ansible_become_password=$become_pass"
+    set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
     unset become_pass
+elif [ -n "$user" ]; then
+    # Only enable become if a specific user was requested
+    set -- "$@" -e "ansible_become=true"
 fi
 
 echo "Running installation with options:"
-echo "  Inventory: $inventory"
-[ -n "$user" ] && echo "  Ansible User: $user"
+echo "  Ansible User: $user"
 
 ansible-playbook "$@"

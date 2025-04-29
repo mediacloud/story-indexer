@@ -1,8 +1,5 @@
 ---
 # TEMPLATE VARIABLES: PLEASE KEEP SORTED!!
-ansible_user: "{{ ansible_user }}"
-ansible_become: true
-ansible_become_password: "{{ ansible_become_password }}"
 #### vars for ansible-elasticsearch (all start with es_)
 # key/values copied to elasticsearch.yml output file:
 es_config:

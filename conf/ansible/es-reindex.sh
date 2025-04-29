@@ -14,9 +14,14 @@ usage() {
     echo "  --date-to DATE            End date (YYYY-MM-DD) (required)"
     echo "  --inventory FILE          Inventory file (default: inventories/production/hosts.yml)"
     echo "  --batch-size SIZE         Reindex batch size (optional)"
-    echo "  --user USER               Ansible user (default: current user)"
-    echo "  --ask-become-pass         Prompt for become password"
+    echo "  --user USER         Ansible user (default: \$USER)"
+    echo "  --ask-become-pass   Prompt for become password (default: false)"
     echo "  --help                    Show this help message"
+    echo ""
+    echo "Note: Requires either:"
+    echo "  1) --user with --ask-become-pass"
+    echo "  2) SSH key-based authentication configured"
+    echo "  3) Passwordless sudo on target hosts"
 }
 
 error_exit() {
@@ -88,6 +93,8 @@ if [ ! -f "$inventory" ]; then
     exit 1
 fi
 
+[ -z "$user" ] && user="$USER"
+
 set -- playbooks/es-reindex.yml \
     -i "$inventory" \
     -e "source_index=$source_index" \
@@ -96,16 +103,20 @@ set -- playbooks/es-reindex.yml \
     -e "reindex_date_to=$reindex_date_to"
 
 [ -n "$es_reindex_batch_size" ] && set -- "$@" -e "es_reindex_batch_size=$es_reindex_batch_size"
-[ -n "$user" ] && set -- "$@" -e "ansible_user=$user"
+
+set -- "$@" -e "ansible_user=$user"
 
 if [ "$ask_become_pass" = true ]; then
     stty -echo
-    printf "BECOME password: "
+    printf "BECOME password for $user: "
     read become_pass
     stty echo
     printf "\n"
-    set -- "$@" -e "ansible_become_password=$become_pass"
+    set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
     unset become_pass
+elif [ -n "$user" ]; then
+    # Only enable become if a specific user was requested
+    set -- "$@" -e "ansible_become=true"
 fi
 
 echo "Running reindexing with parameters:"
