@@ -9,7 +9,7 @@ used for more than just ES, the directory can house that too.
 
 "make" to install create venv with ansible installed, plus populate
 role/mc.elasticsearch with a clone of the (ever so slightly) MC
-modified fork of a fork of the abondoned elastic developed
+modified fork of a fork of the abandoned elastic developed
 ansible-elasticsearch installation role.
 
 ### Inventories/
@@ -126,7 +126,7 @@ ansible-playbook playbooks/es-configure.yml -i inventories/production/hosts.yml 
 ./configure_es.sh --ilm-only --user <> --become-pass <> # Only ILM policies
 ```
 
-#### Elasticsearch Reindexing Playbook
+#### Elasticsearch Re-indexing Playbook
 
 This playbook handles data re-indexing from a remote Elasticsearch cluster to a local cluster with configurable parameters.
 
@@ -173,6 +173,40 @@ ansible-playbook es-reindex.yml \
 ./es-reindex.sh --source-index mc_search-000001 --dest-index mc_search \
                  --date-from 2024-04-01 --date-to 2024-05-31 \
                  --batch-size 5000
+```
+
+#### Elasticsearch Rolling Restart Playbook
+
+This playbook performs a safe rolling restart of Elasticsearch cluster nodes with proper cluster health checks and shard management.
+
+##### Purpose
+- Perform zero-downtime rolling restarts of Elasticsearch nodes
+- Maintain cluster health throughout the restart process
+- Properly manage shard allocation during node restarts
+- Verify successful node rejoining and shard recovery
+
+###### Files
+- `playbooks/es-restart.yml` - Main playbook for rolling restart
+
+###### Configuration Parameters
+
+| Variable               | Description                                                                 | Default       | Location        |
+|------------------------|-----------------------------------------------------------------------------|---------------|-----------------|
+| `es_api_scheme`       | HTTP scheme for Elasticsearch API (http/https)                             | `http`        | role defaults   |
+| `es_api_host`         | Elasticsearch host                                                         | `localhost`   | role defaults   |
+| `mc_es_http_port`    | Elasticsearch API port                                                     | `9200`        | role defaults   |
+| `mc_es_seed_hosts`   | List of master-eligible nodes                                              | -             | inventory       |
+| `health_timeout`     | Timeout (seconds) for health checks                                        | `600`         | playbook vars   |
+| `health_delay`      | Delay (seconds) between health check retries                               | `15`          | playbook vars   |
+
+###### Usage
+
+Example commands
+
+```sh
+ansible-playbook playbooks/es-restart.yml -i inventories/production/hosts.yml
+
+./es-restart.sh
 ```
 
 ### roles/elasticsearch

@@ -1,0 +1,129 @@
+---
+- name: Elasticsearch Rolling Restart
+  hosts: elasticsearch
+  become: true
+  serial: 1
+  gather_facts: false
+
+  vars:
+    health_timeout: 600  # 10 minutes
+    health_delay: 15     # 15 seconds
+    health_retries: "{{ (health_timeout / health_delay) | round(0, 'ceil') | int }}"
+    es_api: "{{ es_api_scheme }}://{{ es_api_host }}:{{ mc_es_http_port }}"
+    master_nodes: "{{ groups.elasticsearch | intersect(mc_es_seed_hosts) }}"
+    data_nodes: "{{ groups.elasticsearch | difference(mc_es_seed_hosts) }}"
+
+  pre_tasks:
+    - name: Verify cluster is healthy before starting
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cluster/health"
+        method: GET
+        return_content: true
+        status_code: 200
+        register: pre_health
+        until: pre_health.json.status == 'green'
+        retries: "{{ health_retries }}"
+        delay: "{{ health_delay }}"
+      run_once: true
+      delegate_to: "{{ master_nodes[0] }}"
+
+    - name: Disable shard allocation
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cluster/settings"
+        method: PUT
+        body_format: json
+        body: |
+          {
+            "persistent": {
+              "cluster.routing.allocation.enable": "none"
+            }
+          }
+        status_code: 200
+      run_once: true
+      delegate_to: "{{ master_nodes[0] }}"
+
+    - name: Attempt synced flush
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_flush/synced"
+        method: POST
+        status_code: 200
+      run_once: true
+      delegate_to: "{{ master_nodes[0] }}"
+      register: flush_result
+      ignore_errors: true
+
+  tasks:
+    - name: Restart Elasticsearch service
+      ansible.builtin.service:
+        name: elasticsearch
+        state: restarted
+      notify:
+        - Wait for service to respond
+        - Wait until node rejoins cluster
+        - Verify shard recovery
+
+  handlers:
+    - name: Wait for service to respond
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ mc_es_http_port }}"
+        timeout: "{{ health_timeout }}"
+        delay: "{{ health_delay }}"
+
+    - name: Wait until node rejoins cluster
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cat/nodes?h=name"
+        method: GET
+        return_content: true
+        status_code: 200
+        register: node_check
+        until: inventory_hostname in node_check.content
+        retries: 20
+        delay: 10
+      delegate_to: "{{ master_nodes[0] }}"
+
+    - name: Verify shard recovery
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cluster/health"
+        method: GET
+        return_content: true
+        status_code: 200
+        register: health
+        until: >
+          health.json.status in ['green', 'yellow'] and
+          health.json.unassigned_shards == 0 and
+          health.json.initializing_shards == 0 and
+          health.json.relocating_shards == 0
+        retries: "{{ health_retries }}"
+        delay: "{{ health_delay }}"
+      delegate_to: "{{ master_nodes[0] }}"
+      run_once: true
+
+  post_tasks:
+    - name: Re-enable shard allocation
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cluster/settings"
+        method: PUT
+        body_format: json
+        body: |
+          {
+            "persistent": {
+              "cluster.routing.allocation.enable": null
+            }
+          }
+        status_code: 200
+      run_once: true
+      delegate_to: "{{ master_nodes[0] }}"
+
+    - name: Final cluster health check
+      ansible.builtin.uri:
+        url: "{{ es_api }}/_cluster/health"
+        method: GET
+        return_content: true
+        status_code: 200
+        register: post_health
+        until: post_health.json.status == 'green'
+        retries: "{{ health_retries }}"
+        delay: "{{ health_delay }}"
+      run_once: true
+      delegate_to: "{{ master_nodes[0] }}"
