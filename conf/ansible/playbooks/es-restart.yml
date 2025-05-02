@@ -20,10 +20,10 @@
         method: GET
         return_content: true
         status_code: 200
-        register: pre_health
-        until: pre_health.json.status == 'green'
-        retries: "{{ health_retries }}"
-        delay: "{{ health_delay }}"
+      register: pre_health
+      until: pre_health.json.status == 'green'
+      retries: "{{ health_retries }}"
+      delay: "{{ health_delay }}"
       run_once: true
       delegate_to: "{{ master_nodes[0] }}"
 
@@ -76,10 +76,10 @@
         method: GET
         return_content: true
         status_code: 200
-        register: node_check
-        until: inventory_hostname in node_check.content
-        retries: 20
-        delay: 10
+      register: node_check
+      until: inventory_hostname in node_check.content
+      retries: 20
+      delay: 10
       delegate_to: "{{ master_nodes[0] }}"
 
     - name: Verify shard recovery
@@ -88,14 +88,14 @@
         method: GET
         return_content: true
         status_code: 200
-        register: health
-        until: >
-          health.json.status in ['green', 'yellow'] and
-          health.json.unassigned_shards == 0 and
-          health.json.initializing_shards == 0 and
-          health.json.relocating_shards == 0
-        retries: "{{ health_retries }}"
-        delay: "{{ health_delay }}"
+      register: health
+      until: >
+        health.json.status in ['green', 'yellow'] and
+        health.json.unassigned_shards == 0 and
+        health.json.initializing_shards == 0 and
+        health.json.relocating_shards == 0
+      retries: "{{ health_retries }}"
+      delay: "{{ health_delay }}"
       delegate_to: "{{ master_nodes[0] }}"
       run_once: true
 
@@ -121,9 +121,9 @@
         method: GET
         return_content: true
         status_code: 200
-        register: post_health
-        until: post_health.json.status == 'green'
-        retries: "{{ health_retries }}"
-        delay: "{{ health_delay }}"
+      register: post_health
+      until: post_health.json.status == 'green'
+      retries: "{{ health_retries }}"
+      delay: "{{ health_delay }}"
       run_once: true
       delegate_to: "{{ master_nodes[0] }}"

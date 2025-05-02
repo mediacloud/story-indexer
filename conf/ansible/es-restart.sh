@@ -10,7 +10,6 @@ usage() {
     echo "Options:"
     echo "  --inventory FILE    Inventory file (default: inventories/production/hosts.yml)"
     echo "  --user USER         Ansible user (default: \$USER)"
-    echo "  --ask-become-pass   Prompt for become password (default: false)"
     echo "  --help              Show this help message"
 }
 
@@ -21,7 +20,6 @@ error_exit() {
 
 inventory="inventories/production/hosts.yml"
 user=""
-ask_become_pass=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -32,10 +30,6 @@ while [ $# -gt 0 ]; do
         --user)
             user="$2"
             shift 2
-            ;;
-        --ask-become-pass)
-            ask_become_pass=true
-            shift
             ;;
         --help)
             usage
@@ -60,17 +54,14 @@ set -- playbooks/es-restart.yml \
 
 set -- "$@" -e "ansible_user=$user"
 
-if [ "$ask_become_pass" = true ]; then
-    stty -echo
-    printf "BECOME password for $user: "
-    read become_pass
-    stty echo
-    printf "\n"
-    set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
-    unset become_pass
-elif [ -n "$user" ]; then
-    set -- "$@" -e "ansible_become=true"
-fi
+#Always prompt for password for privilege escalation
+stty -echo
+printf "BECOME password for $user: "
+read become_pass
+stty echo
+printf "\n"
+set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
+unset become_pass
 
 echo "Running rolling restart with options:"
 echo "  Ansible User: $user"

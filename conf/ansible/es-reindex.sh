@@ -15,13 +15,7 @@ usage() {
     echo "  --inventory FILE          Inventory file (default: inventories/production/hosts.yml)"
     echo "  --batch-size SIZE         Reindex batch size (optional)"
     echo "  --user USER         Ansible user (default: \$USER)"
-    echo "  --ask-become-pass   Prompt for become password (default: false)"
     echo "  --help                    Show this help message"
-    echo ""
-    echo "Note: Requires either:"
-    echo "  1) --user with --ask-become-pass"
-    echo "  2) SSH key-based authentication configured"
-    echo "  3) Passwordless sudo on target hosts"
 }
 
 error_exit() {
@@ -36,7 +30,6 @@ reindex_date_to=""
 inventory="inventories/production/hosts.yml"
 es_reindex_batch_size=""
 user=""
-ask_become_pass=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -67,10 +60,6 @@ while [ $# -gt 0 ]; do
         --user)
             user="$2"
             shift 2
-            ;;
-        --ask-become-pass)
-            ask_become_pass=true
-            shift
             ;;
         --help)
             usage
@@ -106,18 +95,13 @@ set -- playbooks/es-reindex.yml \
 
 set -- "$@" -e "ansible_user=$user"
 
-if [ "$ask_become_pass" = true ]; then
-    stty -echo
-    printf "BECOME password for $user: "
-    read become_pass
-    stty echo
-    printf "\n"
-    set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
-    unset become_pass
-elif [ -n "$user" ]; then
-    # Only enable become if a specific user was requested
-    set -- "$@" -e "ansible_become=true"
-fi
+stty -echo
+printf "BECOME password for $user: "
+read become_pass
+stty echo
+printf "\n"
+set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
+unset become_pass
 
 echo "Running reindexing with parameters:"
 echo "  Inventory: $inventory"
@@ -125,6 +109,6 @@ echo "  Source Index: $source_index"
 echo "  Destination Index: $dest_index"
 echo "  Date Range: $reindex_date_from to $reindex_date_to"
 [ -n "$es_reindex_batch_size" ] && echo "  Batch Size: $es_reindex_batch_size"
-[ -n "$user" ] && echo "  Ansible User: $user"
+echo "  Ansible User: $user"
 
 ansible-playbook "$@"

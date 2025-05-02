@@ -14,7 +14,6 @@ usage() {
     echo "  --inventory FILE    Inventory file (default: inventories/production/hosts.yml)"
     echo "  --user USER         Ansible user (default: \$USER)"
     echo "  --ask-become-pass   Prompt for become password (default: false)"
-    echo "  --verbose           Enable verbose output"
     echo "  --help              Show this help message"
     echo ""
     echo "Note: Requires either:"
@@ -30,7 +29,6 @@ error_exit() {
 
 tags=""
 inventory="inventories/production/hosts.yml"
-verbose=""
 user=""
 ask_become_pass=false
 
@@ -60,10 +58,6 @@ while [ $# -gt 0 ]; do
             ask_become_pass=true
             shift
             ;;
-        --verbose)
-            verbose="-v"
-            shift
-            ;;
         --help)
             usage
             exit 0
@@ -86,28 +80,21 @@ set -- playbooks/es-configure.yml \
     -i "$inventory"
 
 [ -n "$tags" ] && set -- "$@" --tags "$tags"
-[ -n "$verbose" ] && set -- "$@" "$verbose"
 
 set -- "$@" -e "ansible_user=$user"
 
-if [ "$ask_become_pass" = true ]; then
-    stty -echo
-    printf "BECOME password for $user: "
-    read become_pass
-    stty echo
-    printf "\n"
-    set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
-    unset become_pass
-elif [ -n "$user" ]; then
-    # Only enable become if a specific user was requested
-    set -- "$@" -e "ansible_become=true"
-fi
+#Always prompt for password for privilege escalation
+stty -echo
+printf "BECOME password for $user: "
+read become_pass
+stty echo
+printf "\n"
+set -- "$@" -e "ansible_become=true" -e "ansible_become_password=$become_pass"
+unset become_pass
 
 echo "Running with options:"
 [ -n "$tags" ] && echo "  Tags: $tags"
 echo "  Inventory: $inventory"
 echo "  Ansible User: $user"
-[ "$ask_become_pass" = true ] && echo "  Using become password" || echo "  Using passwordless sudo"
-[ -n "$verbose" ] && echo "  Verbose mode enabled"
 
 ansible-playbook "$@"
