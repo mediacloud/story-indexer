@@ -18,6 +18,7 @@ es_config:
   discovery.seed_hosts: "{{ mc_es_seed_hosts }}"
   http.host: 0.0.0.0 # allow from off-host connections
   # node.name defaults to inventory_hostname
+  node.roles: "{{ mc_es_node_roles }}"
   # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
   # Enable security features
   xpack.security.enabled: false
@@ -39,7 +40,7 @@ host_key_checking: false
 
 ################ MC specific vars (start with mc_)
 # elastic search specific vars (just about everything) should start with mc_es_
-mc_es_master: "{{ ansible_host in mc_es_seed_hosts }}"
+mc_es_master: "{{ mc_es_seed_hosts }}"
 mc_es_mappings_dynamic: false
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 mc_es_node_roles_data: ["data"]

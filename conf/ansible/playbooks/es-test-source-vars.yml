@@ -1,0 +1,47 @@
+---
+- name: Playbook to test sourcing env variables from private config and loaded vars
+  hosts: localhost
+  tasks:
+    - name: Ensure group_vars are loaded
+      ansible.builtin.include_vars:
+        dir: ../inventories/group_vars
+      tags: always
+
+    - name: Ensure host_vars are loaded with higher precedence
+      ansible.builtin.include_vars:
+        dir: "../inventories/{{ env }}/host_vars"
+      tags: always
+
+    - name: Store base es_config from group_vars
+      set_fact:
+        base_es_config: "{{ es_config | default({}) }}"
+      tags: always
+
+    - name: Combine es_config values properly
+      set_fact:
+        es_config: "{{ base_es_config | combine(lookup('vars', env + '_es_config') | default({}), recursive=True) }}"
+      tags: always
+
+    - name: Source private env variables
+      ansible.builtin.include_tasks:
+        file: "../tasks/source-envs.yml"
+
+    - name: Display test private environment variables
+      ansible.builtin.debug:
+        msg: "SENTRY_ENVIRONMENT: {{ sourced_env.SENTRY_ENVIRONMENT }}, SENTRY_DSN: {{ sourced_env.SENTRY_DSN }}"
+
+    - name: Display es_config
+      ansible.builtin.debug:
+        msg: "{{ es_config }}"
+
+    - name: Display inventory_hostname
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}"
+
+    - name: Display mc_es_seed_hosts
+      ansible.builtin.debug:
+        msg: "{{ mc_es_seed_hosts }}"
+
+    - name: Display mc_es_master
+      ansible.builtin.debug:
+        msg: "{{ mc_es_master }}"

@@ -1,16 +1,26 @@
 ---
-- name: Deploy Elasticsearch
+- name: Playbook to Deploy Elasticsearch in Docker
   hosts: "{{ target | default('localhost') }}"
 
   tasks:
     - name: Load Elasticsearch role defaults
       ansible.builtin.include_vars:
-        file: ../roles/elasticsearch/defaults/main.yml
+        dir: ../roles/elasticsearch/defaults
       tags: always
 
-    - name: Load group vars
+    - name: Ensure group_vars are loaded
       ansible.builtin.include_vars:
-        file: ../inventories/group_vars/all.yml
+        dir: ../inventories/group_vars
+      tags: always
+
+    - name: Store base es_config from group_vars
+      set_fact:
+        base_es_config: "{{ es_config | default({}) }}"
+      tags: always
+
+    - name: Combine es_config values properly
+      set_fact:
+        es_config: "{{ base_es_config | combine(lookup('vars', env + '_es_config') | default({}), recursive=True) }}"
       tags: always
 
     - name: Check Docker installation
@@ -42,11 +52,6 @@
         dest: /tmp/elasticsearch-local/docker-compose.yml
         mode: '0644'
 
-    - name: Debug loaded variables
-      ansible.builtin.debug:
-        var: vars
-      tags: always
-
     - name: Deploy Elasticsearch Cluster
       community.docker.docker_compose_v2:
         project_src: /tmp/elasticsearch-local
@@ -59,7 +64,7 @@
         status_code: 200
       register: health_check
       until: health_check.status == 200
-      retries: 12
+      retries: 6
       delay: 10
       loop: "{{ elasticsearch_nodes }}"
       loop_control:
