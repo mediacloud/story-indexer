@@ -1,0 +1,66 @@
+---
+- name: Deploy Elasticsearch
+  hosts: "{{ target | default('localhost') }}"
+
+  tasks:
+    - name: Load Elasticsearch role defaults
+      ansible.builtin.include_vars:
+        file: ../roles/elasticsearch/defaults/main.yml
+      tags: always
+
+    - name: Load group vars
+      ansible.builtin.include_vars:
+        file: ../inventories/group_vars/all.yml
+      tags: always
+
+    - name: Check Docker installation
+      command: docker --version
+      register: docker_installed
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - docker-ce
+        - docker-ce-cli
+      when:
+        - docker_installed is failed
+        - inventory != 'local'  # Skip on local if already installed
+
+    - name: Create data directory
+      file:
+        path: /tmp/elasticsearch-local
+        state: directory
+        mode: '0755'
+
+    - name: Create Docker Compose file for Elasticsearch cluster
+      template:
+        src: ../../elasticsearch/templates/elastic-compose.yml.j2
+        dest: /tmp/elasticsearch-local/docker-compose.yml
+        mode: '0644'
+
+    - name: Debug loaded variables
+      ansible.builtin.debug:
+        var: vars
+      tags: always
+
+    - name: Deploy Elasticsearch Cluster
+      community.docker.docker_compose_v2:
+        project_src: /tmp/elasticsearch-local
+        state: present
+      register: compose_output
+
+    - name: Verify cluster health for all nodes
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ node.mc_es_http_port }}/_cluster/health"
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 12
+      delay: 10
+      loop: "{{ elasticsearch_nodes }}"
+      loop_control:
+        loop_var: node

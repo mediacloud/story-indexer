@@ -1,0 +1,12 @@
+- name: Playbook to test sourcing env variables from private config
+  hosts: localhost
+  tasks:
+    - name: Load group_vars
+      ansible.builtin.include_vars:
+        file: inventories/group_vars/all.yml
+    - name: Source env variables
+      ansible.builtin.include_tasks:
+        file: "tasks/source-envs.yml"
+    - name: Display test environment variables
+      ansible.builtin.debug:
+        msg: "SENTRY_ENVIRONMENT: {{ sourced_env.SENTRY_ENVIRONMENT }}, SENTRY_DSN: {{ sourced_env.SENTRY_DSN }}"

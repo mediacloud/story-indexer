@@ -11,9 +11,6 @@
                         {% if mc_es_ilm_max_age is defined %}
                         "max_age": "{{ mc_es_ilm_max_age }}",
                         {% endif %}
-                        {% if mc_es_ilm_max_docs is defined %}
-                        "max_docs": {{ mc_es_ilm_max_docs }},
-                        {% endif %}
                     }
                 }
             }
