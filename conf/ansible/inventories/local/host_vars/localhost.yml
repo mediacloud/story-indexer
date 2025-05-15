@@ -16,10 +16,10 @@ mc_es_seed_hosts:
 elasticsearch_nodes:
   - name: es-node-01
     mc_es_http_port: 9229
-    mc_es_transport_port : 9329
+    mc_es_transport_port: 9329
   - name: es-node-02
     mc_es_http_port: 9230
-    mc_es_transport_port : 9330
+    mc_es_transport_port: 9330
   - name: es-node-03
     mc_es_http_port: 9231
-    mc_es_transport_port : 9331
+    mc_es_transport_port: 9331

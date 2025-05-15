@@ -3,19 +3,19 @@
 # for testing es-test-source-envs.yml
 # Usage: ./es-test-source=env.sh <environment> [ansible-playbook options]
 # Example: ./es-test-vars.sh staging
+set -e
+cd "$(dirname "$0")"
 
-# Default environment if not provided
-ENVIRONMENT="${1:-local}"
-shift
+. ./base.sh "$@"
+run_base "$@"
 
-# Let Makefile handle venv setup (will no-op if already exists)
-if ! make setup_venv >/dev/null; then
-    echo "Error: Virtual environment setup failed" >&2
-    exit 1
-fi
+playbook="../playbooks/es-test-source-vars.yml"
 
-exec ansible-playbook \
-    -i "inventories/${ENVIRONMENT}" \
-    -e "env=${ENVIRONMENT}" \
-    "$@" \
-    playbooks/es-test-source-vars.yml
+echo "Running playbook with:"
+echo "  Inventory: $inventory"
+echo "  User: $user"
+[ -n "$env" ] && echo "  Environment: $env"
+[ -n "$extra_args" ] && echo "  Extra args: $extra_args"
+echo ""
+
+ansible-playbook "$playbook" $base_args $extra_args

@@ -22,3 +22,5 @@ elasticsearch_nodes:
   - name: es-node-03
     mc_es_http_port: 9221
     mc_es_transport_port: 9321
+
+volume_device_prefix: "/srv/data/docker/elasticsearch"

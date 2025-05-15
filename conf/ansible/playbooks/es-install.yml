@@ -32,4 +32,4 @@
   post_tasks:
     - name: Install statsd agent
       ansible.builtin.include_tasks:
-      file: "../tasks/install-statsd-agent.yml"
+        file: "../tasks/install-statsd-agent.yml"

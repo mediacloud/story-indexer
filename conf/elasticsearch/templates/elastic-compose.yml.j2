@@ -27,17 +27,16 @@ services:
 {% endfor %}
 
 volumes:
-  {% for node in elasticsearch_nodes %}
+{% for node in elasticsearch_nodes %}
   {{ node.name }}-data:
-    {% if env == 'staging' %}
+{% if env is defined and env == 'staging' %}
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /srv/data/docker/{{ node.name }}/data
-    {% endif %}
-  {% endfor %}
-
+      device: "{{ volume_device_prefix }}/{{ node.name }}/data"
+{% endif %}
+{% endfor %}
 
 networks:
   elastic-network:

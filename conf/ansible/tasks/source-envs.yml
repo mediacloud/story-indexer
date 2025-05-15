@@ -21,7 +21,7 @@
 
 - name: Set config file path fact
   ansible.builtin.set_fact:
-    config_file_path: "{{ private_conf_dir }}/{{ config_repo.name }}/{{ app_environment }}.sh"
+    config_file_path: "{{ private_conf_dir }}/{{ config_repo.name }}/{{ (app_environment in ['local', 'staging']) | ternary('staging', 'prod') }}.sh"
 
 - name: Verify configuration file exists
   ansible.builtin.stat:

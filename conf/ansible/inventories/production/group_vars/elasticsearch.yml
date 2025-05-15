@@ -1,37 +1,7 @@
 ---
-# TEMPLATE VARIABLES: PLEASE KEEP SORTED!!
-#### vars for ansible-elasticsearch (all start with es_)
-# key/values copied to elasticsearch.yml output file:
+# Elasticsearch Configuration
 es_config:
-  # PLEASE ADD ITEMS IN SORTED ORDER BELOW THIS LINE!
-  bootstrap.memory_lock: true
-  cluster.name: "mc_es_cluster"
-  cluster.initial_master_nodes: "{{ mc_es_seed_hosts }}"
-  # seed hosts is list of master-elibile nodes; port is defaulted from transport.port
-  # (NOTE! if you add ports to mc_es_seed_hosts you'll break the mc_es_master test below)
-  discovery.seed_hosts: "{{ mc_es_seed_hosts }}"
-  http.host: 0.0.0.0 # allow from off-host connections
-  # to override, set in es-inventory group vars section:
-  http.port: "{{ mc_es_http_port | default('9200') }}"
-  # must be set per-host in es-inventory:
   network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
-  # node.name defaults to inventory_hostname
-  node.roles: "{{ mc_es_node_roles }}"
-  # Remote connection
-  reindex.remote.whitelist: "{{ mc_es_remote_cluster_hosts | join(',') }}"
-  # to override, set in es-inventory group vars section:
-  transport.port: "{{ mc_es_transport_port | default('9300') }}"
-  # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
-  # Enable security features
-  xpack.security.enabled: false
-  xpack.security.enrollment.enabled: false
-  # Enable encryption for HTTP API client connections, such as Kibana, Logstash, and Agents
-  xpack.security.http.ssl:
-    enabled: false
-  # Enable encryption and mutual authentication between cluster nodes
-  xpack.security.transport.ssl:
-    enabled: false
-
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
 es_log_dir: "/data/elasticsearch/logs"
@@ -40,40 +10,31 @@ es_templates_fileglob: ""
 es_version: 8.17.3
 es_version_lock: true
 
-# quiet ssh complaints (ansible setting, not ES specific)
-host_key_checking: false
-
-################ MC specific vars (start with mc_)
-
-# elastic search specific vars (just about everything) should start with mc_es_
+# MC Specific Variables (prefixed with mc_)
 mc_es_http_port: 9209
-mc_es_master: "{{ ansible_host in mc_es_seed_hosts }}"
-mc_es_mappings_dynamic: false
-mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
-mc_es_node_roles_data: ["data"]
-mc_es_node_roles_master: ["master", "data"]
-mc_es_seed_hosts:
-  - es01.newsscribe.angwin
-  - es02.newsscribe.angwin
-  - es03.newsscribe.angwin
-mc_es_transport_port: 9309
-mc_index_template_name: "mediacloud_search_template"
-mc_es_snapshot_repo: "my_repo"
-mc_es_snapshot_repo_type: "s3"
-mc_es_snapshot_s3_bucket: "my_bucket"
-mc_es_snapshot_s3_endpoint: "my_endpoint"
-es_snapshot_fs_location: "/path/to/repo"
-mc_es_shards: 12
-mc_es_replicas: 1
-mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_ilm_max_age: "90d"
-mc_es_ilm_max_shard_size: "50gb"
 mc_es_ilm_max_docs: 200000000
+mc_es_ilm_max_shard_size: "50gb"
+mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_index_alias: "mc_search"
-# PLEASE KEEP THIS FILE IN SORTED ORDER!
-# (KEEP THIS LINE LAST!)
-# Remote Cluster ES settings
+mc_es_network_host:  # referenced in es_config but not defined?
 mc_es_remote_cluster_hosts:
   - "ramos.angwin:9200"
   - "bradley.angwin:9200"
   - "woodward.angwin:9200"
+mc_es_replicas: 1
+mc_es_seed_hosts:
+  - es01.newsscribe.angwin
+  - es02.newsscribe.angwin
+  - es03.newsscribe.angwin
+mc_es_shards: 12
+mc_es_snapshot_repo: "my_repo"
+mc_es_snapshot_repo_type: "s3"
+mc_es_snapshot_s3_bucket: "my_bucket"
+mc_es_snapshot_s3_endpoint: "my_endpoint"
+mc_es_transport_port: 9309
+
+# Ansible Configuration
+host_key_checking: false
+# PLEASE KEEP THIS FILE IN SORTED ORDER!
+# (KEEP THIS LINE LAST!)
