@@ -1,6 +1,6 @@
 ---
 - name: Playbook to test sourcing env variables from private config and loaded vars
-  hosts: localhost
+  hosts: "{{ target | default('localhost') }}"
 
   pre_tasks:
     - name: Source all env varsiables
