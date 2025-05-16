@@ -11,32 +11,15 @@
       "mappings": {
         "properties": {
             "article_title": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                },
-                "fielddata": true
+                "type": "text"
             },
             "canonical_domain": {
                 "type": "keyword"
             },
-            "full_language": {
-                "type": "keyword"
-            },
             "indexed_date": {
-                "type": "date"
+                "type": "date_nanos"
             },
             "language": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                }
-            },
-            "original_url": {
                 "type": "keyword"
             },
             "publication_date": {
@@ -44,18 +27,12 @@
                 "ignore_malformed": true
             },
             "text_content": {
-                "type": "text",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    }
-                },
-                "fielddata": true
+                "type": "text"
             },
             "url": {
-                "type": "keyword"
+                "type": "wildcard"
             }
         }
-      }
+     }
     }
-  }
+}
