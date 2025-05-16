@@ -12,6 +12,12 @@
       ansible.builtin.debug:
         var: vars
 
+    - name: Debug Elasticsearch directories
+      ansible.builtin.debug:
+        msg:
+          - "Templates directory: {{ elasticsearch_templates_dir | default('Not defined') }}"
+          - "Files directory: {{ elasticsearch_files_dir | default('Not defined') }}"
+
     - name: Display test private environment variables
       ansible.builtin.debug:
         msg: "SENTRY_ENVIRONMENT: {{ sourced_env.SENTRY_ENVIRONMENT }}, SENTRY_DSN: {{ sourced_env.SENTRY_DSN }}"
