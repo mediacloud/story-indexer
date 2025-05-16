@@ -8,7 +8,7 @@
   pre_tasks:
     - name: Source all env varsiables
       ansible.builtin.include_tasks:
-        file: "../tasks/load-envs.yml"
+        file: "{{ playbook_dir }}/../tasks/load-envs.yml"
 
   tasks:
     - name: Check Docker installation
@@ -41,11 +41,17 @@
         backup: true
       register: compose_template_result
 
+    - name: Stop and remove existing containers
+      community.docker.docker_compose_v2:
+        project_src: "/tmp/elasticsearch-{{ env }}"
+        state: absent
+      become: true
+
     - name: Deploy Elasticsearch Cluster
       community.docker.docker_compose_v2:
         project_src: "/tmp/elasticsearch-{{ env }}"
         state: present
-      when: compose_template_result.changed
+      become: true
 
     - name: Verify cluster health for all nodes
       ansible.builtin.uri:
