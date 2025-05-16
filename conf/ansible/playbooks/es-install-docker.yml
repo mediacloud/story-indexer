@@ -34,7 +34,7 @@
 
     - name: Create Docker Compose file for Elasticsearch cluster
       ansible.builtin.template:
-        src: templates/docker-compose.yml.j2
+        src: "{{ playbook_dir }}/../templates/docker-compose.yml.j2"
         dest: "/tmp/elasticsearch-{{ env }}/docker-compose.yml"
         mode: "0644"
         force: true
