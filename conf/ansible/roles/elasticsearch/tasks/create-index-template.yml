@@ -7,7 +7,7 @@
 
 - name: Create or update index template using Elasticsearch API
   ansible.builtin.uri:
-    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_index_template_name }}"
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_es_index_template_name }}"
     method: PUT
     body: "{{ lookup('template', '../roles/elasticsearch/templates/index.template.json.j2') }}"
     body_format: json
@@ -22,7 +22,7 @@
 
 - name: Get index template for validation
   ansible.builtin.uri:
-    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_index_template_name }}"
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_index_template/{{ mc_es_index_template_name }}"
     method: GET
     status_code: 200
     timeout: 30
@@ -38,6 +38,6 @@
       - template_validation.json is defined
       - template_validation.json.index_templates is defined
       - template_validation.json.index_templates | length > 0
-    success_msg: "Index template '{{ mc_index_template_name }}' successfully configured"
-    fail_msg: "Failed to validate index template '{{ mc_index_template_name }}'"
+    success_msg: "Index template '{{ mc_es_index_template_name }}' successfully configured"
+    fail_msg: "Failed to validate index template '{{ mc_es_index_template_name }}'"
   when: not ansible_check_mode
