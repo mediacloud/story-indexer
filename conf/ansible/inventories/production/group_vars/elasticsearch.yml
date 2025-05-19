@@ -1,6 +1,7 @@
 ---
 prod_es_config:
   network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
+
 # Elasticsearch Configuration as per Ansible role
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
