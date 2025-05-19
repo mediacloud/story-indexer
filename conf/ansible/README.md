@@ -88,7 +88,7 @@ scripts/es-install -e production
 ### roles/elasticsearch
 
 Contains custom Elasticsearch role used in the installation
-PS: This is a cherry pocked from the abandoned `ansible-elasticsearch` rol, tailored for current use case
+PS: This is cherry picked from the abandoned `ansible-elasticsearch` role, tailored for current use case
 
 
 ### tasks/install-statsd-agent.yml

@@ -22,6 +22,8 @@ mc_es_seed_hosts:
   - es-node-02
   - es-node-03
 
+# Use different variable name instead of modifying Ansible default hash_behavior on merging dictionaries
+# https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
 staging_es_config:
   network.publish_host: "_eth0_"
 

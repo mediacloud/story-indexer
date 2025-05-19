@@ -1,6 +1,4 @@
 ---
-prod_es_config:
-  network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
 # Elasticsearch Configuration as per Ansible role
 es_data_dirs: ["/data/elasticsearch/data"]
 es_heap_size: 32767m    # 1m short of 32g
@@ -33,5 +31,11 @@ mc_es_snapshot_repo_type: "s3"
 mc_es_snapshot_s3_bucket: "my_bucket"
 mc_es_snapshot_s3_endpoint: "my_endpoint"
 mc_es_transport_port: 9309
+
+# Use different variable name instead of modifying Ansible default hash_behavior on merging dictionaries
+# https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
+prod_es_config:
+  network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
+
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)
