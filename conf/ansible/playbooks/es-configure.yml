@@ -28,7 +28,7 @@
       when: not is_staging_or_local | bool
       tags: always
 
-    - name: Verify cluster health for all nodes (staging/local)
+    - name: Ensure Elasticsearch is accessible (staging or local)
       ansible.builtin.uri:
         url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ node.mc_es_http_port }}/_cluster/health"
         method: GET
