@@ -29,5 +29,4 @@ mc_es_seed_hosts:
   - "es-node-01"
   - "es-node-02"
   - "es-node-03"
-
 mc_es_shards: 2
