@@ -27,3 +27,6 @@ staging_es_config:
 
 # We want to bind all volumes to /srv/data on Staging Hosts
 volume_device_prefix: "/srv/data/docker/elasticsearch"
+
+mc_es_ilm_max_shard_size: "1gb"
+mc_es_ilm_max_age: "20m"

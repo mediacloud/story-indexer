@@ -1,7 +1,13 @@
 ---
+- name: Set es_api_port for dev/staging (first node)
+  ansible.builtin.set_fact:
+    es_api_port: "{{ docker_elasticsearch_nodes[0].mc_es_http_port }}"
+  when: is_staging_or_local | bool
+  tags: always
+
 - name: Load initial index template from file
   ansible.builtin.include_vars:
-    file: "./files/templates/initial_index.json"
+    file: "./files/initial-index.json"
     name: initial_index_data
 
 - name: Check if index exists
@@ -29,7 +35,6 @@
   failed_when: >
     index_creation.status != 200 and
     (index_creation.json.error.type != 'resource_already_exists_exception')
-  tags: create_index
 
 - name: Print index creation status
   ansible.builtin.debug:
