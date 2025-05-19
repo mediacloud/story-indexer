@@ -47,4 +47,5 @@ mc_es_index_template_name: "mediacloud_search_template"
 mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_index_alias: "mc_search"
 
+# temporary dir to store and source private configuration variables
 private_conf_dir: "/tmp/{{ app_name }}-private-conf"
