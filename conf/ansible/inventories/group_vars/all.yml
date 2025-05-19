@@ -43,7 +43,7 @@ mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{
 mc_es_node_roles_data: ["data"]
 mc_es_node_roles_master: ["master", "data"]
 mc_es_snapshot_fs_location: "/path/to/repo"
-mc_index_template_name: "mediacloud_search_template"
+mc_es_index_template_name: "mediacloud_search_template"
 mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_index_alias: "mc_search"
 
