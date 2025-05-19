@@ -68,7 +68,13 @@ The playbook uses these key variables:
 
 ##### Scripts
 
-Scripts to run playbooks
+Scripts to run playbooks.
+The scripts require the following options
+Options:
+  -e, --env ENV           Environment (local, staging, production)
+  -i, --inventory FILE    Inventory File
+  -u, --user USER         Ansible user (default: $USER)
+  -h, --help              Show this help message
 
 Test environment variables:
 ```sh
@@ -77,12 +83,17 @@ scripts/es-test-source-vars.sh -e local
 
 Install Elasticsearch Docker compose staging:
 ```sh
-scripts/es-install-docker -e staging
+scripts/es-install-docker.sh -e staging
 ```
 
 Install Elasticsearch Ubuntu/Debian:
 ```sh
-scripts/es-install -e production
+scripts/es-install.sh -e production
+```
+
+Do Elasticsearch cluster configuration:
+```sh
+scripts/es-configure.sh -e staging
 ```
 
 ### roles/elasticsearch

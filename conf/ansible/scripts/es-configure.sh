@@ -1,6 +1,6 @@
 #!/bin/sh
-# Run Elasticsearch playbook to install using Docker and Docker Compose
-# Usage: scripts/es-install-docker.sh [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]
+# Run Elasticsearch playbook to do initial configuration (Index template, ILM, index creation)
+# Usage: scripts/es-configure.sh [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]
 set -e
 cd "$(dirname "$0")"
 
