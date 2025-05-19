@@ -35,9 +35,6 @@ es_templates_fileglob: ""
 es_version: 8.17.3
 es_version_lock: true
 
-# quiet ssh complaints (ansible setting, not ES specific)
-host_key_checking: false
-
 ################ MC specific vars (start with mc_)
 # elastic search specific vars (just about everything) should start with mc_es_
 mc_es_master: "{{ mc_es_seed_hosts }}"

@@ -1,5 +1,5 @@
 services:
-{% for node in elasticsearch_nodes %}
+{% for node in docker_elasticsearch_nodes %}
   {{ node.name }}:
     image: docker.elastic.co/elasticsearch/elasticsearch:{{ es_version }}
     container_name: es-node-{{ loop.index }}
@@ -27,7 +27,7 @@ services:
 {% endfor %}
 
 volumes:
-{% for node in elasticsearch_nodes %}
+{% for node in docker_elasticsearch_nodes %}
   {{ node.name }}-data:
 {% if env is defined and env == 'staging' %}
     driver: local

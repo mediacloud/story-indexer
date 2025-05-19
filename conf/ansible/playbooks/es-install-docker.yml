@@ -8,7 +8,7 @@
   pre_tasks:
     - name: Source all env varsiables
       ansible.builtin.include_tasks:
-        file: "../tasks/load-envs.yml"
+        file: "{{ playbook_dir }}/../tasks/load-envs.yml"
 
   tasks:
     - name: Check Docker installation
@@ -17,24 +17,12 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Install Docker
-      ansible.builtin.apt:
-        name: "{{ item }}"
-        state: present
-      loop:
-        - docker-ce
-        - docker-ce-cli
-      when:
-        - docker_installed is failed
-        - inventory != "local"  # Skip on local if already installed
-      become: true
-
     - name: Create Elasticsearch data directories (staging)
       ansible.builtin.file:
         path: "{{ volume_device_prefix }}/{{ item.name }}/data"
         state: directory
         mode: "0755"
-      loop: "{{ elasticsearch_nodes }}"
+      loop: "{{ docker_elasticsearch_nodes }}"
       when: env == "staging"
       become: true
 
@@ -46,18 +34,24 @@
 
     - name: Create Docker Compose file for Elasticsearch cluster
       ansible.builtin.template:
-        src: ../../elasticsearch/templates/elastic-compose.yml.j2
+        src: "{{ playbook_dir }}/../templates/docker-compose.yml.j2"
         dest: "/tmp/elasticsearch-{{ env }}/docker-compose.yml"
         mode: "0644"
         force: true
         backup: true
       register: compose_template_result
 
+    - name: Stop and remove existing containers
+      community.docker.docker_compose_v2:
+        project_src: "/tmp/elasticsearch-{{ env }}"
+        state: absent
+      become: true
+
     - name: Deploy Elasticsearch Cluster
       community.docker.docker_compose_v2:
         project_src: "/tmp/elasticsearch-{{ env }}"
         state: present
-      when: compose_template_result.changed
+      become: true
 
     - name: Verify cluster health for all nodes
       ansible.builtin.uri:
@@ -67,6 +61,6 @@
       until: health_check.status == 200
       retries: 6
       delay: 10
-      loop: "{{ elasticsearch_nodes }}"
+      loop: "{{ docker_elasticsearch_nodes }}"
       loop_control:
         loop_var: node

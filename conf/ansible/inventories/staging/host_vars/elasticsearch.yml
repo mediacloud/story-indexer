@@ -1,18 +1,5 @@
 ---
-staging_es_config:
-  network.publish_host: "_eth0_"
-
-es_data_dirs: ["/usr/share/elasticsearch/data"]
-es_heap_size: "10g"
-es_log_dir: "/var/log/elasticsearch"
-es_templates: false
-es_templates_fileglob: ""
-
-mc_es_seed_hosts:
-  - es-node-01
-  - es-node-02
-  - es-node-03
-elasticsearch_nodes:
+docker_elasticsearch_nodes:
   - name: es-node-01
     mc_es_http_port: 9219
     mc_es_transport_port: 9319
@@ -23,4 +10,20 @@ elasticsearch_nodes:
     mc_es_http_port: 9221
     mc_es_transport_port: 9321
 
+# Elasticsearch Configuration as per Ansible role
+es_data_dirs: ["/usr/share/elasticsearch/data"]
+es_heap_size: "10g"
+es_log_dir: "/var/log/elasticsearch"
+es_templates: false
+es_templates_fileglob: ""
+
+mc_es_seed_hosts:
+  - es-node-01
+  - es-node-02
+  - es-node-03
+
+staging_es_config:
+  network.publish_host: "_eth0_"
+
+# We want to bind all volumes to /srv/data on Staging Hosts
 volume_device_prefix: "/srv/data/docker/elasticsearch"

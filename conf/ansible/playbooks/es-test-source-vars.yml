@@ -12,6 +12,7 @@
       ansible.builtin.debug:
         var: vars
 
+    # Task to Validate the env config file sourced
     - name: Display test private environment variables
       ansible.builtin.debug:
         msg: "SENTRY_ENVIRONMENT: {{ sourced_env.SENTRY_ENVIRONMENT }}, SENTRY_DSN: {{ sourced_env.SENTRY_DSN }}"

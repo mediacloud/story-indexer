@@ -4,12 +4,12 @@
 # NOTE! Add as pre-task to properly load env variables, solve variables order
 - name: Load Elasticsearch role defaults
   ansible.builtin.include_vars:
-    dir: ../roles/elasticsearch/defaults
+    dir: "{{ playbook_dir }}/../roles/elasticsearch/defaults"
   tags: always
 
 - name: Ensure group_vars are loaded
   ansible.builtin.include_vars:
-    dir: ../inventories/group_vars
+    dir: "{{ playbook_dir }}/../inventories/group_vars"
   tags: always
 
 - name: Store base es_config from group_vars
