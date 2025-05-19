@@ -23,7 +23,6 @@ mc_es_seed_hosts:
   - es-node-01
   - es-node-02
   - es-node-03
-
 mc_es_shards: 4
 # Use different variable name instead of modifying Ansible default hash_behavior on merging dictionaries
 # https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
