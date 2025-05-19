@@ -9,11 +9,6 @@
         file: "{{ playbook_dir }}/../tasks/load-envs.yml"
 
   tasks:
-    - name: Load Elasticsearch role defaults
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../roles/elasticsearch/defaults/main.yml"
-      tags: always
-
     - name: Check if environment is staging or dev
       ansible.builtin.set_fact:
         is_staging_or_local: "{{ env == 'staging' or env == 'local' }}"
