@@ -17,11 +17,13 @@ es_log_dir: "/var/log/elasticsearch"
 es_templates: false
 es_templates_fileglob: ""
 
+mc_es_ilm_max_shard_size: "10gb"
+mc_es_replicas: 1
 mc_es_seed_hosts:
   - es-node-01
   - es-node-02
   - es-node-03
-
+mc_es_shards: 4
 # Use different variable name instead of modifying Ansible default hash_behavior on merging dictionaries
 # https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
 staging_es_config:
@@ -29,6 +31,3 @@ staging_es_config:
 
 # We want to bind all volumes to /srv/data on Staging Hosts
 volume_device_prefix: "/srv/data/docker/elasticsearch"
-
-mc_es_ilm_max_shard_size: "1gb"
-mc_es_ilm_max_age: "20m"
