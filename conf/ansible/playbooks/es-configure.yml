@@ -63,6 +63,12 @@
         tasks_from: create-initial-index.yml
       tags: es_index
 
+    - name: Configure Elasticsearch keystore
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../roles/elasticsearch"
+        tasks_from: configure-elasticsearch-keystore.yml
+      tags: es_snapshot
+
     - name: Create snapshot repository
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../roles/elasticsearch"

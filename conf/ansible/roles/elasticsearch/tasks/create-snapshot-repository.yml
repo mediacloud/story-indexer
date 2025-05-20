@@ -1,29 +1,3 @@
-- name: Add access key to Elasticsearch keystore (non-interactive)
-  ansible.builtin.command: |
-    echo '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_B2_ACCESS_KEY }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.access_key
-  args:
-    chdir: /usr/share/elasticsearch/bin
-
-- name: Add secret key to Elasticsearch keystore (non-interactive)
-  ansible.builtin.command: |
-    echo '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_B2_SECRET_KEY  }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.secret_key
-  args:
-    chdir: /usr/share/elasticsearch/bin
-
-- name: Reload secure settings
-  ansible.builtin.uri:
-    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_nodes/reload_secure_settings?pretty"
-    method: POST
-    status_code: 200
-    timeout: 30
-    headers:
-      Content-Type: "application/json"
-  register: reload_secure_settings
-  retries: 6
-  delay: 10
-  until: reload_secure_settings.status == 200
-  when: not ansible_check_mode
-
 - name: Create snapshot repository
   ansible.builtin.uri:
     url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}"
