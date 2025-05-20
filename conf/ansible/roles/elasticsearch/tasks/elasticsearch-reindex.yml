@@ -1,0 +1,28 @@
+---
+- name: Set es_api_port for dev/staging (first node)
+  ansible.builtin.set_fact:
+    es_api_port: "{{ docker_elasticsearch_nodes[0].mc_es_http_port }}"
+  when: is_staging_or_local | bool
+  tags: always
+
+- name: Re-index data from remote cluster (async)
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_reindex?wait_for_completion=false"
+    method: POST
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/reindex_body.json.j2') }}"
+    body_format: json
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+  register: reindex_result
+
+- name: Store reindex task ID
+  ansible.builtin.set_fact:
+    reindex_task_id: "{{ reindex_result.json.task }}"
+  when: reindex_result.status == 200
+
+- name: Display reindex task information
+  ansible.builtin.debug:
+    msg: "Reindexing started with task ID: {{ reindex_task_id }}. You can monitor progress with: GET _tasks/{{ reindex_task_id }}"
+  when: reindex_task_id is defined
