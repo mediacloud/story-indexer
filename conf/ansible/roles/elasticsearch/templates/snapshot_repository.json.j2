@@ -1,0 +1,13 @@
+{
+    {% if es_snapshot_type is defined %}
+        "type": "{{ es_snapshot_type }}",
+    {% endif %}
+    "settings": {
+        {% if b2_bucket_name is defined %}
+            "bucket": "{{ b2_bucket_name }}",
+        {% endif %}
+         {% if b2_endpoint is defined %}
+            "endpoint": "{{ b2_endpoint }}",
+        {% endif %}
+    }
+ }

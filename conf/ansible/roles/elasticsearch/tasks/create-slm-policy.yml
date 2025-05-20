@@ -2,7 +2,7 @@
   ansible.builtin.uri:
     url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ es_slm_policy_name }}'
     method: PUT
-    body: "{{ lookup('template', './templates/es-slm-policy.json.j2') }}"
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/bi_weekly_slm_policy.json.j2') }}"
     body_format: json
     status_code: 200
     timeout: 30

@@ -1,7 +1,9 @@
 {
     "schedule": "0 30 1 1,15 * ?",
     "name": "<snapshot-{now/d}>",
-    "repository": "$repository",
+    {% if es_snapshot_repository_name is defined %}
+        "repository": "{{ es_snapshot_repository_name }}",
+    {% endif %}
     "config": {
         "indices": ["mc_search-*"],
         "ignore_unavailable": true,
