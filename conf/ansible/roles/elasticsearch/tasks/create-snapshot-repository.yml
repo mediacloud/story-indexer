@@ -1,11 +1,11 @@
 - name: Add access key to Elasticsearch keystore (non-interactive)
-  ansible.builtin.shell: |
+  ansible.builtin.command: |
     echo '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_B2_ACCESS_KEY }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.access_key
   args:
     chdir: /usr/share/elasticsearch/bin
 
 - name: Add secret key to Elasticsearch keystore (non-interactive)
-  ansible.builtin.shell: |
+  ansible.builtin.command: |
     echo '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_B2_SECRET_KEY  }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.secret_key
   args:
     chdir: /usr/share/elasticsearch/bin
@@ -26,7 +26,7 @@
 
 - name: Create snapshot repository
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_SNAPSHOT_REPO }}'
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'
     method: PUT
     body: "{{ lookup('template', '../roles/elasticsearch/templates/es-snapshot-repository.json.j2') }}"
     body_format: json
@@ -42,7 +42,7 @@
 
 - name: Get snapshot repository
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_SNAPSHOT_REPO }}/_verify'
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_verify'
     method: POST
     status_code: 200
     headers:
@@ -55,6 +55,6 @@
     that:
       - repository_validation.status == 200
       - repository_validation.json is defined
-    success_msg: "Snapshot repository '{{ sourced_env.ELASTICSEARCH_SNAPSHOT_REPO }}' is properly configured"
-    fail_msg: "Snapshot repository validation failed for '{{ sourced_env.ELASTICSEARCH_SNAPSHOT_REPO }}'"
+    success_msg: "Snapshot repository '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}' is properly configured"
+    fail_msg: "Snapshot repository validation failed for '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'"
   when: not ansible_check_mode

@@ -1,6 +1,6 @@
 - name: Create SLM policy
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ es_slm_policy_name }}'
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'
     method: PUT
     body: "{{ lookup('template', '../roles/elasticsearch/templates/bi_weekly_slm_policy.json.j2') }}"
     body_format: json
@@ -16,7 +16,7 @@
 
 - name: Run SLM policy manually
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ es_slm_policy_name }}/_execute'
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_execute'
     method: POST
     status_code: 200
     headers:

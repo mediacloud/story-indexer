@@ -1,13 +1,13 @@
 {
     {% if es_snapshot_type is defined %}
-        "type": "{{ es_snapshot_type }}",
+        "type": "s3",
     {% endif %}
     "settings": {
-        {% if b2_bucket_name is defined %}
-            "bucket": "{{ b2_bucket_name }}",
+        {% if sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_BUCKET is defined %}
+            "bucket": "{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_BUCKET }}",
         {% endif %}
-         {% if b2_endpoint is defined %}
-            "endpoint": "{{ b2_endpoint }}",
+         {% if sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_ENDPOINT is defined %}
+            "endpoint": "{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_ENDPOINT }}",
         {% endif %}
     }
  }
