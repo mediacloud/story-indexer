@@ -1,7 +1,5 @@
 {
-    {% if es_snapshot_type is defined %}
-        "type": "s3",
-    {% endif %}
+    "type": "s3",
     "settings": {
         {% if sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_BUCKET is defined %}
             "bucket": "{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO_SETTINGS_BUCKET }}",
