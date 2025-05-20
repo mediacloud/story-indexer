@@ -67,12 +67,12 @@
       ansible.builtin.include_role:
         name: '{{ playbook_dir }}/../roles/elasticsearch'
         tasks_from: create-snapshot-repository.yml
+        apply:
+          become: true
       tags: es_snapshot
-      become: true
 
     - name: Create SLM policy
       ansible.builtin.include_role:
         name: '{{ playbook_dir }}/../roles/elasticsearch'
         tasks_from: create-slm-policy.yml
       tags: es_snapshot
-      become: true
