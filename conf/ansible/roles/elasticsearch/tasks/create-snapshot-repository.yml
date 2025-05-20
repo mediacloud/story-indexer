@@ -12,12 +12,12 @@
 
 - name: Reload secure settings
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_nodes/reload_secure_settings?pretty'
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_nodes/reload_secure_settings?pretty"
     method: POST
     status_code: 200
     timeout: 30
     headers:
-      Content-Type: 'application/json'
+      Content-Type: "application/json"
   register: reload_secure_settings
   retries: 6
   delay: 10
@@ -26,14 +26,14 @@
 
 - name: Create snapshot repository
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}"
     method: PUT
     body: "{{ lookup('template', '../roles/elasticsearch/templates/es-snapshot-repository.json.j2') }}"
     body_format: json
     status_code: 200
     timeout: 30
     headers:
-      Content-Type: 'application/json'
+      Content-Type: "application/json"
   register: snapshot_repository_creation
   retries: 6
   delay: 10
@@ -42,11 +42,11 @@
 
 - name: Get snapshot repository
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_verify'
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_verify"
     method: POST
     status_code: 200
     headers:
-      Content-Type: 'application/json'
+      Content-Type: "application/json"
   register: repository_validation
   when: not ansible_check_mode
 

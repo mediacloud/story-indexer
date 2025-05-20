@@ -1,13 +1,13 @@
 - name: Create SLM policy
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}"
     method: PUT
     body: "{{ lookup('template', '../roles/elasticsearch/templates/bi_weekly_slm_policy.json.j2') }}"
     body_format: json
     status_code: 200
     timeout: 30
     headers:
-      Content-Type: 'application/json'
+      Content-Type: "application/json"
   register: slm_creation
   retries: 6
   delay: 10
@@ -16,11 +16,11 @@
 
 - name: Run SLM policy manually
   ansible.builtin.uri:
-    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_execute'
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_slm/policy/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_execute"
     method: POST
     status_code: 200
     headers:
-      Content-Type: 'application/json'
+      Content-Type: "application/json"
   register: slm_execution
   when: not ansible_check_mode
 
@@ -29,6 +29,6 @@
     that:
       - slm_execution.status == 200
       - slm_execution.json is defined
-    success_msg: 'SLM policy executed successfully: manual snapshot creation initiated.'
-    fail_msg: 'SLM policy execution failed: received unexpected status or missing response content.'
+    success_msg: "SLM policy executed successfully: manual snapshot creation initiated."
+    fail_msg: "SLM policy execution failed: received unexpected status or missing response content."
   when: not ansible_check_mode
