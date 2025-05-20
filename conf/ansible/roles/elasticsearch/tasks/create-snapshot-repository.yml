@@ -1,0 +1,60 @@
+- name: Add access key to Elasticsearch keystore (non-interactive)
+  ansible.builtin.shell: |
+    echo '{{ b2_access_key }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.access_key
+  args:
+    chdir: /usr/share/elasticsearch/bin
+
+- name: Add secret key to Elasticsearch keystore (non-interactive)
+  ansible.builtin.shell: |
+    echo '{{ b2_secret_key }}' | ./elasticsearch-keystore add -f -x --stdin s3.client.default.secret_key
+  args:
+    chdir: /usr/share/elasticsearch/bin
+
+- name: Reload secure settings
+  ansible.builtin.uri:
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_nodes/reload_secure_settings?pretty'
+    method: POST
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: 'application/json'
+  register: reload_secure_settings
+  retries: 6
+  delay: 10
+  until: reload_secure_settings.status == 200
+  when: not ansible_check_mode
+
+- name: Create snapshot repository
+  ansible.builtin.uri:
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ es_snapshot_repository_name }}'
+    method: PUT
+    body: "{{ lookup('template', './templates/es-snapshot-repository.json.j2') }}"
+    body_format: json
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: 'application/json'
+  register: snapshot_repository_creation
+  retries: 6
+  delay: 10
+  until: snapshot_repository_creation.status == 200
+  when: not ansible_check_mode
+
+- name: Get snapshot repository
+  ansible.builtin.uri:
+    url: '{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ es_snapshot_repository_name }}/_verify'
+    method: POST
+    status_code: 200
+    headers:
+      Content-Type: 'application/json'
+  register: repository_validation
+  when: not ansible_check_mode
+
+- name: Verify snapshot repository creation
+  ansible.builtin.assert:
+    that:
+      - repository_validation.status == 200
+      - repository_validation.json is defined
+    success_msg: "Snapshot repository '{{ es_snapshot_repository_name }}' is properly configured"
+    fail_msg: "Snapshot repository validation failed for '{{ es_snapshot_repository_name }}'"
+  when: not ansible_check_mode
