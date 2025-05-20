@@ -1,8 +1,8 @@
 {
     "schedule": "0 30 1 1,15 * ?",
     "name": "<snapshot-{now/d}>",
-    {% if es_snapshot_repository_name is defined %}
-        "repository": "{{ es_snapshot_repository_name }}",
+    {% if sourced_env.ELASTICSEARCH_SNAPSHOT_REPO is defined %}
+        "repository": "{{ sourced_env.ELASTICSEARCH_SNAPSHOT_REPO }}",
     {% endif %}
     "config": {
         "indices": ["mc_search-*"],
