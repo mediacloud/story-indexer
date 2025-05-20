@@ -22,6 +22,7 @@ es_version: "8.17.3"
 # https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
 local_es_config:
   network.publish_host: "_eth0_"
+  reindex.remote.whitelist: "ramos.angwin:9200"
 
 mc_es_ilm_max_shard_size: "1gb"
 mc_es_replicas: 1

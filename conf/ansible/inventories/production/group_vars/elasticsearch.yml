@@ -36,6 +36,7 @@ mc_es_transport_port: 9309
 # https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
 prod_es_config:
   network.host: "{{ mc_es_network_host | default('_eno12399np0_') }}"
+  reindex.remote.whitelist: "{{ mc_es_remote_cluster_hosts }}"
 
 # PLEASE KEEP THIS FILE IN SORTED ORDER!
 # (KEEP THIS LINE LAST!)

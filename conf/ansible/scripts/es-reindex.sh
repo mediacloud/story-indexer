@@ -12,11 +12,38 @@
 set -e
 cd "$(dirname "$0")"
 
-. ./base.sh "$@"
+. ./base.sh
+
+# Display combined help for base and reindex-specific options
+show_help() {
+  echo "Usage: $0 [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]"
+  echo ""
+  echo "Base options:"
+  echo "  -e, --env ENV               Environment (local, staging, production)"
+  echo "  -i, --inventory FILE        Inventory File"
+  echo "  -u, --user USER             Ansible user (default: \$USER)"
+  echo "  -h, --help                  Show this help message"
+  echo ""
+  echo "Reindex specific options:"
+  echo "  -s, --source SOURCE         Source index name"
+  echo "  -d, --dest DEST             Destination index name (default: mc_search)"
+  echo "  -f, --from DATE             Start date for reindexing (format: YYYY-MM-DD)"
+  echo "  -t, --to DATE               End date for reindexing (format: YYYY-MM-DD)"
+  echo "  -c, --continuous            Enable continuous reindexing (every 12 hours)"
+  echo "  -b, --batch-size SIZE       Reindex batch size (default: 1000)"
+  exit 0
+}
+
+if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  show_help
+fi
+
+. ./base.sh
 run_base "$@"
 
 playbook="../playbooks/es-reindex.yml"
 
+# Default values
 source_index=""
 dest_index="mc_search"
 date_from=""
@@ -24,6 +51,7 @@ date_to=""
 continuous=false
 batch_size=1000
 
+# Parse additional arguments
 while [ $# -gt 0 ]; do
   case "$1" in
     -s|--source)
@@ -55,7 +83,7 @@ while [ $# -gt 0 ]; do
       break
       ;;
     *)
-      break
+      shift
       ;;
   esac
 done
@@ -93,7 +121,7 @@ echo "  Source index: $source_index"
 echo "  Destination index: $dest_index"
 echo "  Batch size: $batch_size"
 if $continuous; then
-  echo "  Mode: Continuous (every 12 hours)"
+  echo "  Mode: Continuous re-indexing"
 else
   echo "  Mode: One-time reindex"
   echo "  Date range: $date_from to $date_to"
