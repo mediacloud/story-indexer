@@ -23,7 +23,10 @@ es_version: "8.17.3"
 local_es_config:
   network.publish_host: "_eth0_"
 
+mc_es_ilm_max_shard_size: "1gb"
+mc_es_replicas: 1
 mc_es_seed_hosts:
   - "es-node-01"
   - "es-node-02"
   - "es-node-03"
+mc_es_shards: 2

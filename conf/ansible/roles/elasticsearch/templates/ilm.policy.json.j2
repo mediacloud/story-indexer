@@ -8,9 +8,6 @@
                         {% if mc_es_ilm_max_shard_size is defined %}
                         "max_primary_shard_size": "{{ mc_es_ilm_max_shard_size }}",
                         {% endif %}
-                        {% if mc_es_ilm_max_age is defined %}
-                        "max_age": "{{ mc_es_ilm_max_age }}",
-                        {% endif %}
                     }
                 }
             }
