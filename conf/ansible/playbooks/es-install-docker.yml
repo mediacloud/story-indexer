@@ -64,3 +64,10 @@
       loop: "{{ docker_elasticsearch_nodes }}"
       loop_control:
         loop_var: node
+
+  post_tasks:
+    - name: Remove environment-specific data directory
+      ansible.builtin.file:
+        path: "/tmp/elasticsearch-{{ env }}"
+        state: absent
+      become: true

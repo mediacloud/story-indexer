@@ -77,6 +77,7 @@
             name: "Elasticsearch continuous reindexing for {{ source_index }} to {{ dest_index }}"
             job: >-
               cd {{ playbook_dir }}/..
+              && source venv/bin/activate
               && ./scripts/es-reindex.sh -e {{ env }}
               -s {{ source_index }}
               -d {{ dest_index }} -c
