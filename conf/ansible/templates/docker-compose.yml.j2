@@ -2,7 +2,7 @@ services:
 {% for node in docker_elasticsearch_nodes %}
   {{ node.name }}:
     image: docker.elastic.co/elasticsearch/elasticsearch:{{ es_version }}
-    container_name: es-node-{{ loop.index }}
+    container_name: es-node-{{ '%02d' | format(loop.index) }}
     environment:
       node.name: "{{ node.name }}"
 {% for key, value in es_config.items() %}

@@ -1,0 +1,34 @@
+- name: Create snapshot repository
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}"
+    method: PUT
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/snapshot_repository.json.j2') }}"
+    body_format: json
+    status_code: 200
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+  register: snapshot_repository_creation
+  retries: 6
+  delay: 10
+  until: snapshot_repository_creation.status == 200
+  when: not ansible_check_mode
+
+- name: Get snapshot repository
+  ansible.builtin.uri:
+    url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}/_verify"
+    method: POST
+    status_code: 200
+    headers:
+      Content-Type: "application/json"
+  register: repository_validation
+  when: not ansible_check_mode
+
+- name: Verify snapshot repository creation
+  ansible.builtin.assert:
+    that:
+      - repository_validation.status == 200
+      - repository_validation.json is defined
+    success_msg: "Snapshot repository '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}' is properly configured"
+    fail_msg: "Snapshot repository validation failed for '{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}'"
+  when: not ansible_check_mode
