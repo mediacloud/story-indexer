@@ -15,7 +15,7 @@
     source_index: ""
     dest_index: "mc_search" # Index Alias
     es_reindex_batch_size: 1000
-    reindex_interval_hours: 12
+    reindex_interval_hours: 2
 
   tasks:
     - name: Check if environment is staging or dev
@@ -93,7 +93,6 @@
             hour: "*/{{ reindex_interval_hours }}"
             minute: "0"
             user: "{{ ansible_user_id }}"
-          when: not is_staging_or_local | bool
 
         - name: Display continuous reindexing setup information
           ansible.builtin.debug:

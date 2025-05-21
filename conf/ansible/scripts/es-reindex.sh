@@ -31,6 +31,7 @@ show_help() {
   echo "  -t, --to DATE               End date for reindexing (format: YYYY-MM-DD)"
   echo "  -c, --continuous            Enable continuous reindexing (every 12 hours)"
   echo "  -b, --batch-size SIZE       Reindex batch size (default: 1000)"
+  echo "  -i, --reindex-interval HOURS Continuous re-index interval (default: 2hrs)"
   exit 0
 }
 
@@ -49,6 +50,7 @@ date_from=""
 date_to=""
 continuous=false
 batch_size=1000
+reindex_interval=2
 
 # Parse additional arguments
 while [ $# -gt 0 ]; do
@@ -75,6 +77,10 @@ while [ $# -gt 0 ]; do
       ;;
     -b|--batch-size)
       batch_size="$2"
+      shift 2
+      ;;
+    -i|--interval)
+      reindex_interval="$2"
       shift 2
       ;;
     -e|--env|-i|--inventory|-u|--user)
