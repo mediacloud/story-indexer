@@ -429,6 +429,7 @@ services:
   # NOTE! Not building Docker image here (yet)
   # until version/revision control issues worked out.
 
+{% if elasticsearch_containers > 0 %}
   # run to apply ILM ES
   elastic-conf:
     <<: *worker-service-settings
@@ -444,6 +445,7 @@ services:
       ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION: {{elasticsearch_snapshot_repo_settings_location}}
       ELASTICSEARCH_SNAPSHOT_REPO_TYPE: {{elasticsearch_snapshot_repo_type}}
       RUN: elastic-conf
+{% endif %}
 
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
