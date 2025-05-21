@@ -28,7 +28,6 @@ mc_es_shards: 4
 # https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour
 staging_es_config:
   network.publish_host: "_eth0_"
-  reindex.remote.whitelist: "ramos.angwin:9200"
 
 # We want to bind all volumes to /srv/data on Staging Hosts
 volume_device_prefix: "/srv/data/docker/elasticsearch"

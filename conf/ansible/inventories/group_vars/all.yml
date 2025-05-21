@@ -19,6 +19,7 @@ es_config:
   http.host: 0.0.0.0 # allow from off-host connections
   # node.name defaults to inventory_hostname
   node.roles: "{{ mc_es_node_roles }}"
+  reindex.remote.whitelist: "ramos.angwin:9200, bradley.angwin:9200, woodward.angwin:9200"
   # PLEASE ADD ITEMS ABOVE IN SORTED ORDER!
   # Enable security features
   xpack.security.enabled: false
@@ -42,10 +43,11 @@ mc_es_mappings_dynamic: false
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 mc_es_node_roles_data: ["data"]
 mc_es_node_roles_master: ["master", "data"]
+mc_es_remote_cluster_host: "ramos.angwin"
+mc_es_remote_cluster_port: 9200
 mc_es_snapshot_fs_location: "/path/to/repo"
 mc_es_index_template_name: "mediacloud_search_template"
 mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_index_alias: "mc_search"
-
 # temporary dir to store and source private configuration variables
 private_conf_dir: "/tmp/{{ app_name }}-private-conf"
