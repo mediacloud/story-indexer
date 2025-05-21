@@ -67,7 +67,7 @@
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../roles/elasticsearch"
         tasks_from: configure-elasticsearch-keystore.yml
-      tags: es_snapshot
+      tags: es_slm
 
     - name: Create snapshot repository
       ansible.builtin.include_role:
@@ -75,10 +75,10 @@
         tasks_from: create-snapshot-repository.yml
         apply:
           become: true
-      tags: es_snapshot
+      tags: es_slm
 
     - name: Create SLM policy
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../roles/elasticsearch"
         tasks_from: create-slm-policy.yml
-      tags: es_snapshot
+      tags: es_slm
