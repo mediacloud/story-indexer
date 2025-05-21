@@ -39,7 +39,6 @@ if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 fi
 
 . ./base.sh
-run_base "$@"
 
 playbook="../playbooks/es-reindex.yml"
 
@@ -78,25 +77,38 @@ while [ $# -gt 0 ]; do
       batch_size="$2"
       shift 2
       ;;
+    -e|--env|-i|--inventory|-u|--user)
+      base_args="$base_args $1 $2"
+      shift 2
+      ;;
     --)
       shift
+      extra_args="$extra_args $*"
       break
       ;;
     *)
+      case "$1" in
+        -e|--env|-i|--inventory|-u|--user)
+          base_args="$base_args $1"
+          ;;
+        *)
+          # Ignore unknown arguments
+          ;;
+      esac
       shift
       ;;
   esac
 done
+
+run_base $base_args
 
 if [ -z "$source_index" ]; then
   echo "Error: Source index (-s, --source) is required."
   exit 1
 fi
 
-extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size"
-
 if $continuous; then
-  extra_vars="$extra_vars mc_reindex_continuous=true"
+  ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size reindex_continuous=$continuous reindex_interval_hours=$reindex_interval"
 else
   if [ -z "$date_from" ]; then
     echo "Error: Start date (-f, --from) is required for non-continuous reindexing."
@@ -108,10 +120,8 @@ else
     exit 1
   fi
 
-  extra_vars="$extra_vars mc_reindex_date_from=$date_from mc_reindex_date_to=$date_to mc_reindex_continuous=false"
+  ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size mc_reindex_date_from=$date_from mc_reindex_date_to=$date_to reindex_continuous=false"
 fi
-
-extra_args="$extra_args -e \"$extra_vars\""
 
 echo "Running playbook with:"
 echo "  Inventory: $inventory"
@@ -129,4 +139,4 @@ fi
 [ -n "$extra_args" ] && echo "  Extra args: $extra_args"
 echo ""
 
-ansible-playbook "$playbook" $base_args $extra_args
+ansible-playbook "$playbook" $base_args -e "$ansible_extra_vars" $extra_args

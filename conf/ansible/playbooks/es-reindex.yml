@@ -9,13 +9,13 @@
         file: "{{ playbook_dir }}/../tasks/load-envs.yml"
 
   vars:
-    mc_reindex_continuous: "{{ mc_reindex_continuous | default(false) | bool }}"
-    reindex_date_from: "{{ mc_reindex_date_from | default('') }}"
-    reindex_date_to: "{{ mc_reindex_date_to | default('') }}"
-    source_index: "{{ source_index }}"
-    dest_index: "{{ dest_index | default('mc_search') }}"
-    es_reindex_batch_size: "{{ es_reindex_batch_size | default(1000) }}"
-    reindex_interval_hours: "{{ reindex_interval_hours | default(12) }}"
+    reindex_continuous: false
+    mc_reindex_date_from: ""
+    mc_reindex_date_to: ""
+    source_index: ""
+    dest_index: "mc_search" # Index Alias
+    es_reindex_batch_size: 1000
+    reindex_interval_hours: 12
 
   tasks:
     - name: Check if environment is staging or dev
@@ -27,14 +27,14 @@
       ansible.builtin.set_fact:
         current_date: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
         current_time: "{{ lookup('pipe', 'date +%H:%M:%S') }}"
-      when: mc_reindex_continuous | bool
+      when: reindex_continuous | bool
       tags: always
 
     - name: Calculate date range for continuous reindexing
       ansible.builtin.set_fact:
         reindex_date_from: "{{ lookup('pipe', 'date --date=\"now - ' + reindex_interval_hours|string + ' hours\" +%Y-%m-%dT%H:%M:%S') }}"
         reindex_date_to: "{{ lookup('pipe', 'date +%Y-%m-%dT%H:%M:%S') }}"
-      when: mc_reindex_continuous | bool
+      when: reindex_continuous | bool
       tags: always
 
     - name: Display reindexing parameters
@@ -43,8 +43,8 @@
           - "Re-indexing Configuration:"
           - "  - Source Index: {{ source_index }}"
           - "  - Destination Index: {{ dest_index }}"
-          - "  - Mode: {{ 'Continuous (every ' + reindex_interval_hours|string + ' hours)' if mc_reindex_continuous else 'One-time' }}"
-          - "  - Date Range: {{ reindex_date_from }} to {{ reindex_date_to }}"
+          - "  - Mode: {{ 'Continuous (every ' + reindex_interval_hours|string + ' hours)' if reindex_continuous else 'One-time' }}"
+          - "  - Date Range: {{ mc_reindex_date_from }} to {{ mc_reindex_date_to }}"
           - "  - Batch Size: {{ es_reindex_batch_size }}"
       tags: always
 
@@ -103,4 +103,4 @@
               - "  - Source: {{ source_index }}"
               - "  - Destination: {{ dest_index }}"
               - "  - Next run will reindex data from {{ reindex_date_from }} to current time"
-      when: mc_reindex_continuous | bool
+      when: reindex_continuous | bool
