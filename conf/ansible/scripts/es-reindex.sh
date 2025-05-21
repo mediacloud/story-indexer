@@ -118,20 +118,20 @@ fi
 
 # Manage state for continuous-reindex
 state_file="$STATE_DIR/${source_index}_${dest_index}.state"
+current_time=$(date +%Y-%m-%dT%H:%M:%S%z)
 
 if $continuous; then
-  current_time=$(date +%Y-%m-%dT%H:%M:%S%z)
   if [ -f "$state_file" ]; then
-    # Subsequent runs - get last end time from state file
+    # Subsequent runs - get last end time from state file as new start time
     mc_reindex_date_from=$(cat "$state_file")
-    mc_reindex_date_to=$(date --date="$current_time - ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
+    mc_reindex_date_to=$(date --date="$current_time + ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
   else
     if [ -z "$date_from" ]; then
       echo "Error: First continuous run requires --from date"
       exit 1
     fi
     mc_reindex_date_from="$date_from"
-    mc_reindex_date_to=$(date --date="$date_from + ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
+    mc_reindex_date_to=$(date --date="$current_time - ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
   fi
   ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size reindex_continuous=$continuous mc_reindex_date_from=$mc_reindex_date_from mc_reindex_date_to=$mc_reindex_date_to reindex_interval_hours=$reindex_interval"
 else
