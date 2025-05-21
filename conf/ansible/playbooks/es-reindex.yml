@@ -23,20 +23,6 @@
         is_staging_or_local: "{{ env == 'staging' or env == 'local' }}"
       tags: always
 
-    - name: Set current date time if continuous reindexing
-      ansible.builtin.set_fact:
-        current_date: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
-        current_time: "{{ lookup('pipe', 'date +%H:%M:%S') }}"
-      when: reindex_continuous | bool
-      tags: always
-
-    - name: Calculate date range for continuous reindexing
-      ansible.builtin.set_fact:
-        reindex_date_from: "{{ lookup('pipe', 'date --date=\"now - ' + reindex_interval_hours|string + ' hours\" +%Y-%m-%dT%H:%M:%S') }}"
-        reindex_date_to: "{{ lookup('pipe', 'date +%Y-%m-%dT%H:%M:%S') }}"
-      when: reindex_continuous | bool
-      tags: always
-
     - name: Display reindexing parameters
       ansible.builtin.debug:
         msg:
@@ -89,7 +75,15 @@
         - name: Create cron job for continuous reindexing
           ansible.builtin.cron:
             name: "Elasticsearch continuous reindexing for {{ source_index }} to {{ dest_index }}"
-            job: "cd {{ playbook_dir }}/.. && ./scripts/es-reindex.sh -e {{ env }} -s {{ source_index }} -d {{ dest_index }} -c -b {{ es_reindex_batch_size }}"
+            job: >-
+              cd {{ playbook_dir }}/..
+              && ./scripts/es-reindex.sh -e {{ env }}
+              -s {{ source_index }}
+              -d {{ dest_index }} -c
+              -b {{ es_reindex_batch_size }}
+              -f {{ mc_reindex_date_from}}
+              -t {{ mc_reindex_date_to }}
+              -c
             hour: "*/{{ reindex_interval_hours }}"
             minute: "0"
             user: "{{ ansible_user_id }}"
