@@ -2,7 +2,7 @@
   ansible.builtin.uri:
     url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_snapshot/{{ sourced_env.ELASTICSEARCH_NEWSSCRIBE_SNAPSHOT_REPO }}"
     method: PUT
-    body: "{{ lookup('template', '../roles/elasticsearch/templates/es-snapshot-repository.json.j2') }}"
+    body: "{{ lookup('template', '../roles/elasticsearch/templates/snapshot-repository.json.j2') }}"
     body_format: json
     status_code: 200
     timeout: 30
