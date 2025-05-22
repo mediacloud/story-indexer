@@ -1,7 +1,7 @@
 
 #!/bin/sh
 ### Note: Decoupled this from Ansible since its a one-off re-indexing script and using Ansible requires
-#### extra management of handling passowrds for sudo privileges
+#### extra management of handling passwords for sudo privileges
 
 # Run continuous Elasticsearch reindexing via API calls
 # Usage: scripts/es-reindex-continuous.sh [OPTIONS]
