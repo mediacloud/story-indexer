@@ -238,4 +238,3 @@ while true; do
   fi
 done
 
-# nohup ./es-reindex-continuous.sh -h localhost:9201 -s mc_search-000005 -d mc_search -f '2024-11-21T14:50:52.179Z' > reindex.log 2>&1 &
