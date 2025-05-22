@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run Elasticsearch playbook to reindex data
+# Run Elasticsearch playbook to reindex data (one-time only)
 # Usage: scripts/es-reindex.sh [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]
 #
 # Additional options:
@@ -7,7 +7,6 @@
 #   -d, --dest DEST             Destination index name (default: mc_search)
 #   -f, --from DATE             Start date for reindexing (format: YYYY-MM-DD)
 #   -t, --to DATE               End date for reindexing (format: YYYY-MM-DD)
-#   -c, --continuous            Enable continuous reindexing (every 12 hours)
 #   -b, --batch-size SIZE       Reindex batch size (default: 1000)
 set -e
 cd "$(dirname "$0")"
@@ -29,9 +28,7 @@ show_help() {
   echo "  -d, --dest DEST             Destination index name (default: mc_search)"
   echo "  -f, --from DATE             Start date for reindexing (format: YYYY-MM-DD)"
   echo "  -t, --to DATE               End date for reindexing (format: YYYY-MM-DD)"
-  echo "  -c, --continuous            Enable continuous reindexing (every 12 hours)"
   echo "  -b, --batch-size SIZE       Reindex batch size (default: 1000)"
-  echo "  -v, --reindex-interval HOURS Continuous re-index interval (default: 2hrs)"
   exit 0
 }
 
@@ -43,17 +40,12 @@ fi
 
 playbook="../playbooks/es-reindex.yml"
 
-STATE_DIR="$HOME/.elasticsearch_reindex"
-mkdir -p "$STATE_DIR"
-
 # Default values
 source_index=""
 dest_index="mc_search"
 date_from=""
 date_to=""
-continuous=false
 batch_size=1000
-reindex_interval=2
 
 # Parse additional arguments
 while [ $# -gt 0 ]; do
@@ -74,16 +66,8 @@ while [ $# -gt 0 ]; do
       date_to="$2"
       shift 2
       ;;
-    -c|--continuous)
-      continuous=true
-      shift
-      ;;
     -b|--batch-size)
       batch_size="$2"
-      shift 2
-      ;;
-    -v|--interval)
-      reindex_interval="$2"
       shift 2
       ;;
     -e|--env|-i|--inventory|-u|--user)
@@ -116,59 +100,27 @@ if [ -z "$source_index" ]; then
   exit 1
 fi
 
-# Manage state for continuous-reindex
-state_file="$STATE_DIR/${source_index}_${dest_index}.state"
-current_time=$(date +%Y-%m-%dT%H:%M:%S%z)
-
-if $continuous; then
-  if [ -f "$state_file" ]; then
-    # Subsequent runs - get last end time from state file as new start time
-    mc_reindex_date_from=$(cat "$state_file")
-    mc_reindex_date_to=$(date --date="$current_time + ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
-  else
-    if [ -z "$date_from" ]; then
-      echo "Error: First continuous run requires --from date"
-      exit 1
-    fi
-    mc_reindex_date_from="$date_from"
-    mc_reindex_date_to=$(date --date="$current_time - ${reindex_interval} hours" +%Y-%m-%dT%H:%M:%S%z)
-  fi
-  ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size reindex_continuous=$continuous mc_reindex_date_from=$mc_reindex_date_from mc_reindex_date_to=$mc_reindex_date_to reindex_interval_hours=$reindex_interval"
-else
-  if [ -z "$date_from" ]; then
-    echo "Error: Start date (-f, --from) is required for non-continuous reindexing."
-    exit 1
-  fi
-
-  if [ -z "$date_to" ]; then
-    echo "Error: End date (-t, --to) is required for non-continuous reindexing."
-    exit 1
-  fi
-
-  ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size mc_reindex_date_from=$date_from mc_reindex_date_to=$date_to reindex_continuous=false"
+if [ -z "$date_from" ]; then
+  echo "Error: Start date (-f, --from) is required."
+  exit 1
 fi
 
-echo "Running playbook with:"
+if [ -z "$date_to" ]; then
+  echo "Error: End date (-t, --to) is required."
+  exit 1
+fi
+
+ansible_extra_vars="source_index=$source_index dest_index=$dest_index es_reindex_batch_size=$batch_size mc_reindex_date_from=$date_from mc_reindex_date_to=$date_to reindex_continuous=false"
+
+echo "Running one-time reindex with:"
 echo "  Inventory: $inventory"
 echo "  User: $user"
 [ -n "$env" ] && echo "  Environment: $env"
 echo "  Source index: $source_index"
 echo "  Destination index: $dest_index"
 echo "  Batch size: $batch_size"
-if $continuous; then
-  echo "  Mode: Continuous re-indexing"
-else
-  echo "  Mode: One-time reindex"
-  echo "  Date range: $date_from to $date_to"
-fi
+echo "  Date range: $date_from to $date_to"
 [ -n "$extra_args" ] && echo "  Extra args: $extra_args"
 echo ""
 
-if ansible-playbook "$playbook" $base_args -e "$ansible_extra_vars" $extra_args; then
-  # Update state file on successful run
-  if $continuous; then
-    echo "$mc_reindex_date_to" > "$state_file"
-  fi
-else
-  exit $?
-fi
+ansible-playbook "$playbook" $base_args -e "$ansible_extra_vars" $extra_args
