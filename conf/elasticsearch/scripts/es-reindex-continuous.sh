@@ -6,14 +6,6 @@
 # Run continuous Elasticsearch reindexing via API calls
 # Usage: scripts/es-reindex-continuous.sh [OPTIONS]
 #
-# Options:
-#   -h, --host HOST             Elasticsearch host (required)
-#   -s, --source SOURCE         Source index name (required)
-#   -d, --dest DEST             Destination index name (default: mc_search)
-#   -f, --from DATE             Start date for first run (format: YYYY-MM-DD, required for first run)
-#   -v, --interval HOURS        Continuous re-index interval in hours (default: 2)
-#   -b, --batch-size SIZE       Reindex batch size (default: 1000)
-#   --help                      Show this help message
 set -e
 
 STATE_DIR="$HOME/elasticsearch_reindex"
