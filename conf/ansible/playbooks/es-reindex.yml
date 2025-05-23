@@ -1,0 +1,100 @@
+---
+- name: Playbook to Reindex Data in Elasticsearch
+  hosts: "{{ target | default('localhost') }}"
+  become: false
+
+  pre_tasks:
+    - name: Source all env variables
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/load-envs.yml"
+
+  vars:
+    reindex_continuous: false
+    mc_reindex_date_from: ""
+    mc_reindex_date_to: ""
+    source_index: ""
+    dest_index: "mc_search" # Index Alias
+    es_reindex_batch_size: 1000
+    reindex_interval_hours: 2
+
+  tasks:
+    - name: Check if environment is staging or dev
+      ansible.builtin.set_fact:
+        is_staging_or_local: "{{ env == 'staging' or env == 'local' }}"
+      tags: always
+
+    - name: Display reindexing parameters
+      ansible.builtin.debug:
+        msg:
+          - "Re-indexing Configuration:"
+          - "  - Source Index: {{ source_index }}"
+          - "  - Destination Index: {{ dest_index }}"
+          - "  - Mode: {{ 'Continuous (every ' + reindex_interval_hours|string + ' hours)' if reindex_continuous else 'One-time' }}"
+          - "  - Date Range: {{ mc_reindex_date_from }} to {{ mc_reindex_date_to }}"
+          - "  - Batch Size: {{ es_reindex_batch_size }}"
+      tags: always
+
+    - name: Ensure Elasticsearch is accessible (production)
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ es_api_port }}/_cluster/health"
+        method: GET
+        status_code: 200
+        headers:
+          Content-Type: "application/json"
+      register: es_info
+      until: es_info.status == 200
+      retries: 6
+      delay: 10
+      when: not is_staging_or_local | bool
+      tags: always
+
+    - name: Ensure Elasticsearch is accessible (staging or local)
+      ansible.builtin.uri:
+        url: "{{ es_api_scheme }}://{{ es_api_host }}:{{ node.mc_es_http_port }}/_cluster/health"
+        method: GET
+        status_code: 200
+        headers:
+          Content-Type: "application/json"
+      register: health_check
+      until: health_check.status == 200
+      retries: 6
+      delay: 10
+      loop: "{{ docker_elasticsearch_nodes }}"
+      loop_control:
+        loop_var: node
+      when: is_staging_or_local | bool
+      tags: always
+
+    - name: Execute Elasticsearch reindexing tasks
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../roles/elasticsearch"
+        tasks_from: elasticsearch-reindex
+
+    - name: Set up continuous reindexing (if enabled)
+      block:
+        - name: Create cron job for continuous reindexing
+          ansible.builtin.cron:
+            name: "Elasticsearch continuous reindexing for {{ source_index }} to {{ dest_index }}"
+            job: >-
+              cd {{ playbook_dir }}/..
+              && source venv/bin/activate
+              && ./scripts/es-reindex.sh -e {{ env }}
+              -s {{ source_index }}
+              -d {{ dest_index }} -c
+              -b {{ es_reindex_batch_size }}
+              -f {{ mc_reindex_date_from}}
+              -t {{ mc_reindex_date_to }}
+              -c
+            hour: "*/{{ reindex_interval_hours }}"
+            minute: "0"
+            user: "{{ ansible_user_id }}"
+
+        - name: Display continuous reindexing setup information
+          ansible.builtin.debug:
+            msg:
+              - "Continuous reindexing has been configured:"
+              - "  - Frequency: Every {{ reindex_interval_hours }} hours"
+              - "  - Source: {{ source_index }}"
+              - "  - Destination: {{ dest_index }}"
+              - "  - Next run will reindex data from {{ reindex_date_from }} to current time"
+      when: reindex_continuous | bool

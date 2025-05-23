@@ -96,6 +96,26 @@ Do Elasticsearch cluster configuration:
 scripts/es-configure.sh -e staging
 ```
 
+Elasticsearch re-indexing:
+
+The script allows us to perform either a one-time re-index or continuous re-index using a cronjob
+
+Options:
+  Reindex specific options:
+    -s, --source SOURCE         Source index name
+    -d, --dest DEST             Destination index name (default: mc_search)
+    -f, --from DATE             Start date for re-indexing (format: YYYY-MM-DD)
+    -t, --to DATE               End date for re-indexing (format: YYYY-MM-DD)
+    -c, --continuous            Enable continuous re-indexing (every 12 hours)
+    -b, --batch-size SIZE       Re-index batch size (default: 1000)
+    -v, --reindex-interval     Continuous re-index interval (default: 2hrs)"
+
+Run one-time re-indexing
+
+```sh
+scripts/es-reindex.sh -e production -s mc_search-000006 -d mc_search -f 2025-04-03T11:00:00.000Z -t 2025-04-03T11:23:59.000Z
+```
+
 ### roles/elasticsearch
 
 Contains custom Elasticsearch role used in the installation

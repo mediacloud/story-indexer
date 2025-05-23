@@ -16,10 +16,6 @@ mc_es_ilm_max_shard_size: "50gb"
 mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
 mc_es_index_alias: "mc_search"
 mc_es_network_host:  # referenced in es_config but not defined?
-mc_es_remote_cluster_hosts:
-  - "ramos.angwin:9200"
-  - "bradley.angwin:9200"
-  - "woodward.angwin:9200"
 mc_es_replicas: 1
 mc_es_seed_hosts:
   - es01.newsscribe.angwin

@@ -40,3 +40,10 @@
     sourced_env: "{{ sourced_env | default({}) | combine({ item.split('=')[0]: item.split('=')[1:] | join('=') }) }}"
   loop: "{{ (config_file_content['content'] | b64decode).split('\n') }}"
   when: item is match("^[A-Z0-9_]+=.*") and not item.startswith('#')
+  no_log: true
+
+- name: Remove private config directory
+  ansible.builtin.file:
+    path: "{{ private_conf_dir }}"
+    state: absent
+  become: false
