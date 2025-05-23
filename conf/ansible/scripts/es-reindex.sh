@@ -2,12 +2,6 @@
 # Run Elasticsearch playbook to reindex data (one-time only)
 # Usage: scripts/es-reindex.sh [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]
 #
-# Additional options:
-#   -s, --source SOURCE         Source index name
-#   -d, --dest DEST             Destination index name (default: mc_search)
-#   -f, --from DATE             Start date for reindexing (format: YYYY-MM-DD)
-#   -t, --to DATE               End date for reindexing (format: YYYY-MM-DD)
-#   -b, --batch-size SIZE       Reindex batch size (default: 1000)
 set -e
 cd "$(dirname "$0")"
 
