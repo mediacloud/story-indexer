@@ -6,6 +6,10 @@ config_repo:
   prefix: "git@github.com:mediacloud"
   name: "story-indexer-config"
   branch: "main"
+docker_elasticsearch:
+  base_http_port: 9200
+  base_transport_port: 9300
+  nodes: 3
 #### vars for ansible-elasticsearch (all start with es_)
 # key/values copied to elasticsearch.yml output file:
 es_config:
