@@ -1,72 +1,62 @@
-Start of ansible scripting for ES installation
+#  Ansible Deployment Script
 
-Putting this directly in the "conf" directory so that if ansible is
+Ansible scripts for deploying Elasticsearch. We are putting this directly in the "conf" directory so that if ansible is
 used for more than just ES, the directory can house that too.
+
 
 ## Key Files and Directories
 
 ### Makefile
 
-"make" to install create venv with ansible installed, plus populate
-role/mc.elasticsearch with a clone of the (ever so slightly) MC
-modified fork of a fork of the abandoned elastic developed
-ansible-elasticsearch installation role.
+"make" to install create venv with ansible installed. 
 
-### Inventories/
+---
 
-Contains inventory and variable files for the Ansible playbooks
+### inventories/
+
+Contains inventory and variable files for the Ansible playbooks.
 
 Files:
 
-* hosts.yml - Defines the hosts and groups for the ES cluster (staging/production)
+* `local/` - contains inventory files and configurations specific to the local development environment.
+* `staging/` - contains inventory files and configurations specific for the staging environment.
+* `production/` - contains inventory files and configurations specific for the production environment.
+* `group_vars/` - contains variables that apply to specific groups. Currently, contains `all.yml` that defines variables that apply to all hosts, regardless of their group
 
-* group_vars/ - Contains group-specific variables (e.g vault.yml for encrypted secrets)
+---
 
-### Playbooks
+### playbooks/
 
-Contains Ansible playbooks for managing the ES cluster
+Contains Ansible playbooks for installing and configuring the ES cluster for production/staging/local environments.
 
-#### Elasticsearch Installation Playbook
+Files:
 
-This playbook handles the complete installation and initial configuration of Elasticsearch clusters.
-
-##### Purpose
-- Install Elasticsearch packages and dependencies
-- Configure system settings for optimal Elasticsearch performance
-- Set up basic security and monitoring
-- Validate cluster health post-installation
-
-##### Files
-
-* `playbooks/es-install.yml` - Main playbook for ES installation
-* `playbooks/es-install-docker.yml` - Playbook for ES installation using Docker and Docker Compose
-* `roles/elasticsearch/` - Contains all installation tasks and configuration:
-  * `tasks/main.yml` - Core installation tasks
-  * `tasks/install-statsd-agent.yml` - Monitoring agent setup
-* `tasks/` - Contains tasks that are not necessarily for the Role
-  * `tasks/source-envs.yml` - Source env variables used by story-indexer
-  * `tasks/load-envs.yml` - Load all env variables
-
-##### Configuration Parameters
-
-The playbook uses these key variables:
-
-| Variable               | Description                                                                 | Location                  |
-|------------------------|-----------------------------------------------------------------------------|---------------------------|
-| `es_version`          | Version of Elasticsearch to install                                        | inventory/group_vars      |
-| `es_cluster_name`     | Name for the Elasticsearch cluster                                         | inventory/group_vars      |
-| `es_heap_size`        | JVM heap size allocation                                                   | role defaults             |
-| `es_api_port`         | Elasticsearch API port                                                     | role defaults             |
-| `es_discovery_seeds`  | List of seed nodes for cluster discovery                                   | inventory/group_vars      |
-
-##### System Requirements
-
-- Debian/Ubuntu Linux (verified with Ubuntu 20.04/22.04)
-- Minimum 4GB RAM (32GB max recommended for production)
-- Java runtime (we're using bundled OpenJDK)
+* `es-install.yml` - automates the installation and configuration of the ES cluster on hosts belonging to the elasticsearch group.
+It is intended for use on Debian or Ubuntu systems and leverages a dedicated Elasticsearch role for the main setup, 
+ensuring Elasticsearch is installed natively on the host rather than in a containerized environment.
 
 
-##### Scripts
+* `es-install-docker.yml` - automates the installation of the ES cluster inside Docker containers on the target host(s). 
+It is intended for environments where Elasticsearch should run in a containerized setup, using Docker Compose for orchestration. 
+This approach is suitable for local development, staging, or any scenario where containerization is preferred over direct installation on the host OS.
+
+
+* `es-configure.yml` - automates the configuration of the ES cluster, handles Elasticsearch setup tasks including 
+setting up ILM policies, creating index templates, creating initial index template, keystore configuration and SLM policy configuration.
+
+
+* `es-test-source-vars.yml` - can be used to is designed to test and verify the loading and sourcing of environment variables used for ES configuration and deployment. 
+It is primarily intended for debugging and validation, ensuring that all necessary variables are correctly loaded.
+
+---
+### roles/elasticsearch
+
+Contains custom Elasticsearch role used in the installation
+PS: This is cherry-picked from the abandoned `ansible-elasticsearch` role, tailored for current use case
+
+---
+
+### Scripts
 
 Scripts to run playbooks.
 The scripts require the following options
@@ -96,18 +86,21 @@ Do Elasticsearch cluster configuration:
 scripts/es-configure.sh -e staging
 ```
 
-### roles/elasticsearch
-
-Contains custom Elasticsearch role used in the installation
-PS: This is cherry picked from the abandoned `ansible-elasticsearch` role, tailored for current use case
-
-
+---
 ### tasks/install-statsd-agent.yml
 
 Tasks file to install agent to report system stats to
 statsd/graphite/grafana.  Could be used by installs for both pipeline
 compute server(s) and web server(s).
 
+---
 ### requirements.txt
 
 Python requirements for building venv
+
+---
+## System Requirements
+
+- Debian/Ubuntu Linux (verified with Ubuntu 20.04/22.04)
+- Minimum 4GB RAM (32GB max recommended for production)
+- Java runtime (we're using bundled OpenJDK)

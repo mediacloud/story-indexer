@@ -3,7 +3,7 @@
   hosts: "{{ target | default('localhost') }}"
 
   pre_tasks:
-    - name: Source all env varsiables
+    - name: Source all env variables
       ansible.builtin.include_tasks:
         file: "../tasks/load-envs.yml"
 

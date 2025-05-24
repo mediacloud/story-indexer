@@ -6,7 +6,7 @@
   become: false
 
   pre_tasks:
-    - name: Source all env varsiables
+    - name: Source all env variables
       ansible.builtin.include_tasks:
         file: "{{ playbook_dir }}/../tasks/load-envs.yml"
 
