@@ -101,7 +101,6 @@ class ElasticConf(ElasticConfMixin, App):
         self.es_snapshot_repo_type = self.args.es_snapshot_repo_type
 
     def wait_for_elasticsearch_cluster(self, es: Elasticsearch) -> bool:
-        """Wait for Elasticsearch cluster to be ready with yellow or green status"""
         logger.info("Waiting for Elasticsearch cluster to be ready...")
         start_time = time.time()
 
@@ -112,14 +111,18 @@ class ElasticConf(ElasticConfMixin, App):
                     time.sleep(self.wait_interval)
                     continue
 
-                health = es.cluster.health(wait_for_status="green", timeout="5s")
+                health = es.cluster.health(wait_for_status="yellow", timeout="5s")
                 status = health.get("status", "red")
 
-                if status == "green":
-                    logger.info(f"Elasticsearch cluster is ready with status: {status}")
+                if status in ["yellow", "green"]:
+                    logger.info(
+                        "Elasticsearch cluster is ready with status: %s", status
+                    )
                     return True
                 else:
-                    logger.info(f"Cluster status is {status}, waiting for green...")
+                    logger.info(
+                        "Cluster status is %s, waiting for yellow or green...", status
+                    )
 
             except Exception as e:
                 logger.info("Error checking cluster health: %s, retrying...", e)
