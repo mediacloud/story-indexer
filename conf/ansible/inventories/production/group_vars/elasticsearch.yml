@@ -13,8 +13,6 @@ mc_es_http_port: 9209
 mc_es_ilm_max_age: "90d"
 mc_es_ilm_max_docs: 200000000
 mc_es_ilm_max_shard_size: "50gb"
-mc_es_ilm_policy_name: "mediacloud-lifecycle-policy"
-mc_es_index_alias: "mc_search"
 mc_es_network_host:  # referenced in es_config but not defined?
 mc_es_remote_cluster_hosts:
   - "ramos.angwin:9200"
@@ -26,10 +24,6 @@ mc_es_seed_hosts:
   - es02.newsscribe.angwin
   - es03.newsscribe.angwin
 mc_es_shards: 12
-mc_es_snapshot_repo: "my_repo"
-mc_es_snapshot_repo_type: "s3"
-mc_es_snapshot_s3_bucket: "my_bucket"
-mc_es_snapshot_s3_endpoint: "my_endpoint"
 mc_es_transport_port: 9309
 
 # Use different variable name instead of modifying Ansible default hash_behavior on merging dictionaries
