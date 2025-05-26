@@ -8,15 +8,15 @@ run_base() {
     extra_args=""
 
     usage() {
-        echo "Usage: $0 [OPTIONS] [-- [EXTRA_ANSIBLE_ARGS]]"
+        echo "Usage: $0 [OPTIONS]"
         echo ""
         echo "Options:"
-        echo "  -e, --env ENV           Environment (local, staging, production)"
+        echo "  -e, --env ENV           Environment (currently supports only production)"
         echo "  -i, --inventory FILE    Inventory File"
         echo "  -u, --user USER         Ansible user (default: \$USER)"
+        echo "  -a, --ansible-args ARGS Additional arguments to pass to ansible-playbook"
+        echo "                          (all remaining arguments after this flag)"
         echo "  -h, --help              Show this help message"
-        echo ""
-        echo "Any additional arguments after '--' are passed to ansible-playbook."
     }
 
     error_exit() {
@@ -43,7 +43,7 @@ run_base() {
                 usage
                 exit 0
                 ;;
-            --)
+            -a|--ansible-args)
                 shift
                 extra_args="$*"
                 break
