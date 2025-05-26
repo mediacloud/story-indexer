@@ -2,13 +2,13 @@
     "index_patterns": "{{ es_index_pattern | default('mc_search-*') }}",
     "template": {
         "settings": {
-            "index.lifecycle.name": "{{ mc_es_ilm_policy_name | default('mediacloud-lifecycle-policy') }}",
-            "index.lifecycle.rollover_alias": "{{ mc_es_index_alias | default('mc_search') }}",
-            "number_of_shards": {{ mc_es_shards | default(12) }},
-            "number_of_replicas": {{ mc_es_replicas | default(1) }}
+            "index.lifecycle.name": "mediacloud-lifecycle-policy",
+            "index.lifecycle.rollover_alias": "mc_search",
+            "number_of_shards": "$number_of_shards",
+            "number_of_replicas": "$number_of_replicas"
         },
         "mappings": {
-            "dynamic": {{ mc_es_mappings_dynamic | default('false') }},
+            "dynamic": false,
             "properties": {
                 "article_title": {
                     "type": "text"

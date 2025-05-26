@@ -1,0 +1,18 @@
+{
+    "name": "mediacloud-lifecycle-policy",
+    "policy": {
+      "phases": {
+        "hot": {
+          "actions": {
+            "rollover": {
+              "max_primary_shard_size": "$max_primary_shard_size"
+            }
+          }
+        }
+      },
+      "_meta": {
+        "description": "ILM policy using the hot phase with a rollover of on max_primary_shard_size",
+        "managed": true
+      }
+    }
+}

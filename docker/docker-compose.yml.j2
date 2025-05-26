@@ -443,6 +443,9 @@ services:
       ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT: {{elasticsearch_snapshot_repo_settings_endpoint}}
       ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION: {{elasticsearch_snapshot_repo_settings_location}}
       ELASTICSEARCH_SNAPSHOT_REPO_TYPE: {{elasticsearch_snapshot_repo_type}}
+      ELASTICSEARCH_MAX_WAIT_TIME: {{elasticsearch_max_wait_time}}
+      ELASTICSEARCH_WAIT_INTERVAL: {{elasticsearch_wait_interval}}
+
       RUN: elastic-conf
 
 {% macro define_volume(prefix, suffix='') %}

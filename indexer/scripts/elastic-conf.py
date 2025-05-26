@@ -7,6 +7,7 @@ Should exit gracefully if configurations already exists in Elasticsearch
 import argparse
 import os
 import sys
+import time
 from logging import getLogger
 from typing import Any
 
@@ -30,6 +31,8 @@ class ElasticConf(ElasticConfMixin, App):
         self.es_snapshot_s3_endpoint = os.environ.get(
             "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT"
         )
+        self.max_wait_time = int(os.environ.get("ELASTICSEARCH_MAX_WAIT_TIME", "300"))
+        self.wait_interval = int(os.environ.get("ELASTICSEARCH_WAIT_INTERVAL", "10"))
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -97,9 +100,44 @@ class ElasticConf(ElasticConfMixin, App):
         self.es_snapshot_repo = self.args.es_snapshot_repo
         self.es_snapshot_repo_type = self.args.es_snapshot_repo_type
 
+    def wait_for_elasticsearch_cluster(self, es: Elasticsearch) -> bool:
+        """Wait for Elasticsearch cluster to be ready with yellow or green status"""
+        logger.info("Waiting for Elasticsearch cluster to be ready...")
+        start_time = time.time()
+
+        while time.time() - start_time < self.max_wait_time:
+            try:
+                if not es.ping():
+                    logger.info("Elasticsearch not reachable yet, waiting...")
+                    time.sleep(self.wait_interval)
+                    continue
+
+                health = es.cluster.health(wait_for_status="green", timeout="5s")
+                status = health.get("status", "red")
+
+                if status == "green":
+                    logger.info(f"Elasticsearch cluster is ready with status: {status}")
+                    return True
+                else:
+                    logger.info(f"Cluster status is {status}, waiting for green...")
+
+            except Exception as e:
+                logger.info("Error checking cluster health: %s, retrying...", e)
+
+            time.sleep(self.wait_interval)
+
+        logger.error(
+            "Elasticsearch cluster not ready after %s seconds", self.max_wait_time
+        )
+        return False
+
     def main_loop(self) -> None:
         es = self.elasticsearch_client()
-        assert es.ping(), "Failed to connect to Elasticsearch"
+
+        if not self.wait_for_elasticsearch_cluster(es):
+            logger.error("Elasticsearch cluster not ready, exiting")
+            sys.exit(1)
+
         index_template_created = self.create_index_template(es)
         ilm_policy_created = self.create_ilm_policy(es)
         alias_created = self.create_initial_index(es)
@@ -152,13 +190,13 @@ class ElasticConf(ElasticConfMixin, App):
             if self.es_snapshot_s3_endpoint:
                 settings["endpoint"] = self.es_snapshot_s3_endpoint
         else:  # repo-type=fs
-            settings = {"location": self.es_snapshot_fs_location}
+            if self.es_snapshot_fs_location:
+                settings = {"location": self.es_snapshot_fs_location}
 
         try:
             response = es.snapshot.create_repository(
                 name=self.es_snapshot_repo,
-                type=repo_type,
-                settings=settings,
+                body={"type": repo_type, "settings": settings},
             )
 
             acknowledged = False
