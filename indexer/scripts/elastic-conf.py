@@ -108,7 +108,6 @@ class ElasticConf(ElasticConfMixin, App):
             try:
                 if not es.ping():
                     logger.info("Elasticsearch not reachable yet, waiting...")
-                    time.sleep(self.wait_interval)
                     continue
 
                 health = es.cluster.health(wait_for_status="yellow", timeout="5s")
@@ -125,7 +124,7 @@ class ElasticConf(ElasticConfMixin, App):
                     )
 
             except Exception as e:
-                logger.info("Error checking cluster health: %s, retrying...", e)
+                logger.warning("Error checking cluster health: %s, retrying...", e)
 
             time.sleep(self.wait_interval)
 
