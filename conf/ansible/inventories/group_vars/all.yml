@@ -2,10 +2,6 @@
 app_name: "story-indexer"
 app_environment: "{{ env }}"
 
-config_repo:
-  prefix: "git@github.com:mediacloud"
-  name: "story-indexer-config"
-  branch: "main"
 #### vars for ansible-elasticsearch (all start with es_)
 # key/values copied to elasticsearch.yml output file:
 es_config:
@@ -42,6 +38,3 @@ mc_es_mappings_dynamic: false
 mc_es_node_roles: "{% if mc_es_master %}{{ mc_es_node_roles_master }}{% else %}{{ mc_es_node_roles_data }}{% endif %}"
 mc_es_node_roles_data: ["data"]
 mc_es_node_roles_master: ["master", "data"]
-
-# temporary dir to store and source private configuration variables
-private_conf_dir: "/tmp/{{ app_name }}-private-conf"
