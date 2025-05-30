@@ -152,13 +152,13 @@ class ElasticConf(ElasticConfMixin, App):
             if self.es_snapshot_s3_endpoint:
                 settings["endpoint"] = self.es_snapshot_s3_endpoint
         else:  # repo-type=fs
-            settings = {"location": self.es_snapshot_fs_location}
+            if self.es_snapshot_fs_location:
+                settings = {"location": self.es_snapshot_fs_location}
 
         try:
             response = es.snapshot.create_repository(
                 name=self.es_snapshot_repo,
-                type=repo_type,
-                settings=settings,
+                body={"type": repo_type, "settings": settings},
             )
 
             acknowledged = False
