@@ -1,8 +1,0 @@
-{
-    "name": "mc_search-000001",
-    "aliases": {
-        "mc_search": {
-        "is_write_index": true
-        }
-    }
-}

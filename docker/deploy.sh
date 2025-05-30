@@ -13,7 +13,7 @@
 # stack name (suffix if not production)
 # indicates application for peaceful coexistence!!
 BASE_STACK_NAME=indexer
-
+ES_VERSION="8.18.0"
 # in addition to developer/staging/production deployment types, there
 # are now pipeline types, set by -T for handling ingest of historical
 # or archival data.  They run as separate stacks, with their own
@@ -140,10 +140,13 @@ ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
-ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.12.0"
+ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 ELASTICSEARCH_SNAPSHOT_REPO_TYPE="fs"
+ELASTICSEARCH_MAX_WAIT_TIME=300
+ELASTICSEARCH_WAIT_INTERVAL=10
+
 
 FETCHER_CRONJOB_ENABLE=true	# batch fetcher
 FETCHER_NUM_BATCHES=20		# batch fetcher
@@ -673,6 +676,8 @@ add ELASTICSEARCH_SHARD_COUNT int
 add ELASTICSEARCH_SHARD_REPLICAS int
 add ELASTICSEARCH_ILM_MAX_AGE
 add ELASTICSEARCH_ILM_MAX_SHARD_SIZE
+add ELASTICSEARCH_MAX_WAIT_TIME
+add ELASTICSEARCH_WAIT_INTERVAL
 if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     # make these conditional rather than allow-empty
     add ELASTICSEARCH_IMAGE

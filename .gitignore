@@ -7,7 +7,7 @@ __pycache__
 data/*
 test_data/*
 supervisord.log
-venv/*
+**/venv/*
 env/*
 docker/config.json
 docker/deploy.log
