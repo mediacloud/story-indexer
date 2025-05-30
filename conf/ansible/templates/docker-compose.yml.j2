@@ -2,17 +2,21 @@ services:
 {% for node in docker_elasticsearch_nodes %}
   {{ node.name }}:
     image: docker.elastic.co/elasticsearch/elasticsearch:{{ es_version }}
-    container_name: es-node-{{ loop.index }}
+    container_name: {{ node.name }}
     environment:
-      node.name: "{{ node.name }}"
+      node.name:"{{ node.name }}"
+      cluster.name:"{{ target_cluster }}-cluster"
+      discovery.seed_hosts={% for n in docker_elasticsearch_nodes %}{{ n.name }}{% if not loop.last %},{% endif %}{% endfor %}
+      cluster.initial_master_nodes={% for n in docker_elasticsearch_nodes %}{{ n.name }}{% if not loop.last %},{% endif %}{% endfor %}
+      network.host=0.0.0.0
 {% for key, value in es_config.items() %}
 {% if value is mapping or (value is iterable and value is not string) %}
-      {{ key }}: "{{ value | join(',') }}"
+    {{ key }}:"{{ value | join(',') }}"
 {% else %}
-      {{ key }}: "{{ value }}"
+    {{ key }}:"{{ value }}"
 {% endif %}
 {% endfor %}
-      ES_JAVA_OPTS: "-Xms{{ es_heap_size }} -Xmx{{ es_heap_size }}"
+    ES_JAVA_OPTS:"-Xms{{ es_heap_size }} -Xmx{{ es_heap_size }}"
     ulimits:
       memlock:
         soft: -1
@@ -23,7 +27,8 @@ services:
       - "{{ node.mc_es_http_port }}:9200"
       - "{{ node.mc_es_transport_port }}:9300"
     networks:
-      - elastic-network
+      - {{ target_cluster }}-elastic-network
+    restart: unless-stopped
 {% endfor %}
 
 volumes:
@@ -34,10 +39,11 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: "{{ volume_device_prefix }}/{{ node.name }}/data"
+      device: "{{ volume_device_prefix }}/{{ target_cluster }}/{{ node.name }}/data"
 {% endif %}
 {% endfor %}
 
 networks:
-  elastic-network:
+  {{ target_cluster }}-elastic-network:
     driver: bridge
+    name: {{ target_cluster }}-elastic-network

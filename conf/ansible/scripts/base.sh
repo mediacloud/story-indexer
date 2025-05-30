@@ -43,9 +43,9 @@ run_base() {
                 usage
                 exit 0
                 ;;
-            --)
+            --ansible-extra-args)
                 shift
-                extra_args="$*"
+                ansible_extra_args="$*"
                 break
                 ;;
             -*)

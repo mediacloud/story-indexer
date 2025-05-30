@@ -1,15 +1,14 @@
 ---
-docker_elasticsearch_nodes:
-  - name: es-node-01
-    mc_es_http_port: 9219
-    mc_es_transport_port: 9319
-  - name: es-node-02
-    mc_es_http_port: 9220
-    mc_es_transport_port: 9320
-  - name: es-node-03
-    mc_es_http_port: 9221
-    mc_es_transport_port: 9321
-
+docker_elasticsearch_clusters:
+  native:
+    ports_offset: 400
+    nodes: 3
+  historical:
+    ports_offset: 500
+    nodes: 3
+  archive:
+    ports_offset: 600
+    nodes: 3
 # Elasticsearch Configuration as per Ansible role
 es_data_dirs: ["/usr/share/elasticsearch/data"]
 es_heap_size: "10g"
