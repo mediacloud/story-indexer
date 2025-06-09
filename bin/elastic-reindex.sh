@@ -113,7 +113,14 @@ start_reindexing_process(){
     check_index_exists "$local" "$dest_index"
     check_datetime_format "$from_datetime" "--form"
     check_datetime_format "$to_datetime" "--to"
-    reindex_from_remote
+    #reindex_from_remote
+
+    if [ "$set_cron" = true ]; then
+      echo "Setting cron job"
+      setup_crontab
+    fi
+
+
   else
     echo "Reindexing aborted."
     exit 1
@@ -195,6 +202,54 @@ reindex_from_remote() {
         }
       }
 EOF
+}
+
+setup_crontab() {
+    # Get the absolute path of the script
+    script_path=$(realpath "$0")
+    
+    # Create logs directory if it doesn't exist
+    # Create logs directory in user's home directory
+    log_dir="$HOME/logs/reindex"
+    mkdir -p "$log_dir"
+    
+    # Set up log file path
+    log_file="$log_dir/reindex_$(date +%Y%m%d).log"
+    
+    # Parse the interval (e.g., "2h", "10m", "30m", "1h", etc.)
+    interval_value=${reindex_interval%[mh]}
+    interval_unit=${reindex_interval: -1}
+    
+    case "$interval_unit" in
+        "m")
+            cron_interval="*/$interval_value * * * *"
+            ;;
+        "h")
+            cron_interval="0 */$interval_value * * *"
+            ;;
+        *)
+            echo "Error: Invalid interval unit. Use 'm' for minutes or 'h' for hours"
+            exit 1
+            ;;
+    esac
+    
+    # Create the crontab entry with logging
+    crontab_entry="$cron_interval $script_path -r $source_remote -l $local -s $source_index -d $dest_index -f $from_datetime -t $to_datetime -b $batch_size -i $reindex_interval -w $delay >> $log_file 2>&1"
+    
+    # Check if there's an existing crontab entry for this script
+    existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
+    
+    if [ -n "$existing_crontab" ]; then
+        # Remove existing entry
+        crontab -l 2>/dev/null | grep -v -F "$script_path" | crontab -
+    fi
+    
+    # Add new entry
+    (crontab -l 2>/dev/null; echo "$crontab_entry") | crontab -
+    
+    echo "Successfully set up crontab entry:"
+    echo "$crontab_entry"
+    echo "Logs will be written to: $log_file"
 }
 
 print_reindex_params
