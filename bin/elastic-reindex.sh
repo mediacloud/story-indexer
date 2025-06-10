@@ -114,27 +114,50 @@ start_reindexing_process(){
     read -r confirm
   fi
 
-  if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-    echo "Verifying given parameters..."
-    check_es_alive "$source_remote" "remote-source"
-    check_es_alive "$local" "local"
-    check_index_exists "$source_remote" "$source_index"
-    check_index_exists "$local" "$dest_index"
-    check_datetime_format "$from_datetime" "--form"
-    check_datetime_format "$to_datetime" "--to"
-    echo "Starting re-indexing process..."
-    task_id=$(reindex_from_remote | jq -r '.task')
-    echo "Re-index task started with id $task_id"
-    if [ "$set_cron" = true ]; then
-      echo "Setting cron job..."
-      setup_crontab
-    fi
+  log_file="$HOME/logs/reindex/reindex_task.csv"
+  get_last_task_details "$log_file"
+  echo "Last task_id: $last_task_id"
 
-    # Append to task list
-    append_to_task_list "$task_id" "$from_datetime" "$to_datetime" "running"
+  # Get the task status from Elasticsearch
+  if [ "$last_task_id" != "" ]; then
+    check_task_status_in_es "$last_task_id"
   else
-    echo "Reindexing aborted."
-    exit 1
+    is_first_run=true
+  fi
+
+  # Don't start a task if the last task is not completed successfully
+  if [ "$is_completed" = true ] || [ "$is_first_run" = true ]; then
+      # Check if the completed task has no error
+        if [ "$error_description" != "" ]; then
+          echo "Error: Aborting re-indexing because ES reports task with id $last_task_id failed"
+          append_to_task_list "$last_task_id" "$from_datetime" "$to_datetime" "failed" "$error_description"
+          exit 1
+        fi
+
+      # Append last task complete status in log file
+      if [ "$is_completed" = true ]; then
+        append_to_task_list "$last_task_id" "$from_datetime" "$to_datetime" "completed"
+      fi
+
+      if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        echo "Verifying given parameters..."
+        check_es_alive "$source_remote" "remote-source"
+        check_es_alive "$local" "local"
+        check_index_exists "$source_remote" "$source_index"
+        check_index_exists "$local" "$dest_index"
+        check_datetime_format "$from_datetime" "--form"
+        check_datetime_format "$to_datetime" "--to"
+        echo "Starting re-indexing process..."
+        task_id=$(reindex_from_remote | jq -r '.task')
+        echo "Re-index task started with id $task_id"
+        append_to_task_list "$task_id" "$from_datetime" "$to_datetime" "running"
+    else
+      echo "Reindexing aborted."
+      exit 1
+    fi
+  else
+    echo "Warning: Can not start another re-index task with id $last_task_id is still running..."
+    append_to_task_list "$last_task_id" "$from_datetime" "$to_datetime" "running"
   fi
 }
 
@@ -267,6 +290,7 @@ append_to_task_list() {
   from_time="$2"
   to_time="$3"
   status="$4"
+  error_description="$5"
 
   # Create logs directory in user's home directory
   log_dir="$HOME/logs/reindex"
@@ -277,13 +301,40 @@ append_to_task_list() {
 
   # Write header if file doesn't exist
   if [ ! -f "$log_file" ]; then
-    echo "task_datetime,task_id,from_time,to_time,status" > "$log_file"
+    echo "task_datetime,task_id,from_time,to_time,status,error_description" > "$log_file"
   fi
 
-  now=$(date +"%Y-%m-%d %H:%M:%S")
+  now=$(date +"%Y-%m-%dT%H:%M:%S")
 
   # Append single task record
-  echo "${now}, ${task_id},${from_time},${to_time},${status}" >> "$log_file"
+  echo "${now},${task_id},${from_time},${to_time},${status},${error_description}" >> "$log_file"
+}
+
+get_last_task_details() {
+    csv_file="$1"
+    delimiter="${2:-,}"
+
+    if [ ! -f "$csv_file" ]; then
+        echo "Error: File '$csv_file' not found"
+        return 1
+    fi
+
+    # Get the last row
+    last_row=$(tail -n 1 "$csv_file")
+
+    # Extract each column value
+    last_task_datetime=$(echo "$last_row" | cut -d"$delimiter" -f1)
+    last_task_id=$(echo "$last_row" | cut -d"$delimiter" -f2)
+    last_from_time=$(echo "$last_row" | cut -d"$delimiter" -f3)
+    last_to_time=$(echo "$last_row" | cut -d"$delimiter" -f4)
+    last_status=$(echo "$last_row" | cut -d"$delimiter" -f5)
+}
+
+check_task_status_in_es() {
+  TASK_ID="$1"
+  result=$(curl -s "${local}/_tasks/${TASK_ID}" | jq -r '.completed // false, .error.reason // ""')
+  is_completed=$(echo "$result" | sed -n '1p')
+  error_description=$(echo "$result" | sed -n '2p')
 }
 
 print_reindex_params
