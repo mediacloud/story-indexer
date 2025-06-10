@@ -35,6 +35,7 @@ batch_size=1000
 reindex_interval="1h"
 delay="2h"
 set_cron=false
+non_interactive=false
 
 # Parse arguments
 while [ $# -gt 0 ]; do
@@ -75,6 +76,10 @@ while [ $# -gt 0 ]; do
       delay="$2"
       shift 2
       ;;
+     --non-interactive)
+      non_interactive=true
+      shift
+      ;;
      *)
       echo "Unknown option: $1"
       exit 1
@@ -102,8 +107,12 @@ print_reindex_params() {
 }
 
 start_reindexing_process(){
-  printf "Do you want to start the reindexing now? (Y/n): "
-  read -r confirm
+  if [ "$non_interactive" = true ]; then
+    confirm="y"
+  else
+    printf "Do you want to start the reindexing now? (Y/n): "
+    read -r confirm
+  fi
 
   if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
     echo "Verifying given parameters..."
@@ -113,14 +122,16 @@ start_reindexing_process(){
     check_index_exists "$local" "$dest_index"
     check_datetime_format "$from_datetime" "--form"
     check_datetime_format "$to_datetime" "--to"
-    #reindex_from_remote
-
+    echo "Starting re-indexing process..."
+    task_id=$(reindex_from_remote | jq -r '.task')
+    echo "Re-index task started with id $task_id"
     if [ "$set_cron" = true ]; then
-      echo "Setting cron job"
+      echo "Setting cron job..."
       setup_crontab
     fi
 
-
+    # Append to task list
+    append_to_task_list "$task_id" "$from_datetime" "$to_datetime" "running"
   else
     echo "Reindexing aborted."
     exit 1
@@ -166,7 +177,7 @@ check_index_exists() {
 
 
 reindex_from_remote() {
-  curl -X POST "$local/_reindex?wait_for_completion=false" \
+  curl -s -X POST "$local/_reindex?wait_for_completion=false" \
     -H 'Content-Type: application/json' -d @- <<EOF
       {
         "source": {
@@ -208,18 +219,17 @@ setup_crontab() {
     # Get the absolute path of the script
     script_path=$(realpath "$0")
     
-    # Create logs directory if it doesn't exist
     # Create logs directory in user's home directory
     log_dir="$HOME/logs/reindex"
     mkdir -p "$log_dir"
     
     # Set up log file path
     log_file="$log_dir/reindex_$(date +%Y%m%d).log"
-    
+
     # Parse the interval (e.g., "2h", "10m", "30m", "1h", etc.)
     interval_value=${reindex_interval%[mh]}
-    interval_unit=${reindex_interval: -1}
-    
+    interval_unit="${reindex_interval##*${reindex_interval%?}}"
+
     case "$interval_unit" in
         "m")
             cron_interval="*/$interval_value * * * *"
@@ -234,7 +244,7 @@ setup_crontab() {
     esac
     
     # Create the crontab entry with logging
-    crontab_entry="$cron_interval $script_path -r $source_remote -l $local -s $source_index -d $dest_index -f $from_datetime -t $to_datetime -b $batch_size -i $reindex_interval -w $delay >> $log_file 2>&1"
+    crontab_entry="$cron_interval $script_path -r $source_remote -l $local -s $source_index -d $dest_index -f $from_datetime -t $to_datetime -b $batch_size -i $reindex_interval -w $delay --non-interactive >> $log_file 2>&1"
     
     # Check if there's an existing crontab entry for this script
     existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
@@ -250,6 +260,30 @@ setup_crontab() {
     echo "Successfully set up crontab entry:"
     echo "$crontab_entry"
     echo "Logs will be written to: $log_file"
+}
+
+append_to_task_list() {
+  task_id="$1"
+  from_time="$2"
+  to_time="$3"
+  status="$4"
+
+  # Create logs directory in user's home directory
+  log_dir="$HOME/logs/reindex"
+  mkdir -p "$log_dir"
+
+  # Set up log file path
+  log_file="$log_dir/reindex_task.csv"
+
+  # Write header if file doesn't exist
+  if [ ! -f "$log_file" ]; then
+    echo "task_datetime,task_id,from_time,to_time,status" > "$log_file"
+  fi
+
+  now=$(date +"%Y-%m-%d %H:%M:%S")
+
+  # Append single task record
+  echo "${now}, ${task_id},${from_time},${to_time},${status}" >> "$log_file"
 }
 
 print_reindex_params
