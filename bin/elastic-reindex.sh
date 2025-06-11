@@ -64,6 +64,9 @@ parse_args(){
     to_datetime=$(calculate_to_date)
   fi
 
+  # Other default values
+  log_dir="/srv/data/elasticsearch/reindex"
+
 }
 
 print_reindex_params() {
@@ -122,12 +125,11 @@ append_to_task_list() {
   status="$4"
   error_description="$5"
 
-  # Create logs directory in user's home directory
-  log_dir="$HOME/logs/reindex"
+  # Create logs directory
   mkdir -p "$log_dir"
 
   # Set up log file path
-  log_file="$log_dir/reindex_task.csv"
+  log_file="$log_dir/tasks_status.csv"
 
   # Write header if file doesn't exist
   if [ ! -f "$log_file" ]; then
@@ -153,11 +155,9 @@ get_last_task_details() {
   last_row=$(tail -n 1 "$csv_file")
 
   # Extract each column value
-  last_task_datetime=$(echo "$last_row" | cut -d"$delimiter" -f1)
   last_task_id=$(echo "$last_row" | cut -d"$delimiter" -f2)
   last_from_time=$(echo "$last_row" | cut -d"$delimiter" -f3)
   last_to_time=$(echo "$last_row" | cut -d"$delimiter" -f4)
-  last_status=$(echo "$last_row" | cut -d"$delimiter" -f5)
 }
 
 check_task_status_in_es() {
@@ -195,7 +195,7 @@ reindex_from_remote() {
           "query": {
             "range": {
               "indexed_date": {
-                "gte": "$from_datetime",
+                "gt": "$from_datetime",
                 "lte": "$to_datetime"
               }
             }
@@ -227,8 +227,7 @@ setup_crontab() {
   # Get the absolute path of the script
   script_path=$(realpath "$0")
 
-  # Create logs directory in user's home directory
-  log_dir="$HOME/logs/reindex"
+  # Create logs directory
   mkdir -p "$log_dir"
 
   # Set up log file path
@@ -285,7 +284,7 @@ start_reindexing_process() {
     fi
   fi
 
-  log_file="$HOME/logs/reindex/reindex_task.csv"
+  log_file="$log_dir/tasks_status.csv"
   get_last_task_details "$log_file"
   echo "Last task_id: $last_task_id"
 
@@ -307,7 +306,7 @@ start_reindexing_process() {
 
     # Append last task complete status in log file
     if [ "$is_completed" = true ]; then
-      append_to_task_list "$last_task_id" "$from_datetime" "$to_datetime" "completed"
+      append_to_task_list "$last_task_id" "$last_from_time" "$last_to_time" "completed"
     fi
 
     echo "Verifying given parameters..."
@@ -382,7 +381,7 @@ update_crontab() {
   
   # Use new parameters if provided, otherwise keep existing ones
   source_url=${source_url:-$existing_source_url}
-  dest_url=${$dest_url:-$existing_dest_url}
+  dest_url=${dest_url:-$existing_dest_url}
   source_index=${source_index:-$existing_source}
   dest_index=${dest_index:-$existing_dest}
   from_datetime=${from_datetime:-$existing_from}
@@ -395,6 +394,11 @@ update_crontab() {
 }
 
 main() {
+   if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+  fi
+
   parse_args "$@"
   if [ "$action" = "remove-cron" ]; then
     remove_crontab
@@ -412,3 +416,4 @@ main() {
 #          Run Script
 # -----------------------------
 main "$@"
+
