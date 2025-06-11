@@ -191,7 +191,7 @@ reindex_from_remote() {
             "host": "$source_url"
           },
           "index": ["$source_index"],
-          "size": 1000,
+          "size": $batch_size,
           "query": {
             "range": {
               "indexed_date": {
@@ -370,14 +370,15 @@ update_crontab() {
   fi
   
   # Extract parameters from existing crontab entry
-  existing_source_url=$(echo "$existing_crontab" | sed -E 's/.*--source-url ([^ ]+) .*/\1/')
-  existing_dest_url=$(echo "$existing_crontab" | sed -E 's/.*--dest-url ([^ ]+) .*/\1/')
-  existing_source=$(echo "$existing_crontab" | sed -E 's/.*--source-index ([^ ]+) .*/\1/')
-  existing_dest=$(echo "$existing_crontab" | sed -E 's/.*--dest-index ([^ ]+) .*/\1/')
-  existing_from=$(echo "$existing_crontab" | sed -E 's/.*--from ([^ ]+) .*/\1/')
-  existing_batch=$(echo "$existing_crontab" | sed -E 's/.*--batch-size ([^ ]+) .*/\1/')
-  existing_interval=$(echo "$existing_crontab" | sed -E 's/.*--reindex-interval ([^ ]+) .*/\1/')
-  existing_delay=$(echo "$existing_crontab" | sed -E 's/.*--delay ([^ ]+) .*/\1/')
+  existing_source_url=$(echo "$existing_crontab" | grep -o -- '-r [^ ]*' | cut -d' ' -f2)
+  existing_dest_url=$(echo "$existing_crontab" | grep -o -- '-l [^ ]*' | cut -d' ' -f2)
+  existing_source=$(echo "$existing_crontab" | grep -o -- '-s [^ ]*' | cut -d' ' -f2)
+  existing_dest=$(echo "$existing_crontab" | grep -o -- '-d [^ ]*' | cut -d' ' -f2)
+  existing_from=$(echo "$existing_crontab" | grep -o -- '-f [^ ]*' | cut -d' ' -f2)
+  existing_batch=$(echo "$existing_crontab" | grep -o -- '-b [^ ]*' | cut -d' ' -f2)
+  existing_interval=$(echo "$existing_crontab" | grep -o -- '-i [^ ]*' | cut -d' ' -f2)
+  existing_delay=$(echo "$existing_crontab" | grep -o -- '-w [^ ]*' | cut -d' ' -f2)
+
   
   # Use new parameters if provided, otherwise keep existing ones
   source_url=${source_url:-$existing_source_url}
