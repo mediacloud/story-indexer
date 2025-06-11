@@ -7,15 +7,15 @@ show_help() {
   echo "Usage: $0 [OPTIONS]"
   echo ""
   echo "Reindex specific options:"
-  echo "  -l, --destination-url DEST_URL   URL of the destination Elasticsearch cluster to re-index into"
-  echo "  -r, --source-url SRC_URL         URL of the remote Elasticsearch cluster to re-index from"
-  echo "  -s, --source-index SOURCE        Source index name"
-  echo "  -d, --dest-index DEST            Destination index name (default: mc_search)"
-  echo "  -f, --from DATETIME              Start date for re-indexing (format: YYYY-MM-DDTHH:mm:ss.sssZ)"
-  echo "  -t, --to DATETIME                End date for re-indexing (format: YYYY-MM-DDTHH:mm:ss.sssZ)"
-  echo "  -b, --batch-size SIZE            Number of documents to re-index per batch"
-  echo "  -i, --reindex-interval INTERVAL  Used to configure how often the re-indexing job runs via crontab (Default: 1h)"
-  echo "  -w, --delay DELAY                Delay buffer between \"now\" and calculated --to time (Default: 2h)"
+  echo "  -l, --dest-remote-host DEST URL      URL of the destination Elasticsearch cluster to re-index into"
+  echo "  -r, --source-remote-host SRC_URL     URL of the remote Elasticsearch cluster to re-index from"
+  echo "  -s, --source-index SOURCE            Source index name"
+  echo "  -d, --dest-index DEST                Destination index name (default: mc_search)"
+  echo "  -f, --from DATETIME                  Start date for re-indexing (format: YYYY-MM-DDTHH:mm:ss.sssZ)"
+  echo "  -t, --to DATETIME                    End date for re-indexing (format: YYYY-MM-DDTHH:mm:ss.sssZ)"
+  echo "  -b, --batch-size SIZE                Number of documents to re-index per batch"
+  echo "  -i, --reindex-interval INTERVAL      Used to configure how often the re-indexing job runs via crontab (Default: 1h)"
+  echo "  -w, --delay DELAY                    Delay buffer between \"now\" and calculated --to time (Default: 2h)"
   echo ""
   echo "Cron management options:"
   echo "  --remove-cron                     Remove the scheduled re-indexing cron job"
@@ -25,8 +25,8 @@ show_help() {
 
 parse_args(){
   # Set default values
-  source_url=""
-  dest_url=""
+  source_remote_host=""
+  dest_remote_host=""
   source_index=""
   dest_index=""
   from_datetime=""
@@ -41,8 +41,8 @@ parse_args(){
   # Parse arguments
   while [ $# -gt 0 ]; do
       case "$1" in
-      -l | --dest-url) dest_url="$2"; shift 2 ;;
-      -r | --source-url) source_url="$2"; shift 2 ;;
+      -l | --dest-url) dest_remote_host="$2"; shift 2 ;;
+      -r | --source-remote-host) source_remote_host="$2"; shift 2 ;;
       -s | --source-index) source_index="$2"; shift 2 ;;
       -d | --dest-index) dest_index="$2"; shift 2 ;;
       -f | --from) from_datetime="$2"; shift 2 ;;
@@ -71,8 +71,8 @@ parse_args(){
 
 print_reindex_params() {
   echo "PARAMETERS RECEIVED:"
-  echo "--source-url:          $source_url"
-  echo "--dest-url:            $dest_url"
+  echo "--source-remote-host:  $source_remote_host"
+  echo "--dest-url:            $dest_remote_host"
   echo "--source-index:        $source_index"
   echo "--dest-index:          $dest_index"
   echo "--from:                $from_datetime"
@@ -162,7 +162,7 @@ get_last_task_details() {
 
 check_task_status_in_es() {
   TASK_ID="$1"
-  result=$(curl -s "${dest_url}/_tasks/${TASK_ID}" | jq -r '.completed // false, .error.reason // ""')
+  result=$(curl -s "${dest_remote_host}/_tasks/${TASK_ID}" | jq -r '.completed // false, .error.reason // ""')
   is_completed=$(echo "$result" | sed -n '1p')
   error_description=$(echo "$result" | sed -n '2p')
 }
@@ -183,12 +183,12 @@ calculate_to_date() {
 }
 
 reindex_from_remote() {
-  curl -s -X POST "$dest_url/_reindex?wait_for_completion=false" \
+  curl -s -X POST "$dest_remote_host/_reindex?wait_for_completion=false" \
     -H 'Content-Type: application/json' -d @- <<EOF
       {
         "source": {
           "remote": {
-            "host": "$source_url"
+            "host": "$source_remote_host"
           },
           "index": ["$source_index"],
           "size": $batch_size,
@@ -251,7 +251,7 @@ setup_crontab() {
   esac
 
   # Create the crontab entry with logging
-  crontab_entry="$cron_interval $script_path -r $source_url -l $dest_url -s $source_index -d $dest_index -f $start_date -b $batch_size -i $reindex_interval -w $delay --non-interactive >> $log_file 2>&1"
+  crontab_entry="$cron_interval $script_path -r $source_remote_host -l $dest_remote_host -s $source_index -d $dest_index -f $start_date -b $batch_size -i $reindex_interval -w $delay --non-interactive >> $log_file 2>&1"
 
   # Check if there's an existing crontab entry for this script
   existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
@@ -310,10 +310,10 @@ start_reindexing_process() {
     fi
 
     echo "Verifying given parameters..."
-    check_es_alive "$source_url" "source"
-    check_es_alive "$dest_url" "destination"
-    check_index_exists "$source_url" "$source_index"
-    check_index_exists "$dest_url" "$dest_index"
+    check_es_alive "$source_remote_host" "source"
+    check_es_alive "$dest_remote_host" "destination"
+    check_index_exists "$source_remote_host" "$source_index"
+    check_index_exists "$dest_remote_host" "$dest_index"
     check_datetime_format "$from_datetime" "--from"
     check_datetime_format "$to_datetime" "--to"
     echo "Starting re-indexing process..."
@@ -370,8 +370,8 @@ update_crontab() {
   fi
   
   # Extract parameters from existing crontab entry
-  existing_source_url=$(echo "$existing_crontab" | grep -o -- '-r [^ ]*' | cut -d' ' -f2)
-  existing_dest_url=$(echo "$existing_crontab" | grep -o -- '-l [^ ]*' | cut -d' ' -f2)
+  existing_source_remote_host=$(echo "$existing_crontab" | grep -o -- '-r [^ ]*' | cut -d' ' -f2)
+  existing_dest_remote_host=$(echo "$existing_crontab" | grep -o -- '-l [^ ]*' | cut -d' ' -f2)
   existing_source=$(echo "$existing_crontab" | grep -o -- '-s [^ ]*' | cut -d' ' -f2)
   existing_dest=$(echo "$existing_crontab" | grep -o -- '-d [^ ]*' | cut -d' ' -f2)
   existing_from=$(echo "$existing_crontab" | grep -o -- '-f [^ ]*' | cut -d' ' -f2)
@@ -381,8 +381,8 @@ update_crontab() {
 
   
   # Use new parameters if provided, otherwise keep existing ones
-  source_url=${source_url:-$existing_source_url}
-  dest_url=${dest_url:-$existing_dest_url}
+  source_remote_host=${source_remote_host:-$existing_source_remote_host}
+  dest_remote_host=${dest_remote_host:-$existing_dest_remote_host}
   source_index=${source_index:-$existing_source}
   dest_index=${dest_index:-$existing_dest}
   from_datetime=${from_datetime:-$existing_from}
