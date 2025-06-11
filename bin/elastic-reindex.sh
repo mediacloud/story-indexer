@@ -340,6 +340,13 @@ start_reindexing_process() {
 remove_crontab() {
   # Get the absolute path of the script
   script_path=$(realpath "$0")
+
+  printf "Do you want to remove this script from the crontab ? [Y/n]: "
+  read -r confirm
+  if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo "Cron removal aborted."
+    exit 1
+  fi
   
   # Remove any existing crontab entries for this script
   existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
@@ -349,6 +356,42 @@ remove_crontab() {
   else
     echo "No crontab entry found for $script_path"
   fi
+}
+
+update_crontab() {
+  # Get the absolute path of the script
+  script_path=$(realpath "$0")
+  
+  # Get existing crontab entry
+  existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
+  
+  if [ -z "$existing_crontab" ]; then
+    echo "Error: No existing crontab entry found for $script_path"
+    exit 1
+  fi
+  
+  # Extract parameters from existing crontab entry
+  existing_params=$(echo "$existing_crontab" | sed -E 's/.*--source-remote ([^ ]+) .*/\1/')
+  existing_local=$(echo "$existing_crontab" | sed -E 's/.*--local ([^ ]+) .*/\1/')
+  existing_source=$(echo "$existing_crontab" | sed -E 's/.*--source-index ([^ ]+) .*/\1/')
+  existing_dest=$(echo "$existing_crontab" | sed -E 's/.*--dest-index ([^ ]+) .*/\1/')
+  existing_from=$(echo "$existing_crontab" | sed -E 's/.*--from ([^ ]+) .*/\1/')
+  existing_batch=$(echo "$existing_crontab" | sed -E 's/.*--batch-size ([^ ]+) .*/\1/')
+  existing_interval=$(echo "$existing_crontab" | sed -E 's/.*--reindex-interval ([^ ]+) .*/\1/')
+  existing_delay=$(echo "$existing_crontab" | sed -E 's/.*--delay ([^ ]+) .*/\1/')
+  
+  # Use new parameters if provided, otherwise keep existing ones
+  source_remote=${source_remote:-$existing_params}
+  local=${local:-$existing_local}
+  source_index=${source_index:-$existing_source}
+  dest_index=${dest_index:-$existing_dest}
+  from_datetime=${from_datetime:-$existing_from}
+  batch_size=${batch_size:-$existing_batch}
+  reindex_interval=${reindex_interval:-$existing_interval}
+  delay=${delay:-$existing_delay}
+
+  # Reuse setup_crontab with the updated parameters
+  setup_crontab "$from_datetime"
 }
 
 main() {
