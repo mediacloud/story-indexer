@@ -36,6 +36,7 @@ parse_args(){
   delay="2h"
   set_cron=false
   non_interactive=false
+  action="re-index"
 
   # Parse arguments
   while [ $# -gt 0 ]; do
@@ -50,6 +51,8 @@ parse_args(){
       -i | --reindex-interval) reindex_interval="$2"; shift 2 ;;
       -w | --delay) delay="$2"; shift 2 ;;
       --non-interactive) non_interactive=true; shift ;;
+      --remove-cron) action="remove-cron"; shift ;;
+      --update-cron) action="update-cron"; shift ;;
       -h|--help) show_help ;;
       *) echo "Unknown option: $1"; exit 1 ;;
       esac
@@ -334,10 +337,35 @@ start_reindexing_process() {
   fi
 }
 
+remove_crontab() {
+  # Get the absolute path of the script
+  script_path=$(realpath "$0")
+  
+  # Remove any existing crontab entries for this script
+  existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
+  if [ -n "$existing_crontab" ]; then
+    crontab -l 2>/dev/null | grep -v -F "$script_path" | crontab -
+    echo "Successfully removed crontab entry for $script_path"
+  else
+    echo "No crontab entry found for $script_path"
+  fi
+}
+
 main() {
   parse_args "$@"
-  print_reindex_params
-  start_reindexing_process
+  
+  if [ "$action" = "remove-cron" ]; then
+    remove_crontab
+    exit 0
+  elif [ "$action" = "update-cron" ]; then
+    update_crontab
+    exit 0
+  elif [ "$action" = "re-index" ]; then
+    print_reindex_params
+    start_reindexing_process
+  fi
+  
+  
 }
 
 # -----------------------------
