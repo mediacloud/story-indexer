@@ -47,6 +47,14 @@
         state: absent
       become: true
 
+    - name: Increase VM for Elasticsearch
+      sysctl:
+        name: vm.max_map_count
+        value: '262144'
+        state: present
+        reload: yes
+      become: yes
+
     - name: Deploy Elasticsearch Cluster
       community.docker.docker_compose_v2:
         project_src: "/tmp/elasticsearch-{{ env }}"
