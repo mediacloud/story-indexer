@@ -7,7 +7,7 @@ show_help() {
   echo "Usage: $0 [OPTIONS]"
   echo ""
   echo "Reindex specific options:"
-  echo "  -l, --dest-remote-host DEST URL      URL of the destination Elasticsearch cluster to re-index into"
+  echo "  -l, --dest-remote-host DEST_URL      URL of the destination Elasticsearch cluster to re-index into"
   echo "  -r, --source-remote-host SRC_URL     URL of the remote Elasticsearch cluster to re-index from"
   echo "  -s, --source-index SOURCE            Source index name"
   echo "  -d, --dest-index DEST                Destination index name (default: mc_search)"
@@ -417,4 +417,3 @@ main() {
 #          Run Script
 # -----------------------------
 main "$@"
-
