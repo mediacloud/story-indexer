@@ -344,7 +344,7 @@ prod)
     ELASTICSEARCH_SHARD_REPLICAS=1
     ELASTICSEARCH_ILM_MAX_AGE="90d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
-    ELASTICSEARCH_HOSTS=http://ramos.angwin:9200,http://woodward.angwin:9200,http://bradley.angwin:9200
+    ELASTICSEARCH_HOSTS=http://es.newsscribe.angwin:9209
     ELASTICSEARCH_SNAPSHOT_REPO_TYPE="s3"
 
     # Disabled until tested in staging.
