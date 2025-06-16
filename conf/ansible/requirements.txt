@@ -1,4 +1,0 @@
-ansible
-# for ansible-elasticsearch role:
-jmespath
-six
