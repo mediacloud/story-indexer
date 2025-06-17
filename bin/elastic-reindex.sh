@@ -321,13 +321,8 @@ start_reindexing_process() {
     echo "Re-index task started with id $task_id"
     if [ "$set_cron" = true ]; then
       echo "Setting up cron job..."
-      # On next run last to-datetime will be from-datetime
-      if [ -n "$last_to_time" ]; then
-        setup_crontab "$last_to_time"
-      else
-        # If to_datetime is null this is first run and we can use the calculated to_datetime
-        setup_crontab "$to_datetime"
-      fi
+      # Always use the calculated --to-datetime as the --from-datetime on next run
+      setup_crontab "$to_datetime"
     fi
     append_to_task_list "$task_id" "$from_datetime" "$to_datetime" "running"
   else
