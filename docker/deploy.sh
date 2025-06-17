@@ -98,8 +98,10 @@ done
 
 # may not be needed if user is in right (docker?) group(s)?
 if [ "x$AS_USER" = x -a $(whoami) != root ]; then
-    echo must be run as root 1>&2
-    exit 1
+    if ! groups | tr ' ' '\n' | fgrep -qx docker; then
+       echo must be run as root or member of docker group 1>&2
+       exit 1
+    fi
 fi
 
 # get logged in user (even if su(do)ing)
@@ -342,7 +344,6 @@ prod)
     # ES index settings are static, prod settings should not change
     ELASTICSEARCH_SHARD_COUNT=30
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_ILM_MAX_AGE="90d"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     ELASTICSEARCH_HOSTS=http://es.newsscribe.angwin:9209
     ELASTICSEARCH_SNAPSHOT_REPO_TYPE="s3"
@@ -366,7 +367,6 @@ staging)
     ELASTICSEARCH_CONTAINERS=3
     ELASTICSEARCH_SHARD_COUNT=5
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_ILM_MAX_AGE="6h"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="5gb"
     ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION="mc_story_indexer"
 
@@ -394,7 +394,6 @@ dev)
     ELASTICSEARCH_CONTAINERS=1
     ELASTICSEARCH_SHARD_COUNT=2
     ELASTICSEARCH_SHARD_REPLICAS=1
-    ELASTICSEARCH_ILM_MAX_AGE="15m"
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="100mb"
     ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION="mc_story_indexer"
 
@@ -671,7 +670,6 @@ add ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET allow-empty #private
 add ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT allow-empty
 add ELASTICSEARCH_SHARD_COUNT int
 add ELASTICSEARCH_SHARD_REPLICAS int
-add ELASTICSEARCH_ILM_MAX_AGE
 add ELASTICSEARCH_ILM_MAX_SHARD_SIZE
 if [ "$ELASTICSEARCH_CONTAINERS" -gt 0 ]; then
     # make these conditional rather than allow-empty

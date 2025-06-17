@@ -48,12 +48,6 @@ class ElasticConf(ElasticConfMixin, App):
         )
         # ILM policy args
         ap.add_argument(
-            "--ilm-max-age",
-            dest="ilm_max_age",
-            default=os.environ.get("ELASTICSEARCH_ILM_MAX_AGE") or "",
-            help="ES ILM policy max age",
-        )
-        ap.add_argument(
             "--ilm-max-shard-size",
             dest="ilm_max_shard_size",
             default=os.environ.get("ELASTICSEARCH_ILM_MAX_SHARD_SIZE") or "",
@@ -79,7 +73,6 @@ class ElasticConf(ElasticConfMixin, App):
         required_args = [
             ("shards", "ELASTICSEARCH_SHARD_COUNT"),
             ("replicas", "ELASTICSEARCH_SHARD_REPLICAS"),
-            ("ilm_max_age", "ELASTICSEARCH_ILM_MAX_AGE"),
             ("ilm_max_shard_size", "ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
             ("es_snapshot_repo", "ELASTICSEARCH_SNAPSHOT_REPO"),
             ("es_snapshot_repo_type", "ELASTICSEARCH_SNAPSHOT_REPO_TYPE"),
@@ -92,7 +85,6 @@ class ElasticConf(ElasticConfMixin, App):
 
         self.shards = self.args.shards
         self.replicas = self.args.replicas
-        self.ilm_max_age = self.args.ilm_max_age
         self.ilm_max_shard_size = self.args.ilm_max_shard_size
         self.es_snapshot_repo = self.args.es_snapshot_repo
         self.es_snapshot_repo_type = self.args.es_snapshot_repo_type
@@ -205,7 +197,6 @@ class ElasticConf(ElasticConfMixin, App):
             logger.error("Elasticsearch create ILM policy: error template not loaded")
             sys.exit(1)
         rollover = json_data["policy"]["phases"]["hot"]["actions"]["rollover"]
-        rollover["max_age"] = self.ilm_max_age
         rollover["max_primary_shard_size"] = self.ilm_max_shard_size
         name = json_data["name"]
         policy = json_data["policy"]
