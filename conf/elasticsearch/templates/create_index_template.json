@@ -9,6 +9,7 @@
         "number_of_replicas": "$number_of_replicas"
       },
       "mappings": {
+        "dynamic": "false",
         "properties": {
             "article_title": {
                 "type": "text"
