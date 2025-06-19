@@ -342,7 +342,7 @@ prod)
 
     ELASTICSEARCH_CONTAINERS=0
     # ES index settings are static, prod settings should not change
-    ELASTICSEARCH_SHARD_COUNT=30
+    ELASTICSEARCH_SHARD_COUNT=12
     ELASTICSEARCH_SHARD_REPLICAS=1
     ELASTICSEARCH_ILM_MAX_SHARD_SIZE="50gb"
     ELASTICSEARCH_HOSTS=http://es.newsscribe.angwin:9209
