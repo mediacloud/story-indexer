@@ -11,7 +11,7 @@ This document was written to cover a number of bases:
 * Document metadata required by story-indexer for anyone preparing data for incorporation into Media Cloud Elasticsearch index.
 * Document additional data written by `qutil dump_archives` command.
 * Document metadata fields stored and indexed in Elasticsearch.
-* Give an overall description of story-indexer pipelines and 
+* Give an overall description of story-indexer pipelines flavors and their metadata (ab)usage.
 
 NOTE! As with all documentation, this reflects (at best) the state of
 the code (as read by a human) at a given instance in time.  If it's
