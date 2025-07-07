@@ -49,7 +49,8 @@ here?)
 Media Cloud archival WARC files are written as WARC 1.0 archives using
 `warcio` by `workers/archiver.py` using `story_archive_writer.py` and
 consist of a header "warcinfo" record, followed by pairs of "response"
-and "metadata" records.
+and "metadata" records.  Media Cloud WARC files should contain no more
+than 5000 stories.
 
 ### WARC metadata record
 
