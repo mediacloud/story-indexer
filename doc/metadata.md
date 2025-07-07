@@ -1,6 +1,6 @@
 XXX means needs to be looked at
 
-# Media Clould story-indexer metadata
+# Media Cloud story-indexer metadata
 
 ## Background
 
@@ -95,7 +95,7 @@ The Story title (if any), extracted from original RSS or Sitemap page
 ##### domain (str)
 
 Media Cloud "canonical domain" extracted using mcmetadata library
-by rss-fetcher (forensiv).
+by rss-fetcher (forensic).
 
 ##### pub_date (str)
 
@@ -204,7 +204,7 @@ http_metadata.final_url, content_metadata.url, content_metadata.original_url or 
 In WARC version 1.0 date-times are limited to one second granularity.
 
 If http.metadata.response_code is 200, the HTTP response will be "200
-OK", otherwise it will be "recponse_code HUH?"
+OK", otherwise it will be "response_code HUH?"
 
 The HTTP `Content-Type` header will always be `text/html`; if http_metadata.encoding
 (or raw_html.encoding) is available `; encoding=VALUE` will be appended.
@@ -225,11 +225,11 @@ The HTTP `Content-Type` header will always be `text/html`; if http_metadata.enco
 
 Archived WARC file names are prefixed with `mc-`
 
-rss_entry is populated from JSON encoded data recieved from the rss-fetcher API.
+rss_entry is populated from JSON encoded data received from the rss-fetcher API.
 
 All rss_entry are used as intended, `via` contains `ID_NUMBER@SERVER`
 
-All http_metdata fields are used as intended.
+All http_metadata fields are used as intended.
 
 #### historical
 
@@ -247,10 +247,10 @@ NOTE!  The URL is *NOT* the final, redirected URL, and any HTTP
 metadata was not retained, so page encoding must be inferred.
 
 EXCEPT for periods where CSVs dumped from the old system were not
-available, where documents pre-determined ranges of downloads_ids were
+available, where documents predetermined ranges of downloads_ids were
 fetched "blind" (without any URL), and the URL was extracted by the
-parser from "canonical url" HTML metdata tags (in which case the
-extracted URL is the canonoical URL from the document producer).
+parser from "canonical url" HTML metadata tags (in which case the
+extracted URL is the Canonical URL from the document producer).
 
 Archived WARC file names are prefixed with `mchistYYYY-`
 
