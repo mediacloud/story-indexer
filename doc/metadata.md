@@ -8,7 +8,7 @@ This document was written to cover a number of bases:
 
 * Document WARC files written by Media Cloud story-indexer `archiver` for backup/archive for future developers, both at Media Cloud and outside.
 * Document Media Cloud story-indexer `Story` object metadata fields; including their sources, and uses.
-* Document required metadata required by story-indexer for anyone preparing data for incorporation into Media Cloud Elasticsearch index.
+* Document metadata required by story-indexer for anyone preparing data for incorporation into Media Cloud Elasticsearch index.
 * Document additional data written by `qutil dump_archives` command.
 * Document metadata fields stored and indexed in Elasticsearch.
 * Give an overall description of story-indexer pipelines and 
@@ -323,4 +323,13 @@ ability to recover from story-indexer downtime.
 2. `workers/parser.py`
 3. `workers/importer.py`
 4. `workers/archiver.py`
+
+### qutil dump_archives output
+
+The qutil program (run via `bin/run-qutil.sh dump_archives queue_name`
+in a Docker container) writes WARC files from currently queued stories.
+
+It attempts to add a `rabbitmq_headers` metadata object, BUT it will
+fail if any RabbitMQ headers contain data types (eg; datetimes) that
+are not JSON serializable!
 
