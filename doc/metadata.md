@@ -212,7 +212,7 @@ The HTTP `Content-Type` header will always be `text/html`; if http_metadata.enco
 
 ### Pipeline types
 
-### queue-fetcher
+#### queue-fetcher
 
 (normal production)
 
@@ -230,7 +230,7 @@ All rss_entry are used as intended, `via` contains `ID_NUMBER@SERVER`
 
 All http_metdata fields are used as intended.
 
-### historical
+#### historical
 
 1. `workers/fetcher/hist-queuer.py` reading CSV files from cloud storage
 2. `workers/fetcher/hist-fetcher.py` fetching HTML from cloud storage
@@ -272,7 +272,7 @@ hist-queuer sets the following `content_metadata` fields:
 
 hist-fetcher sets `http_metadata.response_code` to 200,
 
-### csv
+#### csv
 
 Reads CSVs of URLs to fetch.  The original CSVs were prepared by blind
 fetching objects from the old system cloud storage archive, looking
@@ -298,7 +298,7 @@ RSS files.
 * `rss_entry.link` and `http_metadata.final_url` are set from CSV url column
 * `rss_entry.fetch_date` is set from date extracted from CSV file name
 
-### archive
+#### archive
 
 Reads Media Cloud Archiver WARC files (from cloud storage) and
 re-imports them for recovery (this was done for the first reindexing
@@ -311,7 +311,7 @@ Stories are imported using original "parsed date".
 `StoryArchiveReader` returns `Story` objects. Metadata is populated using the "metadata"
 WARC record;  Cannot process arbitrary WARC files!!
 
-### batch-fetcher (obsolete)
+#### batch-fetcher (obsolete)
 
 Used whole-day synthetic RSS files from rss-fetcher, using "scrapy" to
 fetch the HTML.  Ran until all stories fetched or (limited) retries exhausted.
