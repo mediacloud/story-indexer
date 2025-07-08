@@ -1,5 +1,14 @@
 # Media Cloud story-indexer metadata
 
+The key job of the story-indexer is to extract, augment, and archive online news stories. To accomplish
+these tasks the story-indexer creates a number of metadata fields, persisted in different ways and at 
+different times. These include:
+* `Story` objects used internally to manage data for workflow queues
+* Elasticsearch storage fields
+* `.warc` files files used as off-site long-term storage
+
+This document describes that metadata.
+
 ## Background
 
 This document was written to fill a number of needs:
