@@ -1,12 +1,10 @@
-XXX means needs to be looked at
-
 # Media Cloud story-indexer metadata
 
 ## Background
 
-This document was written to cover a number of bases:
+This document was written to fill a number of needs:
 
-* Document WARC files written by Media Cloud story-indexer `archiver` for backup/archive for future developers, both at Media Cloud and outside.
+* Document WARC files written by Media Cloud story-indexer `archiver` for backup/archive for use by future developers, both at Media Cloud and outside.
 * Document Media Cloud story-indexer `Story` object metadata fields; including their sources, and uses.
 * Document metadata required by story-indexer for anyone preparing data for incorporation into Media Cloud Elasticsearch index.
 * Document additional data written by `qutil dump_archives` command.
@@ -41,21 +39,21 @@ position in a pipeline.  Pipelines need not be linear: the output of a
 step can be queued to multiple steps.
 
 Multiple flavors of pipeline exist.  Queuers and Fetchers come in
-multiple flavors, and are run in pairs.  (see Appendix: XXX link
-here?)
+multiple flavors, and are run in pairs.  (see Appendix A).
 
 ## WARC file format
 
-Media Cloud archival WARC files are written as WARC 1.0 archives using
-`warcio` by `workers/archiver.py` using `story_archive_writer.py` and
-consist of a header "warcinfo" record, followed by pairs of "response"
-and "metadata" records.  Media Cloud WARC files should contain no more
-than 5000 stories.
+Media Cloud archival WARC files are written as
+[WARC 1.0 archives](https://iipc.github.io/warc-specifications/specifications/warc-format/warc-1.0/)
+using `warcio` by `workers/archiver.py` using
+`story_archive_writer.py` and consist of a header `warcinfo` record,
+followed by pairs of `response` and `metadata` records.  Media Cloud
+WARC files should contain no more than 5000 stories.
 
 ### WARC metadata record
 
-Media Cloud Archive WARC "metadata" records have Content-Type
-`application/x.mediacloud-indexer+json` (see story_archive_writer.py
+Media Cloud Archive WARC `metadata` records have Content-Type
+`application/x.mediacloud-indexer+json` (see `story_archive_writer.py`
 for COPIOUS discussion of how this was arrived at!) and the content is
 a JSON encoded representation of the story-indexer `Story` object
 metadata sub-objects (with VERY few exceptions), using the names of
@@ -69,7 +67,7 @@ a null value.  Be liberal in what you accept.
 In this section "MAY" means "depending on availability of
 this or other data", not "I'm not sure"!
 
-The top level is a JSON "object" (hash) with the following keys:
+The top level is a JSON "object" (dict) with the following keys:
 
 #### rss_entry
 
@@ -100,11 +98,12 @@ by rss-fetcher (forensic).
 ##### pub_date (str)
 
 The Story publishing data (if any) in RFC2822 format, extracted from
-original RSS or Sitemap page, MAY be used by importer.
+original RSS or Sitemap page, MAY be used by importer if Parser
+cannot extract a publication date.
 
 ##### fetch_date (str)
 
-Date (YYYY-MM-DD) the story was acquired: the batch fetcher put
+Date (YYYY-MM-DD) the story was acquired: the original (batch) fetcher put
 the date of the synthetic RSS file here (forensic).
 
 ##### source_url (str)
@@ -124,7 +123,9 @@ extracted from, if any (forensic).
 
 ##### via (str)
 
-Describes how/where the story was acquired from, for human consumption. May be the name of a file (forensic).
+Describes how/where the story was acquired from, for human
+consumption. Generally added by the Queuer and may be the name of a
+file (forensic).
 
 #### http_metadata
 
@@ -157,10 +158,9 @@ Data from the ContentMetadata subobject.
 
 A dump of metadata extracted by `mcmetadata.extract` (all names
 identical).  Only the fields used by story-indexer are included here.
-See github.com/mediacloud/metadata-lib (XXX make into link?) for
-details.
+See github.com/mediacloud/metadata-lib for details.
 
-Elasticsearch field names are (XXX all?) based on these names.
+Elasticsearch field names map (almost) EXACTLY to these fields!
 
 ##### url (str)
 
@@ -182,36 +182,70 @@ Lower case two-letter ISO 3166-1 alpha-2 country code.
 
 ##### article_title (str)
 
+Extracted article title.
+
 ##### text_content (str)
+
+Extracted text.
 
 ##### parsed_date (str)
 
-Only in Elasticsearch (not present in Story object or WARC files),
-Despite the name, is UTC date-time (YYYY-MM-DD hh:mm:ss.uuuuuu as
-returned by Python datetime.utcnow().isoformat()) article was parsed).
-If not available, Importer will use datetime.utcnow().isoformat() of
-at time of import.
+Populated by Parser (not mcmetadata), 
+despite the name, is UTC date-time (YYYY-MM-DD hh:mm:ss.uuuuuu
+
+Importer stores in Elasticsearch as `indexed_date`; If not available,
+Importer will use datetime.utcnow().isoformat() of at time of import.
 
 This field was in flux early on, and may be a bare YYYY-MM-DD in some
-stories imported in prior to 
+stories imported in early 2024.
+
+Some API clients use `indexed_date` to return only newly added
+stories.
+
+The latest Elasticsearch mapping for `indexed_date` has nanosecond
+resolution to avoid truncation from microseconds (as retrieved from
+the stored document) to milliseconds in the index.
 
 ### WARC "response" record
 
-`WARC-Target-URI` header is (in preferred order):
-http_metadata.final_url, content_metadata.url, content_metadata.original_url or rss_entry.link
+`WARC-Target-URI` header is (in preferred order) on of
+`http_metadata.final_url`, `content_metadata.url`,
+`content_metadata.original_url`, or `rss_entry.link`.
 
-`WARC-Date` is formatted from http_metadata.fetch_timestamp or the current time.
-In WARC version 1.0 date-times are limited to one second granularity.
+`WARC-Date` is formatted from `http_metadata.fetch_timestamp` or the
+current time.  In WARC version 1.0 date-times are limited to one
+second granularity.
 
-If http.metadata.response_code is 200, the HTTP response will be "200
+If `http.metadata.response_code` is 200, the HTTP response will be "200
 OK", otherwise it will be "response_code HUH?"
 
-The HTTP `Content-Type` header will always be `text/html`; if http_metadata.encoding
-(or raw_html.encoding) is available `; encoding=VALUE` will be appended.
+The HTTP `Content-Type` header will always be `text/html`; if
+http_metadata.encoding (or raw_html.encoding) is available
+`; encoding=VALUE` will be appended.
 
 ## Appendices
 
-### Pipeline types
+### Apendix A: Pipeline types
+
+story-indexer pipelines come in various flavors, usually starting
+with a Queuer to allow the next step to be run in parallel.
+
+This appendix describes how the different flavors of Queuer
+(and their associated Fetcher, if any) (ab)use metadata fields.
+
+Queuers are generally simple: a subclass of the `Queuer` class
+providing a `process_file` method, which takes a file i/o stream,
+which may be backed by a gzip'ed file on cloud storage.  The hard(er)
+part is figuring out what metadata fields to populate.
+
+The `Queuer` class provides a `main_loop` method which takes any
+number of inputs (local files, directories, HTTP URLs, or cloud
+storage ("blobstore") URLs; suffix `*` wildcards are supported in
+blobstore URLs).  Files are only queued when the output queue(s) is
+below a low-water mark, and until the output queue(s) reach a
+high-water mark.  After successful queuing, (base) file names are
+recorded in an SQLite3 "tracker" database, and will be skipped
+thereafter.
 
 #### queue-fetcher
 
@@ -225,13 +259,17 @@ The HTTP `Content-Type` header will always be `text/html`; if http_metadata.enco
 
 Archived WARC file names are prefixed with `mc-`
 
-rss_entry is populated from JSON encoded data received from the rss-fetcher API.
+`rss_entry` is populated from JSON encoded data received from the
+rss-fetcher API, all fields are used as intended, `via` contains
+`ID_NUMBER@SERVER`
 
-All rss_entry are used as intended, `via` contains `ID_NUMBER@SERVER`
-
-All http_metadata fields are used as intended.
+All `http_metadata` fields are used as intended.
 
 #### historical
+
+Used to read raw HTML from the cloud storage "downloads-backup" bucket
+of the old Media Cloud system, using CSV files dumped from the old
+PostgreSQL database to provide metadata.
 
 1. `workers/fetcher/hist-queuer.py` reading CSV files from cloud storage
 2. `workers/fetcher/hist-fetcher.py` fetching HTML from cloud storage
@@ -239,28 +277,26 @@ All http_metadata fields are used as intended.
 4. `workers/importer.py` to import to Elasticsearch
 5. `workers/archiver.py` to create WARC files and upload to cloud storage
 
-Reads CSV files dumped from original Media Cloud system, with Story URL
-and a `downloads_id` which is used to locate the HTML document
-(as originally downloaded) from cloud storage.
-
 NOTE!  The URL is *NOT* the final, redirected URL, and any HTTP
 metadata was not retained, so page encoding must be inferred.
 
-EXCEPT for periods where CSVs dumped from the old system were not
-available, where documents predetermined ranges of downloads_ids were
-fetched "blind" (without any URL), and the URL was extracted by the
-parser from "canonical url" HTML metadata tags (in which case the
-extracted URL is the Canonical URL from the document producer).
+For periods where CSV files were not available (due to unrecoverable
+databases), downloads_id ranges for the date ranges were identified,
+and trivial CSV files were created (containing only a `downloads_id`),
+and the HTML was fetched "blind" (without any metadata), and the URL
+was extracted by the parser from "canonical url" HTML metadata tags
+(in which case the extracted URL is the Canonical URL from the
+producer of the document).
 
 Archived WARC file names are prefixed with `mchistYYYY-`
 
 hist-queuer sets the following `rss_entry` fields:
 
-* `link` contains a downloads_id (stringified int)
+* `link` contains a `downloads_id` (stringified int)
 * `fetch_date` contains a date extracted from the CSV filename
 * `source_feed_id` contains a feed id from the CSV, if available
 * `source_source_id` contains a source id from the CSV, if available
-* `via` contains the file name of the CSV file (S3 URL??)
+* `via` contains an S3 URL for the CSV file
 
 hist-queuer sets the following `http_metadata` fields:
 
@@ -271,7 +307,18 @@ hist-queuer sets the following `content_metadata` fields:
 
 * `language` and `full_language` set if CSV contains a language column, but this data is not used!
 
-hist-fetcher sets `http_metadata.response_code` to 200,
+hist-fetcher sets `http_metadata.response_code` to 200, and if no
+`fetch_timestamp` was supplied (as is the case for "blind" fetches),
+the S3 `LastModified` date/time is fetched and used.
+
+An added complication is that 32-bit database row ids were exhausted,
+and to allow time to convert to 64-bit ids, an older backup was
+restored, and two different time "epochs" used the same downloads_id
+values.  S3 contained versioned objects (files) from both epochs, and
+for certain ranges of downloads_id, hist-fetcher needed to retrieve
+the S3 VersionId and LastModified date for each version, and select
+the object matching the epoch of the `http_metadata` `fetch_timestamp`
+(CSV `collect_date`).
 
 #### csv
 
@@ -285,8 +332,8 @@ for RSS files, and extracting story URLs.
 4. `workers/importer.py`
 5. `workers/archiver.py`
 
-Archived WARC file names are prefixed with `mccsvYYYY-` (XXX??)  (some
-written as `mc-`). Past archives should be ignored, as the stories were
+Most archived WARC file names are prefixed with `mccsv-` (some written
+as `mc-`). Past archives should be ignored, as the stories were
 removed (to avoid duplicates) and replaced with "blind fetched"
 (extracting canonical URL) using the historical pipeline, to avoid
 loss of stories due to "link rot".
@@ -309,28 +356,33 @@ Stories are imported using original "parsed date".
 1. `workers/fetcher/arch-queuer.py` reads WARC files using `StoryArchiveReader`
 2. `workers/importer.py`
 
-`StoryArchiveReader` returns `Story` objects. Metadata is populated using the "metadata"
-WARC record;  Cannot process arbitrary WARC files!!
+`StoryArchiveReader` returns `Story` objects. Metadata is populated
+using the `metadata` WARC record without
+interpretation. `StoryArchiveReader` cannot process arbitrary WARC
+files!!
+
+If parsing (and archiving) data from WARC files is desired, a new
+pipeline flavor should be created.
 
 #### batch-fetcher (obsolete)
 
-Used whole-day synthetic RSS files from rss-fetcher, using "scrapy" to
+Used whole-day synthetic RSS files from rss-fetcher, and used "scrapy" to
 fetch the HTML.  Ran until all stories fetched or (limited) retries exhausted.
 
 Was replaced by `tqfetcher` which allows longer retries, and better
-ability to recover from story-indexer downtime.
+ability to catch up after story-indexer downtime.
 
 1. `workers/fetcher/fetch-worker.py`
 2. `workers/parser.py`
 3. `workers/importer.py`
 4. `workers/archiver.py`
 
-### qutil dump_archives output
+### Appendix B: qutil dump_archives output
 
 The qutil program (run via `bin/run-qutil.sh dump_archives queue_name`
 in a Docker container) writes WARC files from currently queued stories.
 
 It attempts to add a `rabbitmq_headers` metadata object, BUT it will
-fail if any RabbitMQ headers contain data types (eg; datetimes) that
-are not JSON serializable!
-
+(currently) fail if any RabbitMQ headers contain data types (eg;
+datetimes) that are not JSON serializable
+[A github PR exists to solve this, by only dumping "x-mc-..." headers].
