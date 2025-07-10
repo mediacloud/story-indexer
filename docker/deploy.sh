@@ -151,8 +151,6 @@ FETCHER_CRONJOB_ENABLE=true	# batch fetcher
 FETCHER_NUM_BATCHES=20		# batch fetcher
 FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
-HIST_FETCHER_REPLICAS=4		# needs tuning
-
 IMPORTER_REPLICAS=1
 
 PARSER_REPLICAS=4
@@ -241,13 +239,19 @@ historical)
 	# Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 7 importers.
 	# Nov 2024: calculated that 100 stories/sec eats 30Mbit/s of bandwidth
 	#    dropped to 6 fetchers, to run at 50 stories/sec
-	HIST_FETCHER_REPLICAS=6
-	PARSER_REPLICAS=21
+	# July 2025, on ramos (Xeon Gold 6246R@3.40GHz, 64 cores, 6800 bogomips)
+	# while also running production:
+	# 6 fetchers, 21 parsers, 7 importers: ~50 stories/second w/ load avg 8?
+	# 14 fetchers, 25 parsers, 7 importers: ~130 stories/second w/ load avg <= 25
+	#
+	HIST_FETCHER_REPLICAS=14
+	PARSER_REPLICAS=25
 	IMPORTER_REPLICAS=7
 	ARCHIVER_REPLICAS=2
     else
 	# Aug 2024 fetching ~40 stories/sec (w/ 4 fetchers); increased to 5 parsers
 	# (4 parsers wouldn't keep up even if HIST_FETCHER_REPLICAS lowered to 3)
+	HIST_FETCHER_REPLICAS=4
 	PARSER_REPLICAS=5
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues
