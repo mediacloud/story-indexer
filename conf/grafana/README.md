@@ -1,5 +1,3 @@
 # Grafana Dashboards
 
-Grafana dashboards are maintained in Grafana.
-
-The files here have been exported for safe keeping and should not be edited.
+Saved copies of Grafana dashboards now live in system-dev-ops/monitoring/dashboards
