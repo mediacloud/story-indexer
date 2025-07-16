@@ -2,6 +2,13 @@
 RabbitMQ Queue Utility program
 
 python -mindexer.scripts.qutil COMMAND QUEUE [ INPUT_FILE ... ]
+
+NOTE! All sub-commands commands REQUITE a queue name.
+For queue lengths, and configuration, use pipeline.py:
+        ./run-configure-pipeline.sh -T PIPELINE_TYPE {qlen,show}
+
+NOTE! QApp superclass makes connection to RabbitMQ before processing args
+this means you can't even get help response without a valid server URL!
 """
 
 # Phil 2023-09-27, with code from pipeline.py
@@ -13,6 +20,7 @@ import sys
 from logging import getLogger
 from types import FrameType
 from typing import Callable, List, Optional, cast
+from urllib.parse import urlparse
 
 # PyPI
 from pika import BasicProperties
@@ -38,10 +46,40 @@ def command(func: CommandMethod) -> CommandMethod:
     return func
 
 
+def check_domains(url: Optional[str], domains: List[str]) -> bool:
+    """
+    return True, if, and only if url hostname is in one of domains
+    """
+    if not url:
+        return False  # not a reason to eliminate
+
+    try:
+        u = urlparse(url)
+        if not u.hostname:
+            return False
+    except ValueError:
+        return False
+
+    for domain in domains:
+        if u.hostname == domain or u.hostname.endswith("." + domain):
+            return True
+    return False
+
+
 class QUtil(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("--max", type=int, help="max items to process")
+        ap.add_argument(
+            "--ignore-domain", help="domain names to NOT load", action="append"
+        )
+        # XXX add --only-domain (allow multiple) for filtering?? mutually exclusive with --ignore-domain!!
+        ap.add_argument(
+            "--dry-run",
+            help="takes 0/1: required for load_archives",
+            type=int,
+            default=None,
+        )
 
         ap.add_argument(
             "command",
@@ -68,7 +106,7 @@ class QUtil(QApp):
         q = self.get_queue()  # takes command line argument
         chan = self.get_channel()
         resp = chan.queue_delete(queue=q)
-        print(resp)
+        print("response", resp)
 
     @command
     def dump_archives(self) -> None:
@@ -123,11 +161,39 @@ class QUtil(QApp):
             descr = self.get_command_func(cmd).__doc__
             print(f"{cmd:16.16} {descr}")
 
+    def check_url_domains(self, story: BaseStory) -> bool:
+        """
+        look for forbidden domains in all the places they might be hiding
+
+        """
+        assert self.args
+
+        # XXX Maybe also implement "only_domains" check??
+
+        if self.args.ignore_domain:
+            # discrete statements (not single expression with and) for debug:
+            if check_domains(story.rss_entry().link, self.args.ignore_domain):
+                return False
+
+            if check_domains(story.http_metadata().final_url, self.args.ignore_domain):
+                return False
+
+            if check_domains(story.content_metadata().url, self.args.ignore_domain):
+                return False
+
+        return True
+
     @command
     def load_archives(self) -> None:
         """load archive files into queue"""
         assert self.args
 
+        dry_run = self.args.dry_run
+        if dry_run not in (0, 1):
+            logger.error("need --dry-run={0,1}")
+            sys.exit(1)
+
+        # NOTE! Does not check if value queue name!
         q = self.get_queue()  # takes command line argument
         if q.endswith("-out"):  # exchange name?
             exchange = q
@@ -143,15 +209,24 @@ class QUtil(QApp):
             logger.error("need input files")
             return
 
+        breakpoint()
+
+        queued = 0
         for fname in input_files:
             logger.info("reading archive %s", fname)
             with open(fname, "rb") as f:
                 reader = StoryArchiveReader(f)
-                count = 0
+                read = passed = 0
                 for story in reader.read_stories():
-                    sender.send_story(story, exchange, routing_key)
-                    count += 1
-                logger.info("read %d stories", count)
+                    read += 1
+                    if not self.check_url_domains(story):
+                        continue
+                    passed += 1  # not dropped
+                    if not dry_run:
+                        sender.send_story(story, exchange, routing_key)
+                        queued += 1
+            logger.info("%s: read %d stories, passed %d", fname, read, passed)
+        logger.info("total %d stories queued", queued)
 
     @command
     def purge(self) -> None:
@@ -179,12 +254,16 @@ class QUtil(QApp):
         return cast(Callable[[], None], meth)
 
     def get_queue(self) -> str:
+        """
+        pick up queue argument; give error if absent
+        does not check that queue exists!
+        """
         assert self.args
         queue = self.args.queue
         if queue is None:
             logger.error("need queue")
             sys.exit(1)
-        return str(queue)
+        return str(queue)  # typing paranoia
 
     def dump_msgs(self, writer: Callable, flush: Callable) -> None:
         """
@@ -232,7 +311,7 @@ class QUtil(QApp):
         consumer_tag = chan.basic_consume(queue, on_message)
 
         def on_alarm(signum: int, frame: Optional[FrameType]) -> None:
-            logger.info("timeout")
+            logger.info("queue read timeout")
             chan.basic_cancel(consumer_tag)
 
         signal.signal(signal.SIGALRM, on_alarm)
