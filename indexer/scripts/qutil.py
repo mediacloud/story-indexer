@@ -7,7 +7,6 @@ python -mindexer.scripts.qutil COMMAND QUEUE [ INPUT_FILE ... ]
 # Phil 2023-09-27, with code from pipeline.py
 
 import argparse
-import json
 import signal
 import socket
 import sys
@@ -96,11 +95,13 @@ class QUtil(QApp):
                     work_dir=".",
                 )
 
-            # XXX just save headers that start with "x-mc-"?
+            # Dumps EVERYTHING (ArchiveWriter now handles arbitrary data)
             extras = {"rabbitmq_headers": properties.headers}
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
+            # chunk in 5000 story archives: should this be handled by
+            # story
             if stories == 5000:
                 aw.finish()
                 aw = None
@@ -110,43 +111,6 @@ class QUtil(QApp):
         def flusher() -> None:
             if aw:
                 aw.finish()
-
-        self.dump_msgs(writer, flusher)
-
-    @command
-    def dump_bin(self) -> None:
-        """dump messages as raw bytes"""
-
-        n = 1
-
-        def writer(body: bytes, tag: int, properties: BasicProperties) -> None:
-            nonlocal n
-
-            while True:
-                base = f"{n:06d}"
-                fname = base + ".bin"
-                try:
-                    # create (eXclusive), binary
-
-                    with open(fname, "xb") as f:
-                        f.write(body)
-                    logger.info("wrote delivery tag %d as %s", tag, fname)
-
-                    try:
-                        pname = base + ".props"
-                        # crush existing file
-                        with open(pname, "w") as f:
-                            json.dump(properties.__dict__, f)
-                        logger.info(" wrote properties as %s", pname)
-                    except RuntimeError as e:
-                        logger.warning(f"{pname}: {e!r}")
-
-                    return
-                except FileExistsError:
-                    n += 1  # try next number
-
-        def flusher() -> None:
-            return
 
         self.dump_msgs(writer, flusher)
 

@@ -13,7 +13,7 @@ import os
 import time
 from io import BufferedWriter, BytesIO
 from logging import getLogger
-from typing import Any, BinaryIO, Dict, Iterator, Optional, Union, cast
+from typing import Any, BinaryIO, Dict, Iterator, Optional, cast
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
@@ -156,24 +156,19 @@ class FileobjError(ArchiveWriterError):
 WARC_VERSION = WARCWriter.WARC_1_0
 
 
-def _massage_value(value: Any) -> Any:  # XXX returns limited range
-    if isinstance(value, (str, bool, int, float)):
-        return value  # return as-is
-    elif isinstance(value, dt.datetime):
+# Replaces _massage_metadata, and handles arbitrarily arbitrarily
+# deep/structured data. Regular metadata _should_ be only JSON-safe data, but
+# since DiskStory not used in production, this this first place badness would be
+# seen if someone adds a non-JSON datatype.  Changed to default handler to deal
+# with RabbitMQ header data from qutil.py "dump_archives" command.
+def _json_default_handler(value: Any) -> str:
+    """
+    default handler for json.dump[s] to handle date[time]
+    (imported by qutil, for old JSON dumper)
+    """
+    if isinstance(value, (dt.datetime, dt.date)):
         return value.isoformat()
-    elif value is None:
-        return None
-    else:
-        return repr(value)
-
-
-def _massage_metadata(
-    d: Dict[str, Any]
-) -> Dict[str, Union[str, bool, int, float, None]]:
-    """
-    paranoia to massage Story metadata.as_dict() into legal (simple) JSON
-    """
-    return {k: _massage_value(v) for k, v in d.items()}
+    return repr(value)  # same as old _massage_value
 
 
 class StoryArchiveWriter:
@@ -261,6 +256,10 @@ class StoryArchiveWriter:
 
         # NOTE! logging original_url (as elsewhere) for log tracing.
         original_url = cmd.original_url or re.link
+
+        # qutil "dump_archives" can dump queue contents at ANY point in pipeline
+        # (ie; before fetching or parsing), so must handle null values in http
+        # metadata, raw html, and content metdata!
         url = hmd.final_url or cmd.url or original_url or ""
         html = rhtml.html or b""
 
@@ -324,18 +323,23 @@ class StoryArchiveWriter:
         # be "x-mediacloud", but the content-type makes the origin
         # clear.
 
-        # just dumping the data as-is.
-        # non-JSON datatypes need to be massaged
-        # (want "as_json()" methods!)
+        # dumping data as-is.  used to call _massage_metadata, but non-JSON
+        # datatypes now handled by _json_default_handler
         metadata_dict = {
-            "rss_entry": _massage_metadata(re.as_dict()),
-            "http_metadata": _massage_metadata(hmd.as_dict()),
-            "content_metadata": _massage_metadata(cmd.as_dict()),
+            "rss_entry": re.as_dict(),
+            "http_metadata": hmd.as_dict(),
+            "content_metadata": cmd.as_dict(),
         }
+
+        # Used by qutil dump_archives, to dump ALL RabbitMQ headers,
+        # which may include datetime data for messages that have been
+        # retried, or were dumped from -delay or -fast queues:
         if extra_metadata:
             metadata_dict.update(extra_metadata)
 
-        metadata_bytes = json.dumps(metadata_dict, indent=2).encode()
+        metadata_bytes = json.dumps(
+            metadata_dict, indent=2, default=_json_default_handler
+        ).encode()
         metadata_length = len(metadata_bytes)
         metadata_file = BytesIO(metadata_bytes)
 
@@ -428,6 +432,8 @@ class StoryArchiveReader:
             elif expect == "metadata":
                 j = json.load(record.raw_stream)
                 story = Story()
+                # NOTE! flies under type-checking radar:
+                # unsafe to load arbitrary/alien WARC files!!!
                 with story.rss_entry() as rss:
                     for key, value in j["rss_entry"].items():
                         setattr(rss, key, value)
