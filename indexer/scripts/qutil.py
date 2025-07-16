@@ -177,7 +177,7 @@ class QUtil(QApp):
 
         if domains := self.args.ignore_domain:
             ret = False
-        elif domains := self.args.ignore_domain:
+        elif domains := self.args.only_domain:
             ret = True
         else:
             return True
