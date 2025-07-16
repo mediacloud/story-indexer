@@ -221,8 +221,6 @@ class QUtil(QApp):
             logger.error("need input files")
             return
 
-        breakpoint()
-
         queued = 0
         for fname in input_files:
             logger.info("reading archive %s", fname)
