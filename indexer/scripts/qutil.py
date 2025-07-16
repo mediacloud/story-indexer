@@ -70,16 +70,24 @@ class QUtil(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("--max", type=int, help="max items to process")
-        ap.add_argument(
-            "--ignore-domain", help="domain names to NOT load", action="append"
+
+        # NOTE: Only for load_archives: maybe should take flags after the command?
+        dgrp = ap.add_mutually_exclusive_group()
+        dgrp.add_argument(
+            "--ignore-domain",
+            help="domain name(s) to NOT load from archives",
+            action="append",
         )
-        # XXX add --only-domain (allow multiple) for filtering?? mutually exclusive with --ignore-domain!!
+        dgrp.add_argument(
+            "--only-domain", help="domain name(s) to load exclsively", action="append"
+        )
         ap.add_argument(
             "--dry-run",
             help="takes 0/1: required for load_archives",
             type=int,
             default=None,
         )
+        # end only for load_archives
 
         ap.add_argument(
             "command",
@@ -138,8 +146,8 @@ class QUtil(QApp):
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
-            # chunk in 5000 story archives: should this be handled by
-            # story
+            # chunk in 5000 story archives as usual: should this be
+            # handled by a wrapper class around StoryArchiveWriter?
             if stories == 5000:
                 aw.finish()
                 aw = None
@@ -150,7 +158,7 @@ class QUtil(QApp):
             if aw:
                 aw.finish()
 
-        self.dump_msgs(writer, flusher)
+        self.dump_msgs(writer, flusher)  # honors --max
 
     @command
     def help(self) -> None:
@@ -163,25 +171,29 @@ class QUtil(QApp):
 
     def check_url_domains(self, story: BaseStory) -> bool:
         """
-        look for forbidden domains in all the places they might be hiding
-
+        look for forbidden/desired domains in all the places they might be hiding
         """
         assert self.args
 
-        # XXX Maybe also implement "only_domains" check??
+        if domains := self.args.ignore_domain:
+            ret = False
+        elif domains := self.args.ignore_domain:
+            ret = True
+        else:
+            return True
 
-        if self.args.ignore_domain:
+        for domain in domains:
             # discrete statements (not single expression with and) for debug:
-            if check_domains(story.rss_entry().link, self.args.ignore_domain):
-                return False
+            if check_domains(story.rss_entry().link, domain):
+                return ret
 
-            if check_domains(story.http_metadata().final_url, self.args.ignore_domain):
-                return False
+            if check_domains(story.http_metadata().final_url, domain):
+                return ret
 
             if check_domains(story.content_metadata().url, self.args.ignore_domain):
-                return False
+                return ret
 
-        return True
+        return not ret
 
     @command
     def load_archives(self) -> None:
@@ -267,7 +279,7 @@ class QUtil(QApp):
 
     def dump_msgs(self, writer: Callable, flush: Callable) -> None:
         """
-        utility to read messages from queue & call writer
+        utility function to read messages from queue & call writer
         """
         queue = self.get_queue()
         consumer_tag = ""  # set by basic_consume
