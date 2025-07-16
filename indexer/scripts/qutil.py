@@ -146,7 +146,10 @@ class QUtil(QApp):
                 )
 
             # Dumps EVERYTHING (ArchiveWriter now handles arbitrary data)
-            extras = {"rabbitmq_headers": properties.headers}
+            if properties.headers:
+                extras = {"rabbitmq_headers": properties.headers}
+            else:
+                extras = {}  # avoid writing null value
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
