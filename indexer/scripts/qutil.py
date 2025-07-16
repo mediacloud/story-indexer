@@ -3,12 +3,16 @@ RabbitMQ Queue Utility program
 
 python -mindexer.scripts.qutil COMMAND QUEUE [ INPUT_FILE ... ]
 
-NOTE! All sub-commands commands REQUITE a queue name.
-For queue lengths, and configuration, use pipeline.py:
+NOTE!
+* All sub-commands commands REQUITE a queue name.
+  For queue lengths, and configuration, use pipeline.py:
         ./run-configure-pipeline.sh -T PIPELINE_TYPE {qlen,show}
 
-NOTE! QApp superclass makes connection to RabbitMQ before processing args
-this means you can't even get help response without a valid server URL!
+* QApp superclass makes connection to RabbitMQ before processing args
+  this means you can't even get help response without a valid server URL!
+
+* --ignore-domain and --only-domain take full URL domain names,
+  not suffixes or a Media Cloud Canonical Domain™
 """
 
 # Phil 2023-09-27, with code from pipeline.py
@@ -85,7 +89,7 @@ class QUtil(QApp):
             "--dry-run",
             help="takes 0/1: required for load_archives",
             type=int,
-            default=None,
+            default=1,  # default to dry-run
         )
         # end only for load_archives
 
@@ -182,16 +186,15 @@ class QUtil(QApp):
         else:
             return True
 
-        for domain in domains:
-            # discrete statements (not single expression with and) for debug:
-            if check_domains(story.rss_entry().link, domain):
-                return ret
+        # discrete statements (not single expression with and) for debug:
+        if check_domains(story.rss_entry().link, domains):
+            return ret
 
-            if check_domains(story.http_metadata().final_url, domain):
-                return ret
+        if check_domains(story.http_metadata().final_url, domains):
+            return ret
 
-            if check_domains(story.content_metadata().url, self.args.ignore_domain):
-                return ret
+        if check_domains(story.content_metadata().url, domains):
+            return ret
 
         return not ret
 
@@ -200,10 +203,16 @@ class QUtil(QApp):
         """load archive files into queue"""
         assert self.args
 
+        # process load_ only arguments here (dry-run, ignore-domain, only-domain)?
+
         dry_run = self.args.dry_run
         if dry_run not in (0, 1):
             logger.error("need --dry-run={0,1}")
             sys.exit(1)
+        elif dry_run == 1:
+            logger.warning(
+                "NOTE! default is --dry-run=1 for filter argument testing!!!"
+            )
 
         # NOTE! Does not check if value queue name!
         q = self.get_queue()  # takes command line argument
