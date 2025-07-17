@@ -2,18 +2,29 @@
 RabbitMQ Queue Utility program
 
 python -mindexer.scripts.qutil COMMAND QUEUE [ INPUT_FILE ... ]
+
+NOTE!
+* All sub-commands commands REQUIRE a queue name.
+  For queue lengths, and configuration, use pipeline.py:
+        ./run-configure-pipeline.sh -T PIPELINE_TYPE {qlen,show}
+
+* QApp superclass makes connection to RabbitMQ before processing args
+  this means you can't even get help response without a valid server URL!
+
+* --exclude-domain and --include-domain take full URL domain names,
+  not suffixes or a Media Cloud Canonical Domain™
 """
 
 # Phil 2023-09-27, with code from pipeline.py
 
 import argparse
-import json
 import signal
 import socket
 import sys
 from logging import getLogger
 from types import FrameType
 from typing import Callable, List, Optional, cast
+from urllib.parse import urlparse
 
 # PyPI
 from pika import BasicProperties
@@ -39,10 +50,50 @@ def command(func: CommandMethod) -> CommandMethod:
     return func
 
 
+def check_domains(url: Optional[str], domains: List[str]) -> bool:
+    """
+    return True, if, and only if url hostname is in one of domains
+    """
+    if not url:
+        return False  # not a reason to eliminate
+
+    try:
+        u = urlparse(url)
+        if not u.hostname:
+            return False
+    except ValueError:
+        return False
+
+    for domain in domains:
+        if u.hostname == domain or u.hostname.endswith("." + domain):
+            return True
+    return False
+
+
 class QUtil(QApp):
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
         ap.add_argument("--max", type=int, help="max items to process")
+
+        # NOTE: Only for load_archives: maybe should take flags after the command?
+        dgrp = ap.add_mutually_exclusive_group()
+        dgrp.add_argument(
+            "--exclude-domain",
+            help="domain name(s) to NOT load from archives",
+            action="append",
+        )
+        dgrp.add_argument(
+            "--include-domain",
+            help="domain name(s) to load exclusively",
+            action="append",
+        )
+        ap.add_argument(
+            "--dry-run",
+            help="takes 0/1: for load_archives",
+            type=int,
+            default=1,  # default to dry-run
+        )
+        # end only for load_archives
 
         ap.add_argument(
             "command",
@@ -69,7 +120,7 @@ class QUtil(QApp):
         q = self.get_queue()  # takes command line argument
         chan = self.get_channel()
         resp = chan.queue_delete(queue=q)
-        print(resp)
+        print("response", resp)
 
     @command
     def dump_archives(self) -> None:
@@ -96,11 +147,16 @@ class QUtil(QApp):
                     work_dir=".",
                 )
 
-            # XXX just save headers that start with "x-mc-"?
-            extras = {"rabbitmq_headers": properties.headers}
+            # Dumps EVERYTHING (ArchiveWriter now handles arbitrary data)
+            if properties.headers:
+                extras = {"rabbitmq_headers": properties.headers}
+            else:
+                extras = {}  # avoid writing null value
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
             stories += 1
 
+            # chunk in 5000 story archives as usual: should this be
+            # handled by a wrapper class around StoryArchiveWriter?
             if stories == 5000:
                 aw.finish()
                 aw = None
@@ -111,44 +167,7 @@ class QUtil(QApp):
             if aw:
                 aw.finish()
 
-        self.dump_msgs(writer, flusher)
-
-    @command
-    def dump_bin(self) -> None:
-        """dump messages as raw bytes"""
-
-        n = 1
-
-        def writer(body: bytes, tag: int, properties: BasicProperties) -> None:
-            nonlocal n
-
-            while True:
-                base = f"{n:06d}"
-                fname = base + ".bin"
-                try:
-                    # create (eXclusive), binary
-
-                    with open(fname, "xb") as f:
-                        f.write(body)
-                    logger.info("wrote delivery tag %d as %s", tag, fname)
-
-                    try:
-                        pname = base + ".props"
-                        # crush existing file
-                        with open(pname, "w") as f:
-                            json.dump(properties.__dict__, f)
-                        logger.info(" wrote properties as %s", pname)
-                    except RuntimeError as e:
-                        logger.warning(f"{pname}: {e!r}")
-
-                    return
-                except FileExistsError:
-                    n += 1  # try next number
-
-        def flusher() -> None:
-            return
-
-        self.dump_msgs(writer, flusher)
+        self.dump_msgs(writer, flusher)  # honors --max
 
     @command
     def help(self) -> None:
@@ -159,11 +178,48 @@ class QUtil(QApp):
             descr = self.get_command_func(cmd).__doc__
             print(f"{cmd:16.16} {descr}")
 
+    def check_url_domains(self, story: BaseStory) -> bool:
+        """
+        look for forbidden/desired domains in all the places they might be hiding
+        """
+        assert self.args
+
+        if domains := self.args.exclude_domain:
+            ret = False
+        elif domains := self.args.include_domain:
+            ret = True
+        else:
+            return True
+
+        # discrete statements (not single expression with and) for debug:
+        if check_domains(story.rss_entry().link, domains):
+            return ret
+
+        if check_domains(story.http_metadata().final_url, domains):
+            return ret
+
+        if check_domains(story.content_metadata().url, domains):
+            return ret
+
+        return not ret
+
     @command
     def load_archives(self) -> None:
         """load archive files into queue"""
         assert self.args
 
+        # process load_ only arguments here (dry-run, exclude-domain, include-domain)?
+
+        dry_run = self.args.dry_run
+        if dry_run not in (0, 1):
+            logger.error("need --dry-run={0,1}")
+            sys.exit(1)
+        elif dry_run == 1:
+            logger.warning(
+                "NOTE! default is --dry-run=1 for filter argument testing!!!"
+            )
+
+        # NOTE! Does not check if valid queue name!
         q = self.get_queue()  # takes command line argument
         if q.endswith("-out"):  # exchange name?
             exchange = q
@@ -179,15 +235,22 @@ class QUtil(QApp):
             logger.error("need input files")
             return
 
+        queued = 0
         for fname in input_files:
             logger.info("reading archive %s", fname)
             with open(fname, "rb") as f:
                 reader = StoryArchiveReader(f)
-                count = 0
+                read = passed = 0
                 for story in reader.read_stories():
-                    sender.send_story(story, exchange, routing_key)
-                    count += 1
-                logger.info("read %d stories", count)
+                    read += 1
+                    if not self.check_url_domains(story):
+                        continue
+                    passed += 1  # not dropped
+                    if not dry_run:
+                        sender.send_story(story, exchange, routing_key)
+                        queued += 1
+            logger.info("%s: read %d stories, passed %d", fname, read, passed)
+        logger.info("total %d stories queued", queued)
 
     @command
     def purge(self) -> None:
@@ -215,16 +278,20 @@ class QUtil(QApp):
         return cast(Callable[[], None], meth)
 
     def get_queue(self) -> str:
+        """
+        pick up queue argument; give error if absent
+        does not check that queue exists!
+        """
         assert self.args
         queue = self.args.queue
         if queue is None:
             logger.error("need queue")
             sys.exit(1)
-        return str(queue)
+        return str(queue)  # typing paranoia
 
     def dump_msgs(self, writer: Callable, flush: Callable) -> None:
         """
-        utility to read messages from queue & call writer
+        utility function to read messages from queue & call writer
         """
         queue = self.get_queue()
         consumer_tag = ""  # set by basic_consume
@@ -268,7 +335,7 @@ class QUtil(QApp):
         consumer_tag = chan.basic_consume(queue, on_message)
 
         def on_alarm(signum: int, frame: Optional[FrameType]) -> None:
-            logger.info("timeout")
+            logger.info("queue read timeout")
             chan.basic_cancel(consumer_tag)
 
         signal.signal(signal.SIGALRM, on_alarm)
