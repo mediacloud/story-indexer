@@ -4,14 +4,14 @@ RabbitMQ Queue Utility program
 python -mindexer.scripts.qutil COMMAND QUEUE [ INPUT_FILE ... ]
 
 NOTE!
-* All sub-commands commands REQUITE a queue name.
+* All sub-commands commands REQUIRE a queue name.
   For queue lengths, and configuration, use pipeline.py:
         ./run-configure-pipeline.sh -T PIPELINE_TYPE {qlen,show}
 
 * QApp superclass makes connection to RabbitMQ before processing args
   this means you can't even get help response without a valid server URL!
 
-* --ignore-domain and --only-domain take full URL domain names,
+* --exclude-domain and --include-domain take full URL domain names,
   not suffixes or a Media Cloud Canonical Domain™
 """
 
@@ -78,16 +78,18 @@ class QUtil(QApp):
         # NOTE: Only for load_archives: maybe should take flags after the command?
         dgrp = ap.add_mutually_exclusive_group()
         dgrp.add_argument(
-            "--ignore-domain",
+            "--exclude-domain",
             help="domain name(s) to NOT load from archives",
             action="append",
         )
         dgrp.add_argument(
-            "--only-domain", help="domain name(s) to load exclsively", action="append"
+            "--include-domain",
+            help="domain name(s) to load exclusively",
+            action="append",
         )
         ap.add_argument(
             "--dry-run",
-            help="takes 0/1: required for load_archives",
+            help="takes 0/1: for load_archives",
             type=int,
             default=1,  # default to dry-run
         )
@@ -182,9 +184,9 @@ class QUtil(QApp):
         """
         assert self.args
 
-        if domains := self.args.ignore_domain:
+        if domains := self.args.exclude_domain:
             ret = False
-        elif domains := self.args.only_domain:
+        elif domains := self.args.include_domain:
             ret = True
         else:
             return True
@@ -206,7 +208,7 @@ class QUtil(QApp):
         """load archive files into queue"""
         assert self.args
 
-        # process load_ only arguments here (dry-run, ignore-domain, only-domain)?
+        # process load_ only arguments here (dry-run, exclude-domain, include-domain)?
 
         dry_run = self.args.dry_run
         if dry_run not in (0, 1):
@@ -217,7 +219,7 @@ class QUtil(QApp):
                 "NOTE! default is --dry-run=1 for filter argument testing!!!"
             )
 
-        # NOTE! Does not check if value queue name!
+        # NOTE! Does not check if valid queue name!
         q = self.get_queue()  # takes command line argument
         if q.endswith("-out"):  # exchange name?
             exchange = q

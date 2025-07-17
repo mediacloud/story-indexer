@@ -156,11 +156,10 @@ class FileobjError(ArchiveWriterError):
 WARC_VERSION = WARCWriter.WARC_1_0
 
 
-# Replaces _massage_metadata, and handles arbitrarily arbitrarily
-# deep/structured data. Regular metadata _should_ be only JSON-safe data, but
-# since DiskStory not used in production, this this first place badness would be
-# seen if someone adds a non-JSON datatype.  Changed to default handler to deal
-# with RabbitMQ header data from qutil.py "dump_archives" command.
+# Handles arbitrarily deep/structured metadata (for RabbitMQ headers added by
+# qutil.py dump_archives).  Regular metadata _should_ be only JSON-safe data,
+# but since DiskStory not used in production, this this first place badness
+# would be seen if someone adds a non-JSON datatype.
 def _json_default_handler(value: Any) -> str:
     """
     default handler for json.dump[s] to handle date[time]
