@@ -414,7 +414,7 @@ class StoryArchiveReader:
     def __init__(self, fileobj: BinaryIO):
         self.iterator = ArchiveIterator(fileobj)
 
-    def read_stories2(self) -> Iterator[tuple[BaseStory, MetaDataDict]]:
+    def read_stories_with_metadata(self) -> Iterator[tuple[BaseStory, MetaDataDict]]:
         """
         read WARC file, return Story and dict from metadata record
         """
@@ -466,5 +466,5 @@ class StoryArchiveReader:
         backwards compatible interface:
         most readers just want Story object
         """
-        for story, metadata in self.read_stories2():
+        for story, metadata in self.read_stories_with_metadata():
             yield story

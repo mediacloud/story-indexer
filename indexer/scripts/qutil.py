@@ -246,7 +246,7 @@ class QUtil(QApp):
             with open(fname, "rb") as f:
                 reader = StoryArchiveReader(f)
                 read = passed = 0
-                for story, metadata in reader.read_stories2():
+                for story, metadata in reader.read_stories_with_metadata():
                     read += 1
                     if not self.check_url_domains(story):
                         continue
