@@ -13,7 +13,7 @@ import os
 import time
 from io import BufferedWriter, BytesIO
 from logging import getLogger
-from typing import Any, BinaryIO, Dict, Iterator, Optional, cast
+from typing import Any, BinaryIO, Dict, Iterator, Optional, TypeAlias, cast
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
@@ -403,6 +403,9 @@ class StoryArchiveWriter:
             self._file.close()
 
 
+MetaDataDict: TypeAlias = dict[str, Any]
+
+
 class StoryArchiveReader:
     """
     read an archive written by StoryArchiveWriter
@@ -411,8 +414,10 @@ class StoryArchiveReader:
     def __init__(self, fileobj: BinaryIO):
         self.iterator = ArchiveIterator(fileobj)
 
-    def read_stories(self) -> Iterator[BaseStory]:
-        # read WARC file:
+    def read_stories_with_metadata(self) -> Iterator[tuple[BaseStory, MetaDataDict]]:
+        """
+        read WARC file, return Story and dict from metadata record
+        """
         expect = "warcinfo"
         html = b""
         for record in self.iterator:
@@ -453,5 +458,13 @@ class StoryArchiveReader:
                     rh.html = html
                     rh.encoding = j["http_metadata"]["encoding"]
 
-                yield story
+                yield story, j
                 expect = "response"
+
+    def read_stories(self) -> Iterator[BaseStory]:
+        """
+        backwards compatible interface:
+        most readers just want Story object
+        """
+        for story, metadata in self.read_stories_with_metadata():
+            yield story

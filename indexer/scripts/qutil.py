@@ -34,7 +34,9 @@ from pika.spec import Basic
 from indexer.story import BaseStory
 from indexer.story_archive_writer import StoryArchiveReader, StoryArchiveWriter
 from indexer.storyapp import RabbitMQStorySender
-from indexer.worker import DEFAULT_ROUTING_KEY, QApp
+from indexer.worker import DEFAULT_EXCHANGE, DEFAULT_ROUTING_KEY, QApp
+
+RABBITMQ_HEADERS = "rabbitmq_headers"  # extra metadata
 
 logger = getLogger("qutil")
 
@@ -149,7 +151,7 @@ class QUtil(QApp):
 
             # Dumps EVERYTHING (ArchiveWriter now handles arbitrary data)
             if properties.headers:
-                extras = {"rabbitmq_headers": properties.headers}
+                extras = {RABBITMQ_HEADERS: properties.headers}
             else:
                 extras = {}  # avoid writing null value
             aw.write_story(story, extra_metadata=extras, raise_errors=False)
@@ -224,8 +226,11 @@ class QUtil(QApp):
         if q.endswith("-out"):  # exchange name?
             exchange = q
             routing_key = DEFAULT_ROUTING_KEY
+        elif q.endswith(("-delay", "-fast")):
+            logger.warning("cannot currently reload -{delay,fast} queues")
+            sys.exit(1)
         else:
-            exchange = ""  # default exchange
+            exchange = DEFAULT_EXCHANGE
             routing_key = q
 
         sender = RabbitMQStorySender(self, self.get_channel())
@@ -241,14 +246,25 @@ class QUtil(QApp):
             with open(fname, "rb") as f:
                 reader = StoryArchiveReader(f)
                 read = passed = 0
-                for story in reader.read_stories():
+                for story, metadata in reader.read_stories_with_metadata():
                     read += 1
                     if not self.check_url_domains(story):
                         continue
                     passed += 1  # not dropped
+                    rabbitmq_headers = metadata.get(RABBITMQ_HEADERS, {})
+                    # reload mediacloud story transport metadata
+                    # (error count, last error) maybe have option to NOT?
+                    headers = {
+                        k: v
+                        for k, v in rabbitmq_headers.items()
+                        if k.startswith("x-mc-")
+                    }
+                    # XXX maybe extract "expiration" rabbitmq_header?
+                    # if/when loading -{delay,fast} queue made to work?
                     if not dry_run:
-                        sender.send_story(story, exchange, routing_key)
+                        sender.send_story(story, exchange, routing_key, headers=headers)
                         queued += 1
+                    # XXX check/honor --max (based on passed?)
             logger.info("%s: read %d stories, passed %d", fname, read, passed)
         logger.info("total %d stories queued", queued)
 

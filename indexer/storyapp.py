@@ -17,7 +17,7 @@ import random
 import sys
 import threading
 import time
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, TypeAlias, TypedDict
 from urllib.parse import urlsplit
 
 from mcmetadata.urls import NON_NEWS_DOMAINS
@@ -187,11 +187,15 @@ class StorySender:
         """
 
 
+HeaderDict: TypeAlias = dict[str, str | int]  # RabbitMQ headers
+
+
 class _BatchItem(TypedDict):
     story: BaseStory
     exchange: Optional[str]
     routing_key: str
     expiration_ms: Optional[int]
+    headers: HeaderDict
 
 
 class RabbitMQStorySender(StorySender):
@@ -223,10 +227,11 @@ class RabbitMQStorySender(StorySender):
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
         expiration_ms: Optional[int] = None,
+        headers: HeaderDict = {},  # for qutil load_archives command
     ) -> None:
         if self._batch_size <= 1:
             # avoid overhead if not batching
-            self._send(story, exchange, routing_key, expiration_ms)
+            self._send(story, exchange, routing_key, expiration_ms, headers)
         else:
             self._batch.append(
                 _BatchItem(
@@ -234,6 +239,7 @@ class RabbitMQStorySender(StorySender):
                     exchange=exchange,
                     routing_key=routing_key,
                     expiration_ms=expiration_ms,
+                    headers=headers,
                 )
             )
             if len(self._batch) >= self._batch_size:
@@ -245,9 +251,14 @@ class RabbitMQStorySender(StorySender):
         exchange: Optional[str],
         routing_key: str,
         expiration_ms: Optional[int],
+        headers: HeaderDict = {},
     ) -> None:
         if expiration_ms is not None:
-            props = BasicProperties(expiration=str(expiration_ms))
+            expiration = str(expiration_ms)
+        else:
+            expiration = None
+        if expiration or headers:
+            props = BasicProperties(expiration=expiration, headers=headers)
         else:
             props = None
         self.app._send_message(
