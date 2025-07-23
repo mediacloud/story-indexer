@@ -84,8 +84,10 @@ class HistQueuer(Queuer):
             else:
                 url = NEED_CANONICAL_URL
 
-            dlid = row.get("downloads_id")
-            # let hist-fetcher quarantine if bad
+            dlid = row.get("downloads_id")  # REQUIRED
+            if not dlid or not dlid.isdigit():
+                self.incr_stories("bad-dlid", url)
+                continue
 
             # convert to int: OK if missing or malformed
             try:
