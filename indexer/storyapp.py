@@ -227,7 +227,7 @@ class RabbitMQStorySender(StorySender):
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
         expiration_ms: Optional[int] = None,
-        headers: HeaderDict = {},
+        headers: HeaderDict = {},  # for qutil load_archives command
     ) -> None:
         if self._batch_size <= 1:
             # avoid overhead if not batching
@@ -251,7 +251,7 @@ class RabbitMQStorySender(StorySender):
         exchange: Optional[str],
         routing_key: str,
         expiration_ms: Optional[int],
-        headers: Optional[HeaderDict] = None,
+        headers: HeaderDict = {},
     ) -> None:
         if expiration_ms is not None:
             expiration = str(expiration_ms)
