@@ -93,14 +93,13 @@ The RPM and Debian packages will configure this setting automatically. No furthe
 
 ### Configuring S3 Repository for Snapshot/Restore
 
-We are using S3 for Elasticsearch Snapshot & Restore
+We are using Elasticsearch's S3 Repository plugin for Elasticsearch Snapshot & Restore
 
 The bucket `mediacloud-elasticsearch-snapshots` has been created with the relevant policy to allow ES snapshot access to the S3 bucket.
 
 The AWS secure credntials are added to Elasticsearch's keystore as follows:
 
-    `bin/elasticsearch-keystore add s3.client.default.access_key`
-    `bin/elasticsearch-keystore add s3.client.default.secret_key`
+    `./elasticsearch/blobstore_credentials.sh`
 
 #### Register S3 repository
 
