@@ -153,6 +153,8 @@ FETCHER_OPTIONS="--yesterday"	# batch fetcher
 
 IMPORTER_REPLICAS=1
 
+HIST_FETCHER_REPLICAS=4
+
 PARSER_REPLICAS=4
 
 QUEUER_CRONJOB_ENABLE=true
@@ -249,9 +251,9 @@ historical)
 	IMPORTER_REPLICAS=7
 	ARCHIVER_REPLICAS=2
     else
-	# Aug 2024 fetching ~40 stories/sec (w/ 4 fetchers); increased to 5 parsers
-	# (4 parsers wouldn't keep up even if HIST_FETCHER_REPLICAS lowered to 3)
-	HIST_FETCHER_REPLICAS=4
+	# Aug 2024 fetching ~40 stories/sec w/ HIST_FETCHER_REPLICAS=4
+	# increased to 5 parsers(4 parsers wouldn't keep up even if
+	# HIST_FETCHER_REPLICAS lowered to 3)
 	PARSER_REPLICAS=5
     fi
     PIPE_TYPE_PFX='hist-'	# own stack name/queues

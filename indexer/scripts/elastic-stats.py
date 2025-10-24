@@ -168,6 +168,23 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
         ]:
             self.g(f"cluster.health.pending_tasks.{short}", cluster_health[attr])
 
+    def snap_stats(self) -> None:
+        # NOTE!! assumes just one repository and one policy!!
+        es = self.elasticsearch_client()
+        j = cast(Dict[str, Any], es.snapshot.get(repository="*", snapshot="*"))
+        success = 0
+        snaps = j.get("snapshots", [])
+        if len(snaps) > 0:
+            last = snaps[-1]
+            # possible states: IN_PROGRESS, SUCCESS, FAILED, PARTIAL, INCOMPATIBLE
+            last_state = last.get("state")
+            logger.debug("snap_stats last_state %r", last_state)
+            if last_state == "SUCCESS":
+                success = 1
+        # put state in a label, so possible to add more
+        # (would need to .lower() state name and translate "_" to "-")
+        self.g("snapshot.last", success, labels=[("state", "success")])
+
     def main_loop(self) -> None:
         while True:
             try:
@@ -184,6 +201,11 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 self.cluster_health()
             except (ConnectionError, ConnectionTimeout, KeyError) as e:
                 logger.warning("cluster.health: %r", e)
+
+            try:
+                self.snap_stats()
+            except (ConnectionError, ConnectionTimeout, KeyError) as e:
+                logger.warning("snap stats: %r", e)
 
             # sleep until top of next period:
             self.interval_sleep()
