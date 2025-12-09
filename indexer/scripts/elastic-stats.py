@@ -5,20 +5,32 @@ report Elastic Search stats to statsd
 # Phil, from rabbitmq-stats.py
 # with help from importer
 
+import time
 from collections import Counter
 from logging import getLogger
-from typing import Any, Dict, cast
+from typing import Any, Dict, NamedTuple, cast
 
 from elastic_transport import ConnectionError, ConnectionTimeout
+from elasticsearch import Elasticsearch
 
 from indexer.app import App, IntervalMixin
 from indexer.elastic import ElasticMixin
+
+MS_PER_DAY = 24 * 60 * 60 * 1000
+
+# large, but don't swamp the graph:
+MAX_SINCE_MS = 30 * MS_PER_DAY
 
 logger = getLogger("elastic-stats")
 
 StatsDict = dict[str, dict[str, int | float | dict[str, int | float]]]
 
 LabelsType = list[tuple[str, str]]
+
+
+class SnapInfo(NamedTuple):
+    start: int  # epoch ms, first, for sorting
+    state: str
 
 
 class ElasticStats(ElasticMixin, IntervalMixin, App):
@@ -39,8 +51,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                     if isinstance(v2, (int, float)):
                         self.g(f"{name}.primaries.{k1}.{k2}", v2, labels=labels)
 
-    def indices_stats(self) -> None:
-        es = self.elasticsearch_client()
+    def indices_stats(self, es: Elasticsearch) -> None:
         # see https://github.com/mediacloud/story-indexer/issues/199
         stats = cast(Dict[str, Any], es.indices.stats())  # fetches /_stats
 
@@ -64,8 +75,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
             count = ihealth[color]
             self.g("indices.health", count, labels=[("color", color)])
 
-    def node_stats(self) -> None:
-        es = self.elasticsearch_client()
+    def node_stats(self, es: Elasticsearch) -> None:
         stats = cast(Dict[str, Any], es.nodes.stats().raw)
 
         for node_id, node_data in stats["nodes"].items():
@@ -130,8 +140,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 # (can be removed after one week in production)
                 self.g(f"cat.nodes.load_{m}m", value, labels=node_labels)
 
-    def cluster_health(self) -> None:
-        es = self.elasticsearch_client()
+    def cluster_health(self, es: Elasticsearch) -> None:
         cluster_health = cast(Dict[str, Any], es.cluster.health().raw)
 
         # not reporing: status, number_of_nodes,  number_of_data_nodes
@@ -168,44 +177,64 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
         ]:
             self.g(f"cluster.health.pending_tasks.{short}", cluster_health[attr])
 
-    def snap_stats(self) -> None:
-        # NOTE!! assumes just one repository and one policy!!
-        es = self.elasticsearch_client()
+    def snap_stats(self, es: Elasticsearch) -> None:
+        # NOTE!! assumes just one repository and one policy.
         j = cast(Dict[str, Any], es.snapshot.get(repository="*", snapshot="*"))
-        success = 0
-        snaps = j.get("snapshots", [])
-        if len(snaps) > 0:
-            last = snaps[-1]
-            # possible states: IN_PROGRESS, SUCCESS, FAILED, PARTIAL, INCOMPATIBLE
-            last_state = last.get("state")
-            logger.debug("snap_stats last_state %r", last_state)
-            if last_state == "SUCCESS":
-                success = 1
-        # put state in a label, so possible to add more
-        # (would need to .lower() state name and translate "_" to "-")
-        self.g("snapshot.last", success, labels=[("state", "success")])
+
+        last_snap_success = 0  # 1 if last snap was successful
+        snaps: list[SnapInfo] = []
+        for snap in j.get("snapshots", []):
+            # state one of: IN_PROGRESS, SUCCESS, FAILED, PARTIAL, INCOMPATIBLE
+            state = snap.get("state", None)
+            if state is None or state == "IN_PROGRESS":
+                continue
+            snaps.append(
+                SnapInfo(int(snap.get("start_time_in_millis", 0)), state.lower())
+            )
+        snaps.sort(reverse=True)  # newest first
+        print(snaps)
+
+        SUCCESS = "success"  # lowered above
+        since_last_start_by_state: dict[str, float] = {}
+        if snaps:
+            last_state = snaps[0].state
+            if last_state == SUCCESS:
+                last_snap_success = 1
+
+            now = int(time.time() * 1000)
+            for snap in snaps:
+                state = snap.state
+                if state not in since_last_start_by_state:
+                    # want delta for alert generation!
+                    since_last_start_by_state[state] = now - snap.start
+
+        ms_since_last_succ_start = since_last_start_by_state.get(SUCCESS, MAX_SINCE_MS)
+        logger.debug(
+            "snap_stats last_state %r last succ days %.2f",
+            last_state,
+            ms_since_last_succ_start / MS_PER_DAY,
+        )
+
+        # state in labels, so possible to show for all states
+        # BUT would need to output ALL possible tags each time
+        # (gauge values stick)
+        self.g("snapshot.last", last_snap_success, labels=[("state", SUCCESS)])
+        self.g(
+            "snapshot.time_since_last_start",
+            ms_since_last_succ_start,
+            labels=[("state", SUCCESS)],
+        )
 
     def main_loop(self) -> None:
         while True:
             try:
-                self.indices_stats()
-            except (ConnectionError, ConnectionTimeout) as e:
-                logger.warning("indices.stats: %r", e)
-
-            try:
-                self.node_stats()
+                with self.elasticsearch_client() as es:
+                    self.indices_stats(es)
+                    self.node_stats(es)
+                    self.cluster_health(es)
+                    self.snap_stats(es)
             except (ConnectionError, ConnectionTimeout, KeyError) as e:
-                logger.warning("nodes.stats: %r", e)
-
-            try:
-                self.cluster_health()
-            except (ConnectionError, ConnectionTimeout, KeyError) as e:
-                logger.warning("cluster.health: %r", e)
-
-            try:
-                self.snap_stats()
-            except (ConnectionError, ConnectionTimeout, KeyError) as e:
-                logger.warning("snap stats: %r", e)
+                logger.warning("caught %r", e)
 
             # sleep until top of next period:
             self.interval_sleep()
