@@ -142,7 +142,7 @@ ARCHIVER_REPLICAS=1		# seems to scale 1:1 with importers
 # configuration for Elastic Search Containers
 ELASTICSEARCH_CLUSTER=mc_elasticsearch
 ELASTICSEARCH_CONFIG_DIR=./conf/elasticsearch/templates
-ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.17.3"
+ELASTICSEARCH_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.17.4"
 ELASTICSEARCH_PORT_BASE=9200	# native port
 ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE=false
 ELASTICSEARCH_SNAPSHOT_REPO_TYPE="fs"
@@ -204,6 +204,10 @@ prod|staging)
     DEPLOY_TYPE=dev
     STATSD_REALM=$LOGIN_USER
     REMOTE=origin
+    # testing: disable registry push for development
+    # We always run on just one node.
+    # Images accumulate in registry volume.
+    WORKER_IMAGE_REGISTRY=
     ;;
 esac
 
@@ -843,12 +847,14 @@ if [ "x$BUILD_ONLY" != x ]; then
 fi
 
 # only needed if using multi-host swarm?
-echo docker compose push:
-docker compose push --quiet
-STATUS=$?
-if [ $STATUS != 0 ]; then
-    echo docker compose push failed: $STATUS 1>&2
-    exit 1
+if [ "x$WORKER_IMAGE_REGISTRY" != x ]; then
+    echo docker compose push:
+    docker compose push --quiet
+    STATUS=$?
+    if [ $STATUS != 0 ]; then
+	echo docker compose push failed: $STATUS 1>&2
+	exit 1
+    fi
 fi
 
 echo 'docker stack deploy (ignore "Ignoring unsupported options: build"):'
