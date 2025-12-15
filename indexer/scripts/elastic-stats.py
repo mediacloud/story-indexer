@@ -181,7 +181,7 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
         # NOTE!! assumes just one repository and one policy.
         j = cast(Dict[str, Any], es.snapshot.get(repository="*", snapshot="*"))
 
-        last_snap_success = 0  # 1 if last snap was successful
+        # summarize snapshots and sort
         snaps: list[SnapInfo] = []
         for snap in j.get("snapshots", []):
             # state one of: IN_PROGRESS, SUCCESS, FAILED, PARTIAL, INCOMPATIBLE
@@ -192,9 +192,9 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 SnapInfo(int(snap.get("start_time_in_millis", 0)), state.lower())
             )
         snaps.sort(reverse=True)  # newest first
-        print(snaps)
 
         SUCCESS = "success"  # lowered above
+        last_snap_success = 0  # 1 if last snap was successful
         since_last_start_by_state: dict[str, float] = {}
         if snaps:
             last_state = snaps[0].state
@@ -208,17 +208,19 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                     # want delta for alert generation!
                     since_last_start_by_state[state] = now - snap.start
 
-        ms_since_last_succ_start = since_last_start_by_state.get(SUCCESS, MAX_SINCE_MS)
-        logger.debug(
-            "snap_stats last_state %r last succ days %.2f",
-            last_state,
-            ms_since_last_succ_start / MS_PER_DAY,
-        )
+            logger.debug(
+                "last_success %d last_state %r since_last %r",
+                last_snap_success,
+                last_state,
+                since_last_start_by_state,
+            )
 
         # state in labels, so possible to show for all states
         # BUT would need to output ALL possible tags each time
         # (gauge values stick)
         self.g("snapshot.last", last_snap_success, labels=[("state", SUCCESS)])
+
+        ms_since_last_succ_start = since_last_start_by_state.get(SUCCESS, MAX_SINCE_MS)
         self.g(
             "snapshot.time_since_last_start",
             ms_since_last_succ_start,
