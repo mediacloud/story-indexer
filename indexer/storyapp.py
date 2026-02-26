@@ -20,7 +20,7 @@ import time
 from typing import Dict, List, Optional, TypeAlias, TypedDict
 from urllib.parse import urlsplit
 
-from mcmetadata.urls import NON_NEWS_DOMAINS
+from mcmetadata.urls import is_non_news_domain
 from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel
 
@@ -53,23 +53,6 @@ def url_fqdn(url: str) -> str:
     if not hn:
         raise ValueError("bad hostname")
     return hn.lower()
-
-
-def non_news_fqdn(fqdn: str) -> bool:
-    """
-    check if a FQDN (fully qualified domain name, ie; DNS name)
-    is (in) a domain embargoed as "non-news"
-
-    maybe belongs in  mcmetadata??
-    """
-    # could be written as "any" on a comprehension:
-    # looks like that's 15% slower in Python 3.10,
-    # and harder to for me to... comprehend!
-    fqdn = fqdn.lower()
-    for nnd in NON_NEWS_DOMAINS:
-        if fqdn == nnd or fqdn.endswith("." + nnd):
-            return True
-    return False
 
 
 class StoryMixin(AppProtocol):
@@ -161,7 +144,7 @@ class StoryMixin(AppProtocol):
 
         # check for schema?
 
-        if non_news_fqdn(hostname):
+        if is_non_news_domain(hostname):
             self.incr_stories("non-news", url)
             return False
 

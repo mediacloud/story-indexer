@@ -48,6 +48,7 @@ from typing import NamedTuple
 
 import requests
 from mcmetadata.requests_arcana import insecure_requests_session
+from mcmetadata.urls import is_non_news_domain
 from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from requests.exceptions import RequestException
 
@@ -56,7 +57,6 @@ from indexer.story import BaseStory
 from indexer.storyapp import (
     MultiThreadStoryWorker,
     StorySender,
-    non_news_fqdn,
     url_fqdn,
 )
 from indexer.worker import InputMessage, QuarantineException, RequeueException
@@ -351,7 +351,7 @@ class Fetcher(MultiThreadStoryWorker):
             # NOTE: adding a counter here would count each story fetch attempt more than once
 
             logger.info("redirect (%d) => %s", resp.status_code, url)
-            if non_news_fqdn(fqdn):
+            if is_non_news_domain(fqdn):
                 return FetchReturn(None, "non-news2", False)  # in redirect
 
         # end infinite redirect loop
@@ -396,7 +396,7 @@ class Fetcher(MultiThreadStoryWorker):
         except (TypeError, ValueError):
             return GetIdReturn("badurl1", url, fqdn)
 
-        if non_news_fqdn(fqdn):
+        if is_non_news_domain(fqdn):
             # unlikely, if queuer does their job!
             return GetIdReturn("non-news", url, fqdn)
 
