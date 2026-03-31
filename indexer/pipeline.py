@@ -196,7 +196,7 @@ class Pipeline(QApp):
 
         # nested helper functions to avoid need to pass api, chan, create:
 
-        def queue(qname: str, delay: bool = False) -> None:
+        def queue(qname: str, delay: bool = False, durable: bool = True) -> None:
             if create:
                 logger.debug(f"creating queue {qname}")
 
@@ -226,7 +226,7 @@ class Pipeline(QApp):
                 # XXX if using cluster, use quorum queues, setting:
                 # arguments["x-queue-type"] = "quorum"
 
-                chan.queue_declare(qname, durable=True, arguments=arguments)
+                chan.queue_declare(qname, durable=durable, arguments=arguments)
             else:
                 logger.debug(f"deleting queue {qname}")
                 chan.queue_delete(qname)
@@ -242,11 +242,11 @@ class Pipeline(QApp):
         def qbind(dest_queue: str, ename: str, routing_key: str) -> None:
             # XXX make routing_key optional?
             if create:
-                logger.debug(f" binding queue {dest_queue_name} to exchange {ename}")
-                chan.queue_bind(dest_queue_name, ename, routing_key=routing_key)
+                logger.debug(f" binding queue {dest_queue} to exchange {ename}")
+                chan.queue_bind(dest_queue, ename, routing_key=routing_key)
             else:
-                logger.debug(f" unbinding queue {dest_queue_name} to exchange {ename}")
-                chan.queue_unbind(dest_queue_name, ename, routing_key=routing_key)
+                logger.debug(f" unbinding queue {dest_queue} to exchange {ename}")
+                chan.queue_unbind(dest_queue, ename, routing_key=routing_key)
 
         #### _configure function body:
 
@@ -282,6 +282,19 @@ class Pipeline(QApp):
                 for outproc in proc.outputs:
                     dest_queue_name = input_queue_name(outproc.name)
                     qbind(dest_queue_name, ename, DEFAULT_ROUTING_KEY)
+
+        # plumbing for "breadcrumbs" for pipeview monitoring
+        # maybe should be declared via exposed methods or optionally?
+        # this feature is "icing on the cake", and as
+        # such, currently treating delivery as unreliable.
+        # NOTES:
+        # queue is NOT durable (data not sync'ed to disk)
+        # _could_ declare max queue size (and drop) at creation or via policy
+        if self._breadcrumb_exchange:
+            exchange(self._breadcrumb_exchange)
+            pipeview_in = input_queue_name("pipeview")
+            queue(pipeview_in)
+            qbind(pipeview_in, self._breadcrumb_exchange, DEFAULT_ROUTING_KEY)
 
         if create:
             # create semaphore

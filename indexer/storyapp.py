@@ -20,11 +20,11 @@ import time
 from typing import Dict, List, Optional, TypeAlias, TypedDict
 from urllib.parse import urlsplit
 
-from mcmetadata.urls import NON_NEWS_DOMAINS
+from mcmetadata.urls import is_non_news_domain
 from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.app import AppProtocol, IntervalMixin
+from indexer.app import AppProtocol, BreadCrumb, IntervalMixin
 from indexer.story import BaseStory
 from indexer.worker import (
     CONSUMER_TIMEOUT_SECONDS,
@@ -55,28 +55,15 @@ def url_fqdn(url: str) -> str:
     return hn.lower()
 
 
-def non_news_fqdn(fqdn: str) -> bool:
-    """
-    check if a FQDN (fully qualified domain name, ie; DNS name)
-    is (in) a domain embargoed as "non-news"
-
-    maybe belongs in  mcmetadata??
-    """
-    # could be written as "any" on a comprehension:
-    # looks like that's 15% slower in Python 3.10,
-    # and harder to for me to... comprehend!
-    fqdn = fqdn.lower()
-    for nnd in NON_NEWS_DOMAINS:
-        if fqdn == nnd or fqdn.endswith("." + nnd):
-            return True
-    return False
-
-
 class StoryMixin(AppProtocol):
     """
     The place for Story-specific methods for both
     StoryProducers (output only) and Workers (in/out)
     """
+
+    BAD_HOSTS = set(["localhost", "127.0.0.1", "[::1]"])
+    URL_SCHEMES = ("http", "https")  # _could_ test if set faster
+    BREADCRUMB_VERSION = [1, 0, 0]  # version
 
     def define_options(self, ap: argparse.ArgumentParser) -> None:
         super().define_options(ap)
@@ -98,12 +85,58 @@ class StoryMixin(AppProtocol):
             # XXX set something to avoid rabbitmq-url check??
         super().process_args()  # after wacking AUTO_CONNECT
 
+    def make_crumb(
+        self,
+        *,
+        feed_id: int | None,
+        source_id: int | None,
+        domain: str | None,  # canonical_domain from parser
+        status: str,
+    ) -> BreadCrumb:
+        """
+        Make a story-based breadcrumb.
+        These "just happen" to match the pipeview db columns
+        """
+        return {
+            "date": time.strftime("%Y-%m-%d", time.gmtime()),
+            "feed_id": feed_id,
+            "source_id": source_id,
+            "domain": domain,
+            "app": self.process_name,
+            "status": status,
+        }
+
+    def story_breadcrumb(self, story: BaseStory, status: str) -> BreadCrumb:
+        """
+        create a breadcrumb from a Story
+        """
+        rss = story.rss_entry()
+        cmd = story.content_metadata()
+        crumb = self.make_crumb(
+            feed_id=rss.source_feed_id,
+            source_id=rss.source_source_id,
+            domain=cmd.canonical_domain,
+            status=status,
+        )
+        return crumb
+
     def incr_stories(
-        self, status: str, url: str, log_level: int = logging.INFO
+        self,
+        status: str,
+        url: str,
+        log_level: int = logging.INFO,
+        story: BaseStory | None = None,
+        crumb: BreadCrumb | None = None,
     ) -> None:
         """
         Should be called exactly once for each Story processed.
         default level is INFO so logs track disposition of every story.
+
+        story (or crumb if no Story object yet available) should
+        (currently) ONLY be passed for the final (no retries will
+        occur) disposition of a story, but NOT successful completion
+        in intermediate workers.  Passing an indicator that it's a
+        retryable event _MIGHT_ be possible/useful.
         """
         # All stats are prefixed by app name, so visible as
         # counters.mc.APP.stories.status_X or across all apps as
@@ -114,34 +147,57 @@ class StoryMixin(AppProtocol):
         # could send to a sub-logger (__name__ + '.stories')
         logger.log(log_level, "%s: %s", status, url)
 
-    def check_story_length(self, html: bytes, url: str) -> bool:
+        if story:  # overrides supplied crumb, if any
+            crumb = self.story_breadcrumb(story, status)
+        if crumb:
+            self.queue_breadcrumb(crumb)
+
+    def check_story_length(self, story: BaseStory, html: bytes, url: str) -> bool:
         """
         check HTML length:
         False return means a counter has been incremented and URL logged
         and the Story should be discarded.
         """
-        if not html:
-            self.incr_stories("no-html", url)
+        err = self.check_length(html)
+        if err:
+            self.incr_stories(err, url, story=story)
             return False
-
-        if len(html) > MAX_HTML_BYTES:
-            self.incr_stories("oversized", url)
-            return False
-
         return True
 
-    def check_story_url(self, url: str) -> bool:
+    def check_length(self, html: bytes) -> str | None:
+        """
+        check HTML length w/o Story object
+        returns error string, or None if OK
+        """
+        if not html:
+            return "no-html"
+
+        if len(html) > MAX_HTML_BYTES:
+            return "oversized"
+
+        return None
+
+    def check_story_url(self, story: BaseStory, url: str) -> bool:
+        """
+        Check URL w/ Story object available
+        returns True if url good,
+        returns False w/ bad url, counted and logged
+        """
+        if err := self.check_url(url):
+            self.incr_stories(err, url, story=story)
+            return False
+        return True
+
+    def check_url(self, url: str) -> str | None:
         """
         check URL.
-        False return means a counter has been incremented and URL logged,
-        and the Story should be discarded.
+        returns error string if Story should be discarded.
 
         Ideally: call when queuing a new Story, and for each intermediate
         redirect URL while fetching.
         """
         if not url:
-            self.incr_stories("no-url", url)
-            return False
+            return "no-url"
 
         # XXX check for over-sized URL??
         # rss-fetcher's default limit is 2048
@@ -151,21 +207,22 @@ class StoryMixin(AppProtocol):
         try:
             surl = urlsplit(url, allow_fragments=False)
         except ValueError:
-            self.incr_stories("bad-url", url)
-            return False
+            return "bad-url"
 
         hostname = surl.hostname
         if not hostname:
-            self.incr_stories("no-host", url)
-            return False
+            return "no-host"
 
-        # check for schema?
+        if surl.scheme not in self.URL_SCHEMES:
+            return "bad-scheme"
 
-        if non_news_fqdn(hostname):
-            self.incr_stories("non-news", url)
-            return False
+        if is_non_news_domain(hostname):
+            return "non-news"
 
-        return True
+        if hostname in self.BAD_HOSTS:
+            return "bad-host"
+
+        return None
 
 
 class StorySender:
@@ -414,12 +471,13 @@ class StoryProducer(StoryMixin, Producer):
         assert self.args
 
         url = story.http_metadata().final_url or story.rss_entry().link or ""
-        if not self.check_story_url(url):
+        if err := self.check_url(url):
+            self.incr_stories(err, url, story=story)
             return  # logged and counted
 
         if check_html:
             html = story.raw_html().html or b""
-            if not self.check_story_length(html, url):
+            if not self.check_story_length(story, html, url):
                 return  # logged and counted
 
         level = logging.INFO
@@ -454,6 +512,7 @@ class StoryProducer(StoryMixin, Producer):
             self.quit(0)
 
     def quit(self, status: int) -> None:
+        # XXX flush breadcrumb_queue?
         sys.exit(status)
 
     def _batch_size(self) -> int:
@@ -518,6 +577,11 @@ class ShufflingStoryProducer(StoryProducer):
         return int(self.args.shuffle_batch_size)
 
 
+class StoryWorkerTLS(threading.local):
+    last_retry_status: str | None
+    last_story: BaseStory | None
+
+
 class StoryWorker(StoryMixin, Worker):
     """
     Process Stories in Queue Messages
@@ -535,6 +599,25 @@ class StoryWorker(StoryMixin, Worker):
         # this would be necessary, so implement it now,
         # and avoid possible (if unlikely) surprise later.
         self.senders: Dict[BlockingChannel, StorySender] = {}
+        self.tls = StoryWorkerTLS()
+        self.tls.last_retry_status = None
+        self.tls.last_story = None
+
+    def incr_stories(
+        self,
+        status: str,
+        url: str,
+        log_level: int = logging.INFO,
+        story: BaseStory | None = None,
+        crumb: BreadCrumb | None = None,
+    ) -> None:
+        if story or crumb:
+            # story or crumb passed in means it's a final status
+            self.tls.last_retry_status = None
+        else:
+            # try to save last retryable status counted in case last retry
+            self.tls.last_retry_status = status
+        super().incr_stories(status, url, log_level, story, crumb)
 
     def decode_story(self, im: InputMessage) -> BaseStory:
         story = BaseStory.load(im.body)
@@ -552,8 +635,27 @@ class StoryWorker(StoryMixin, Worker):
 
         # raised exceptions will cause retry; quarantine immediately?
         story = self.decode_story(im)
-
+        self.tls.last_story = story
+        self.tls.last_retry_status = None
         self.process_story(sender, story)
+        self.tls.last_story = None
+        self.tls.last_retry_status = None
+
+    def retries_exhausted(self) -> None:
+        """
+        Here when a story about to be quarantined or dropped
+        (from exception handling in Worker._process_one_message)
+        """
+        # last_story set above in process_message,
+        # last_retry_status set by incr_stories
+        # (if NOT a final status report)
+        if self.tls.last_story and self.tls.last_retry_status:
+            self.queue_breadcrumb(
+                self.story_breadcrumb(self.tls.last_story, self.tls.last_retry_status)
+            )
+        # paranoia:
+        self.tls.last_story = None
+        self.tls.last_retry_status = None
 
     def process_story(self, sender: StorySender, story: BaseStory) -> None:
         raise NotImplementedError("StoryWorker.process_story not overridden")
@@ -590,6 +692,8 @@ class BatchStoryWorker(StoryWorker):
     """
     A worker processing batches of stories
     (all stories consumed at once)
+
+    NOTE: Has not (yet) been updated for breadcrumbs!
     """
 
     # Default values: just guesses, should be tuned.

@@ -103,7 +103,9 @@ class Parser(StoryWorker):
             except UnicodeError as e:
                 # careful printing exception! may contain entire string!!
                 err = type(e).__name__
-                self.incr_stories("no-decode", log_url)  # want level=NOTICE
+                self.incr_stories(
+                    "no-decode", log_url, story=story
+                )  # want level=NOTICE
                 if QUARANTINE_DECODE_ERROR:
                     raise QuarantineException(err)
                 else:
@@ -116,7 +118,7 @@ class Parser(StoryWorker):
         logger.info("parsing %s: %d characters", log_url, len(html))
         if not html:
             # can get here from batch fetcher, or if body was just a BOM
-            self.incr_stories("no-html", log_url)  # want level=NOTICE
+            self.incr_stories("no-html", log_url, story=story)  # want level=NOTICE
             raise CannotDecode("no-html")
 
         with raw:
@@ -142,9 +144,6 @@ class Parser(StoryWorker):
         """
         copy extracted metadata dict to Story object
         """
-        # XXX check for empty text_content?
-        # (will be quarantined by importer)
-
         cmd = story.content_metadata()
         with cmd:
             for key, val in mdd.items():
@@ -164,8 +163,12 @@ class Parser(StoryWorker):
 
         # after _check_canonical_url
         if cmd.is_homepage:
-            self.incr_stories("homepage", self._log_url(story))
+            self.incr_stories("homepage", self._log_url(story), story=story)
             return False
+
+        if not cmd.text_content:
+            self.incr_stories("no-text", self._log_url(story), story=story)
+            return False  # logged and counted: discard
 
         return True
 
@@ -204,7 +207,7 @@ class Parser(StoryWorker):
         # {http://www.w3.org/1999/02/22-rdf-syntax-ns#}rdf
         # NOT searching for prefix, in case of variations!!!
         if tag.endswith(FEED_TAGS):
-            self.incr_stories("feed", self._log_url(story))
+            self.incr_stories("feed", self._log_url(story), story=story)
             return False  # NOT HTML
         return True
 
@@ -227,7 +230,7 @@ class Parser(StoryWorker):
 
         # now that we FINALLY have a URL, make sure it isn't
         # from a source we filter out!!!
-        if not self.check_story_url(canonical_url):
+        if not self.check_story_url(story, canonical_url):
             return False  # logged and counted
 
         with story.http_metadata() as hmd:
@@ -271,7 +274,7 @@ class Parser(StoryWorker):
         try:
             mdd = mcmetadata.extract(final_url, html, stats_accumulator=extract_stats)
         except mcmetadata.exceptions.BadContentError:
-            self.incr_stories("too-short", self._log_url(story))
+            self.incr_stories("too-short", self._log_url(story), story=story)
             # No quarantine error here, just discard
             return
 
@@ -293,7 +296,7 @@ class Parser(StoryWorker):
         log_url = self._log_url(story)
         method = mdd["text_extraction_method"]
         logger.info("parsed %s with %s date %s", log_url, method, pub_date)
-        self.incr_stories(f"OK-{method}", log_url)
+        self.incr_stories(f"OK-{method}", log_url)  # success: no breadcrumb
 
         for item, sec in extract_stats.items():
             if item not in SKIP_EXTRACT_STATS_ITEMS:

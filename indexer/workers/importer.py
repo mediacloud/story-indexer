@@ -165,7 +165,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
 
         # check if empty now, before any tampering (pub_date or indexed_date)
         if not data:
-            self.incr_stories("no-data", "no-url")
+            self.incr_stories("no-data", "no-url", story=story)
             raise QuarantineException("no-data")
 
         # if publication date is None (from parser) or "None"(from archiver), fallback to rss_fetcher pub_date
@@ -208,12 +208,12 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # exceedingly unlikely, but must check to keep
             # mypy quiet, so might as well do something rather
             # than pass an empty string, or turn None into "None"
-            self.incr_stories("no-url", "none")
+            self.incr_stories("no-url", "none", story=story)
             raise QuarantineException("no-url")
 
         text_content = data.get("text_content")
         if not isinstance(text_content, str) or text_content == "":
-            self.incr_stories("no-text", url)
+            self.incr_stories("no-text", url, story=story)
             raise QuarantineException("no-text")
 
         data["text_content"] = self.truncate_field("text_content", text_content)
@@ -226,13 +226,14 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         else:
             data["article_title"] = self.truncate_field("article_title", article_title)
 
-        if self.import_story(data) and self.output_msgs:
+        if self.import_story(data, story) and self.output_msgs:
             # pass story along to archiver, unless disabled or duplicate
             sender.send_story(story)
 
     def import_story(
         self,
         data: dict[str, Optional[Union[str, bool]]],
+        story: BaseStory | None = None,
     ) -> Optional[str]:
         """
         Imports story to Elasticsearch
@@ -269,7 +270,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
                 },
             )
             if search_response["hits"]["total"]["value"] > 0:
-                self.incr_stories("ilm-dups", url)
+                self.incr_stories("ilm-dups", url, story=story)
                 return None  # mypy explicit return
             # logs HTTP op with index name and ID str.
             # create: raises exception if a duplicate.
@@ -281,6 +282,7 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # exception was thrown, so should only be here if HTTP returned 200.
             # PARANOIA! create() call always returns ObjectApiResponse.
             if not response:
+                self.incr_stories("noresp", url, story=story)
                 raise QuarantineException(f"response {response!r}")
 
             # Always count, and be explicit about what we saw.  Only documented result
@@ -290,14 +292,14 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
             # and response there?!  One could argue that the undesired "updated" result
             # (that should never be seen) should be returned as False (do not archive).
             result = response.get("result", "noresult") or "emptyres"
-            self.incr_stories(result, url)  # count, logs result, URL
+            self.incr_stories(result, url, story=story)  # count, logs result, URL
             return url_hash  # i.e. response.get("_id")
         except ConflictError:
             self.incr_stories("dups", url)
             return None
         except RequestError as e:
             # here with over-length content!
-            self.incr_stories("reqerr", url)
+            self.incr_stories("reqerr", url, story=story)
             raise QuarantineException(repr(e))
         except Exception:
             # Capture all other exceptions here for counting, and re-raise for retry

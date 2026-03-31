@@ -48,17 +48,13 @@ from typing import NamedTuple
 
 import requests
 from mcmetadata.requests_arcana import insecure_requests_session
+from mcmetadata.urls import is_non_news_domain
 from mcmetadata.webpages import MEDIA_CLOUD_USER_AGENT
 from requests.exceptions import RequestException
 
 from indexer.app import run
 from indexer.story import BaseStory
-from indexer.storyapp import (
-    MultiThreadStoryWorker,
-    StorySender,
-    non_news_fqdn,
-    url_fqdn,
-)
+from indexer.storyapp import MultiThreadStoryWorker, StorySender, url_fqdn
 from indexer.worker import InputMessage, QuarantineException, RequeueException
 from indexer.workers.fetcher.sched import (
     DELAY_LONG,
@@ -351,7 +347,7 @@ class Fetcher(MultiThreadStoryWorker):
             # NOTE: adding a counter here would count each story fetch attempt more than once
 
             logger.info("redirect (%d) => %s", resp.status_code, url)
-            if non_news_fqdn(fqdn):
+            if is_non_news_domain(fqdn):
                 return FetchReturn(None, "non-news2", False)  # in redirect
 
         # end infinite redirect loop
@@ -396,7 +392,7 @@ class Fetcher(MultiThreadStoryWorker):
         except (TypeError, ValueError):
             return GetIdReturn("badurl1", url, fqdn)
 
-        if non_news_fqdn(fqdn):
+        if is_non_news_domain(fqdn):
             # unlikely, if queuer does their job!
             return GetIdReturn("non-news", url, fqdn)
 
@@ -428,7 +424,7 @@ class Fetcher(MultiThreadStoryWorker):
 
             status, url, id = self.get_id(story)
             if status != "ok":
-                self.incr_stories(status, url)
+                self.incr_stories(status, url, story=story)
                 self._pika_ack_and_commit(im)  # drop (ack without requeuing)
                 return
 
@@ -477,7 +473,7 @@ class Fetcher(MultiThreadStoryWorker):
         istatus, url, id = self.get_id(story)
         if istatus != "ok":
             logger.warning("get_id returned ('%s', '%s')", istatus, id)
-            self.incr_stories(istatus, id)
+            self.incr_stories(istatus, id, story=story)
             return
 
         assert self.scoreboard is not None
@@ -519,7 +515,7 @@ class Fetcher(MultiThreadStoryWorker):
                 requests.exceptions.InvalidURL,
             ) as exc:
                 logger.info("%s: %r", url, exc)
-                self.incr_stories("badurl2", url)
+                self.incr_stories("badurl2", url, story=story)
                 # bad URL, did not attempt connection, so don't mark domain as down!
                 conn_status = ConnStatus.BADURL  # used in finally
                 return  # discard: do not pass go, do not collect $200!
@@ -547,7 +543,7 @@ class Fetcher(MultiThreadStoryWorker):
                 )
 
         if resp is None:
-            self.incr_stories(fret.counter, url)
+            self.incr_stories(fret.counter, url, story=story)
             if fret.quarantine:
                 raise QuarantineException(fret.counter)
             return
@@ -563,7 +559,7 @@ class Fetcher(MultiThreadStoryWorker):
                 self.incr_stories(counter, url)
                 raise Retry(msg)
             else:
-                return self.incr_stories(counter, msg)
+                return self.incr_stories(counter, msg, story=story)
         # here with status == 200
         content = resp.content  # bytes
         lcontent = len(content)
@@ -584,9 +580,9 @@ class Fetcher(MultiThreadStoryWorker):
             or ct.startswith("application/vnd.wap.xhtml+xml")
             or not ct
         ):
-            return self.incr_stories("not-text", url)
+            return self.incr_stories("not-text", url, story=story)
 
-        if not self.check_story_length(content, url):
+        if not self.check_story_length(story, content, url):
             return  # logged and counted
 
         final_url = resp.url

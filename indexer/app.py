@@ -12,14 +12,19 @@ import time
 import urllib.parse
 from logging.handlers import SysLogHandler
 from types import TracebackType
-from typing import Any, List, Optional, Protocol, Tuple
+from typing import Any, List, Optional, Protocol, Tuple, TypeAlias
 
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
 
 from indexer import sentry
 
-Labels = List[Tuple[str, Any]]  # optional labels/values for a statistic report
+Labels: TypeAlias = List[
+    Tuple[str, Any]
+]  # optional labels/values for a statistic report
+
+# breadcrumbs are small JSON messages sent to summarize message paths
+BreadCrumb: TypeAlias = dict[str, int | str | bool | None]  # simple JSON dict
 
 LEVEL_DEST = "log_level"  # args entry name!
 LEVELS = [level.lower() for level in logging._nameToLevel.keys()]
@@ -58,6 +63,9 @@ class AppProtocol(Protocol):
     ) -> None: ...
 
     def timer(self, name: str) -> "_TimingContext": ...
+
+    def queue_breadcrumb(self, crumb: dict) -> None:
+        return
 
 
 # Dicts of log formats, indexed by App.LOG_FORMAT

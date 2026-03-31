@@ -23,6 +23,11 @@ ARCHIVER_S3_SECRET_ACCESS_KEY=..........
 ELASTICSEARCH_SNAPSHOT_REPO=mc_story_indexer
 ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET=
 ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT=
+#
+# could generate w/ python -c 'import secrets; print(secrets.token_urlsafe(24))
+# and add to docker/USER.sh
+PIPEVIEW_POSTGRES_PASSWORD=123454321
+#
 # used by {arch,hist,rss}-queuer.py (read only)
 QUEUER_S3_ACCESS_KEY_ID=AKxxxxxx
 QUEUER_S3_REGION=us-east-1

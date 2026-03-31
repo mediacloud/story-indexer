@@ -42,7 +42,9 @@ class CSVQueuer(Queuer):
             logger.debug("%r", row)
 
             url = row[0]
-            if not self.check_story_url(url):
+            # currently no breadcrumbs in csv pipeline
+            if err := self.check_url(url):
+                self.incr_stories(err, url)
                 continue  # logged and counted
 
             if url in urls_seen:
