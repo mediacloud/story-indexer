@@ -66,6 +66,7 @@ class HistQueuer(Queuer):
 
         # typical columns:
         # collect_date,stories_id,media_id,downloads_id,feeds_id,[language,]url
+        # NOTE! not generating breadcrumbs in hist pipeline
         for row in csv.DictReader(io.TextIOWrapper(fobj)):
             logger.debug("%r", row)
 
@@ -79,7 +80,8 @@ class HistQueuer(Queuer):
                     self.incr_stories("dups", url)
                     continue
 
-                if not self.check_story_url(url):
+                if err := self.check_url(url):
+                    self.incr_stories(err, url)
                     continue  # logged and counted
             else:
                 url = NEED_CANONICAL_URL

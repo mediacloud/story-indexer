@@ -181,11 +181,13 @@ class HistFetcher(StoryWorker):
             # XXX inside try? quarantine on error?
             html = gzip.decompress(bio.getbuffer())
 
+        # NOTE: no breadcrumbs in historical pipeline
         if html.startswith(b"(redundant feed)"):
             self.incr_stories("redundant", url or str(dlid))
             return
 
-        if not self.check_story_length(html, url):
+        if err := self.check_length(html):
+            self.incr_stories(err, url or str(dlid))
             return  # counted and logged
 
         logger.info("%d %s: %d bytes", dlid, url, len(html))

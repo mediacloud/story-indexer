@@ -3,7 +3,7 @@ Pipeline Worker Definitions.
 Written to be a generic utility package.
 Tries to hide Pika/RabbitMQ/AMQP as much as reasonably possible.
 
-Story-specific things are in storyworker.py
+Story-specific things are in storyapp.py
 """
 
 # NOTE!!!! This file has been CAREFULLY coded to NOT assume consumers
@@ -13,6 +13,7 @@ Story-specific things are in storyworker.py
 # * For code processing messages: Pika ops MUST be done from Pika thread
 
 import argparse
+import json
 import logging
 import os
 import queue
@@ -35,7 +36,7 @@ from pika.connection import URLParameters
 from pika.spec import PERSISTENT_DELIVERY_MODE, Basic
 
 # story-indexer
-from indexer.app import App, AppException
+from indexer.app import App, AppException, BreadCrumb
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,12 @@ class QApp(App):
     # (Pika thread causes problems for utilities that do blocking calls)
     START_PIKA_THREAD = False
 
+    # will send breadcrumbs if non-empty
+    BREADCRUMB_VERSION: list[int] = []
+
+    # delay to sending crumbs after first one queued:
+    BREADCRUMB_DELAY = 60.0
+
     def __init__(self, process_name: str, descr: str):
         super().__init__(process_name, descr)
 
@@ -219,6 +226,13 @@ class QApp(App):
         self._crash_on_exception = os.environ.get("WORKER_EXCEPTION_CRASH", "") != ""
 
         self.sent_messages = 0
+
+        # breadcrumbs are small JSON messages sent to summarize message processing.
+        # format must be defined by subclasses (see storyapp.StoryMixin)
+        self._breadcrumb_exchange: Optional[str] = os.environ.get("BREADCRUMB_EXCHANGE")
+        self._breadcrumb_channel: Optional[BlockingChannel] = None
+        self._breadcrumb_queue_lock = threading.Lock()
+        self._breadcrumb_queue: list[str] = []
 
         # queues/exchanges created using indexer.pipeline:
         self.input_queue_name = input_queue_name(self.process_name)
@@ -335,6 +349,10 @@ class QApp(App):
         assert url  # checked in process_args
         self.connection = BlockingConnection(URLParameters(url))
         logger.info(f"connected to {url}")
+
+        if self.BREADCRUMB_VERSION and self._breadcrumb_exchange:
+            logger.info("sending crumbs to %s exchange", self._breadcrumb_exchange)
+            self._breadcrumb_channel = self.connection.channel()
 
         # start Pika I/O thread (ONLY ONE!)
         if self.START_PIKA_THREAD:
@@ -492,6 +510,7 @@ class QApp(App):
         exchange: Optional[str] = None,
         routing_key: str = DEFAULT_ROUTING_KEY,
         properties: Optional[BasicProperties] = None,  # WILL BE MODIFIED!
+        persistent: bool = True,
     ) -> None:
         """
         called by Worker/Publisher code in main thread.
@@ -501,13 +520,14 @@ class QApp(App):
         if exchange is None:
             exchange = self.output_exchange_name
 
-        if properties is None:
-            properties = BasicProperties()
+        if persistent:
+            if properties is None:
+                properties = BasicProperties()
 
-        # persist messages on disk
-        # (otherwise may be lost on reboot)
-        # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
-        properties.delivery_mode = PERSISTENT_DELIVERY_MODE
+            # persist messages on disk
+            # (otherwise may be lost on reboot)
+            # also pika.DeliveryMode.Persistent.value, but not in typing stubs?
+            properties.delivery_mode = PERSISTENT_DELIVERY_MODE
 
         def sender() -> None:
             msglogger.debug(
@@ -564,6 +584,59 @@ class QApp(App):
                 loops = 0
             time.sleep(0.1)
         return False
+
+    def queue_breadcrumb(self, crumb: BreadCrumb) -> None:
+        assert self.BREADCRUMB_VERSION  # breadcrumbs enabled
+        text = json.dumps(crumb)
+        # queue.Queue is thread safe,
+        # but _crumb_sender prefers atomic empty
+        with self._breadcrumb_queue_lock:
+            was_empty = len(self._breadcrumb_queue) == 0
+            self._breadcrumb_queue.append(text)
+
+        if was_empty and self.connection:
+            # start timer after first crumb queued
+            self.connection.call_later(self.BREADCRUMB_DELAY, self._crumb_timeout)
+
+    def _crumb_timeout(self) -> None:
+        """
+        called BREADCRUMB_DELAY seconds
+        after first crumb added to breadcrumb_queue
+        """
+        self._call_in_pika_thread(self._crumb_publish)
+
+    def _crumb_publish(self) -> None:
+        """
+        called in pika thread from _crumb_timeout
+        """
+        if not (self.BREADCRUMB_VERSION and self._breadcrumb_exchange):
+            return
+
+        # mypy paranoia
+        if self._breadcrumb_channel is None:
+            return
+
+        # use lock to empty atomically
+        # grabbing lock only once
+        with self._breadcrumb_queue_lock:
+            crumbs = self._breadcrumb_queue
+            if not crumbs:
+                return  # should not happen
+            self._breadcrumb_queue = []
+
+        vdict = {
+            "version": self.BREADCRUMB_VERSION,
+            "sent_at": time.time(),
+            "app": self.process_name,
+        }
+        crumbs.insert(0, json.dumps(vdict))
+        self._send_message(
+            chan=self._breadcrumb_channel,
+            data="\n".join(crumbs).encode("utf-8"),
+            exchange=self._breadcrumb_exchange,
+            routing_key=DEFAULT_ROUTING_KEY,
+            persistent=False,  # do not write to disk
+        )
 
 
 class Worker(QApp):
@@ -700,6 +773,10 @@ class Worker(QApp):
         except QuarantineException as e:
             status = "error"
             self._quarantine(im, e)
+            # remove story arg from incr_stats call and call
+            # self.retries_exhausted() here???  (if done, can remove
+            # story/crumb arguments to incr_story calls before raising
+            # QuarantineException)
         except RequeueException:
             status = "requeue"
             self._requeue(im)
@@ -710,6 +787,7 @@ class Worker(QApp):
                 status = "retry"
             else:
                 status = "retryx"  # retries eXausted
+                self.retries_exhausted()
 
         ms = 1000 * (time.monotonic() - t0)
         # NOTE! statsd timers have .count but not .rate
@@ -717,6 +795,12 @@ class Worker(QApp):
         msglogger.debug("processed #%s in %.3f ms, status: %s", tag, ms, status)
 
         return status == "ok"
+
+    def retries_exhausted(self) -> None:
+        """
+        Here when Story has been fully retried (heading for Quarantine or
+        drop).  Override to send a breadcrumb after last retry
+        """
 
     def _ack_and_commit(self, im: InputMessage, multiple: bool = False) -> None:
         """

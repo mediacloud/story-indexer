@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from indexer.app import AppException, run
+from indexer.app import AppException, BreadCrumb, run
 from indexer.cookiejar import CookieJar
 from indexer.story import RSSEntry, StoryFactory
 from indexer.storyapp import ShufflingStoryProducer
@@ -171,6 +171,17 @@ class RSSPuller(ShufflingStoryProducer):
         rows = cast(list[StoryJSON], results)
         return rows
 
+    def sj2crumb(self, sj: StoryJSON, status: str) -> BreadCrumb:
+        return self.make_crumb(
+            feed_id=sj.get("feed_id"),
+            source_id=sj.get("sources_id"),
+            domain=None,  # FINAL domain
+            status=status,
+        )
+
+    def incr_stories_crumb(self, status: str, url: str, s: StoryJSON) -> None:
+        self.incr_stories(status, url, crumb=self.sj2crumb(s, status))
+
     def api_get_and_queue(
         self, last: StoryJSON | None, count: int
     ) -> tuple[int, StoryJSON | None]:
@@ -201,18 +212,19 @@ class RSSPuller(ShufflingStoryProducer):
             if not isinstance(id_, int):
                 # don't muddy the stats if just a dry-run:
                 if not self.dry_run:
-                    self.incr_stories("bad-id", str(id_))  # log and count
+                    self.incr_stories_crumb("bad-id", str(id_), s)  # logged and counted
                 continue
 
             url = s.get("url")
             if not isinstance(url, str):
                 # don't muddy the stats if just a dry-run:
                 if not self.dry_run:
-                    self.incr_stories("no-url", str(url))  # log and count
+                    self.incr_stories_crumb("no-url", str(url), s)  # logged and counted
                 continue
 
-            if not self.check_story_url(url):
-                continue  # logged and counted
+            if err := self.check_url(url):
+                self.incr_stories_crumb(err, url, s)  # logged and counted
+                continue
 
             # reformat optional published_at (from original RSS file)
             # from isoformat (as read from rss-fetcher database)

@@ -119,6 +119,7 @@ x-worker-service-settings: &worker-service-settings
 
   environment: &worker-environment-vars
     <<: *base-environment-vars
+    BREADCRUMB_EXCHANGE: {{breadcrumb_exchange}}
     DEPLOYMENT_ID: {{deployment_id}}
     ELASTICSEARCH_HOSTS: {{elasticsearch_hosts}}
     ELASTICSEARCH_CONFIG_DIR: {{elasticsearch_config_dir}}
@@ -424,8 +425,6 @@ services:
       ELASTICSEARCH_SNAPSHOT_REPO: mediacloud-elasticsearch-snapshots
 {% endif %}
 
-  ################ news search api (built elsewhere)
-
   # NOTE! Not building Docker image here (yet)
   # until version/revision control issues worked out.
 
@@ -443,6 +442,47 @@ services:
       ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION: {{elasticsearch_snapshot_repo_settings_location}}
       ELASTICSEARCH_SNAPSHOT_REPO_TYPE: {{elasticsearch_snapshot_repo_type}}
       RUN: elastic-conf
+
+{% if breadcrumb_exchange != '' %}
+  {{pipeview_postgres_container}}:
+    <<: *base-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *base-environment-vars
+      PGPORT: {{pipeview_pgport}}
+      POSTGRES_DB: {{pipeview_postgres_db}}
+      POSTGRES_PASSWORD: {{pipeview_postgres_password}}
+      POSTGRES_USER: {{pipeview_postgres_user}}
+    image: {{pipeview_postgres_image}}
+    ports:
+      - "{{pipeview_postgres_port_exported}}:{{pipeview_pgport}}"
+    volumes:
+      - pipeview_db:/var/lib/postgresql/data
+
+  # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
+  pipeview-collector:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: pipeview-collector
+      DATABASE_URL: {{pipeview_database_url}}
+
+  # doesn't need RABBITMQ_URL
+  pipeview-api:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+    environment:
+      <<: *worker-environment-vars
+      RUN: pipeview-api
+      DATABASE_URL: {{pipeview_database_url}}
+      PIPEVIEW_API_PORT: {{pipeview_api_port}}
+    ports:
+      - "{{pipeview_api_port_exported}}:{{pipeview_api_port}}"
+{% endif %}
 
 {% macro define_volume(prefix, suffix='') %}
   {{prefix}}{{suffix}}:
@@ -466,6 +506,9 @@ volumes:
 {{ define_volume('rabbitmq_data') }}
 {% endif %}
 {{ define_volume('worker_data') }}
+{% if breadcrumb_exchange != '' %}
+{{ define_volume('pipeview_db') }}
+{%- endif %}
 
 networks:
   default:
