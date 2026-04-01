@@ -458,7 +458,7 @@ services:
     ports:
       - "{{pipeview_postgres_port_exported}}:{{pipeview_pgport}}"
     volumes:
-      - pipeview_db:/var/lib/postgresql/data
+      - pipeview_db:/var/lib/postgresql
 
   # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
   pipeview-collector:
