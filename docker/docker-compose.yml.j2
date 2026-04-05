@@ -480,8 +480,25 @@ services:
       RUN: pipeview-api
       DATABASE_URL: {{pipeview_database_url}}
       PIPEVIEW_API_PORT: {{pipeview_api_port}}
+      PIPEVIEW_DAYS: {{pipeview_days}}
     ports:
       - "{{pipeview_api_port_exported}}:{{pipeview_api_port}}"
+
+  pipeview-pruner:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      labels:
+         swarm.cronjob.enable: "true"
+         swarm.cronjob.schedule: "0 23 0 * * * *" # sec min hr DOM mon DOW
+         swarm.cronjob.replicas: 1
+         swarm.cronjob.skip-running: "true" {# don't restart if currently running #}
+      replicas: 0
+    environment:
+      <<: *worker-environment-vars
+      RUN: pipeview-pruner
+      DATABASE_URL: {{pipeview_database_url}}
+      PIPEVIEW_DAYS: {{pipeview_days}}
 {% endif %}
 
 {% macro define_volume(prefix, suffix='') %}
