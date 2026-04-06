@@ -490,7 +490,7 @@ services:
       <<: *worker-deploy-settings
       labels:
          swarm.cronjob.enable: "true"
-         swarm.cronjob.schedule: "0 23 0 * * * *" # sec min hr DOM mon DOW
+         swarm.cronjob.schedule: "0 23 0 * * *" # sec min hr DOM mon DOW
          swarm.cronjob.replicas: 1
          swarm.cronjob.skip-running: "true" {# don't restart if currently running #}
       replicas: 0
