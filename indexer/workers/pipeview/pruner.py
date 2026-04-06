@@ -81,6 +81,7 @@ class Pruner(App):
             )
 
             # rank the date, feed_id pairings
+            # (rank function gives equal value for ties for different app/status)
             dfc = date_feed.subquery(name="date_feed").c  # subquery output columns
             ranked = select(
                 dfc.date,
