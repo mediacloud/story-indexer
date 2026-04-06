@@ -39,13 +39,13 @@ class Collector(Worker):  # NOT a StoryWorker!
         if not database_url:
             raise AppException("need DATABASE_URL")
 
-        # pool_size? echo??
-        self.engine = create_engine(database_url)
+        # can pass echo (echo sql statements for debug)
+        self.engine = create_engine(database_url, pool_pre_ping=True)
 
         # create tables (if not previously existing)
         Base.metadata.create_all(self.engine)
 
-        # factory for Sesion with presupplied parameters:
+        # factory for Session with presupplied parameters:
         self.session_factory = sessionmaker(bind=self.engine)
 
     def process_message(self, im: InputMessage) -> None:
