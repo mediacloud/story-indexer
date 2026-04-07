@@ -48,6 +48,9 @@ class Collector(Worker):  # NOT a StoryWorker!
         # factory for Session with presupplied parameters:
         self.session_factory = sessionmaker(bind=self.engine)
 
+    def incr_msg(self, status: str) -> None:
+        self.incr("msgs", labels=[("status", status)])
+
     def process_message(self, im: InputMessage) -> None:
         """
         decode as newline separated JSON
@@ -55,13 +58,14 @@ class Collector(Worker):  # NOT a StoryWorker!
         """
 
         lines = im.body.decode("utf-8").split("\n")
-        logger.info("process_message: %d line(s)", len(lines))
         if not lines:
-            # count? log??
+            self.incr_msg("empty")
             return
 
         rows: list[dict] = []
         first = True
+        version_dict = {}
+        version_app = None
         version = []
         app = "unknown"
         for line in lines:
@@ -69,37 +73,45 @@ class Collector(Worker):  # NOT a StoryWorker!
                 j = json.loads(line)
                 assert isinstance(j, dict)
             except Exception as e:
-                # XXX count??
+                self.incr("lines.bad")
                 logger.error("exception parsing %s: %.50r", line, e)
                 continue
 
             if first:
                 first = False
                 if "version" in j:
-                    # also: "sent_at" (time.time), "app"
-                    version = j["version"]
+                    ll = len(lines)
+                    version_dict = j
+                    version = version_dict["version"]
                     if version[0] > StoryMixin.BREADCRUMB_VERSION[0]:
-                        logger.info("breadcrumbs too new: %r", version)
+                        logger.info("%d lines(s); too new: %r", ll, version_dict)
+                        self.incr_msg("too-new")
                         return
-                    if "app" in j:
-                        app = j["app"]
+                    self.incr_msg("vers-ok")
+                    version_app = version_dict.get("app")
+                    print("%d line(s): %r", ll, version_dict)
+                    # XXX discard if "sent_at" (timestamp) too long ago?
                     continue
+                else:
+                    self.incr_msg("no-vers")
             # XXX handle old version crumbs?
-            # XXX discard if "date" too old!!!!
             if "count" not in j:
                 j["count"] = 1
+            app = j.get("app", version_app)
             rows.append(j)
+
+            # showing counts rcvd (not committed)
             self.incr("crumbs", labels=[("app", app)])
 
         with self.session_factory() as session:
             session.begin()
 
-            # can't pass all the rows at once to insert/increment (it
+            # can't pass all the rows at once to .values(); (it
             # accepts a list of dicts) because more than one may have
             # same set of keys, _COULD_ coalesce them up front (via a
             # Counter indexed by a tuple (or frozendict) of the crumb
-            # columns), but mindful of Knuth's warning, not doing
-            # that for now:
+            # columns), but mindful of Knuth's warning, not doing that
+            # for now:
 
             for row in rows:
                 insert_stmt = insert(Crumb).values(row)
@@ -107,11 +119,11 @@ class Collector(Worker):  # NOT a StoryWorker!
                 # an "upsert" that increments!
                 incsert_stmt = insert_stmt.on_conflict_do_update(
                     index_elements=CRUMB_UNIQUE_KEYS,
-                    # could replace 1 with insert_stmt.excluded.count
-                    # if passed list of deduped rows with count:
-                    set_={"count": Crumb.count + 1},
+                    # get increment value from values
+                    # (in case dups consolidatated)
+                    set_={"count": Crumb.count + insert_stmt.excluded.count},
                 )
-                # no need to wrap in a try??
+                # not in a try (let message handling retry/quarantine)
                 result = session.execute(incsert_stmt)
                 result.close()
             session.commit()
