@@ -89,7 +89,7 @@ class Collector(Worker):  # NOT a StoryWorker!
                         return
                     self.incr_msg("vers-ok")
                     version_app = version_dict.get("app")
-                    print("%d line(s): %r", ll, version_dict)
+                    logger.info("%d line(s): %r", ll, version_dict)
                     # XXX discard if "sent_at" (timestamp) too long ago?
                     continue
                 else:
