@@ -278,6 +278,7 @@ class RSSPuller(ShufflingStoryProducer):
             got, new_last = self.api_get_and_queue(last, batch_size)
             if got > 0 and new_last:
                 cookie_jar.write(json.dumps(new_last))
+                self.gauge("stories.max-id", new_last["id"])
 
             if got < batch_size:
                 # got nothing or short batch
