@@ -3,6 +3,7 @@ API server for pipeview database
 """
 
 import argparse
+import datetime as dt
 import logging
 import os
 
@@ -71,6 +72,8 @@ async def sum(
     domain: str | None = Query(None),
     app: str | None = Query(None),
     status: str | None = Query(None),
+    start_date: dt.date | None = Query(None),
+    end_date: dt.date | None = Query(None),
     # pagination (requires ordered results!!)
     # skip: int = Query(0),
     # limit: int = Query(1000),
@@ -90,6 +93,10 @@ async def sum(
         query = query.where(Crumb.app == app)
     if status is not None:
         query = query.where(Crumb.status == status)
+    if start_date is not None:
+        query = query.where(Crumb.date >= start_date.isoformat())
+    if end_date is not None:
+        query = query.where(Crumb.date <= end_date.isoformat())
 
     query = query.group_by(*columns)
     # need order_by if paginating
