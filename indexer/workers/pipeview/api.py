@@ -22,6 +22,7 @@ from indexer.workers.pipeview.models import Crumb, CrumbKey
 logger = logging.getLogger("pipeview-api")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+PIPEVIEW_DAYS = os.environ.get("PIPEVIEW_DAYS")
 
 # pool_size, echo??
 async_engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
@@ -80,6 +81,12 @@ async def sum(
 ) -> list[dict[str, int | str | None]]:
     columns = [getattr(Crumb, c) for c in col]
     query = select(*columns, func.sum(Crumb.count), func.count(Crumb.id))
+
+    # default start date to day range kept by pruner
+    # (ignore dead feeds from the deep past)
+    # if you want ALL dates, pass start_date=2000-01-01
+    if start_date is None and PIPEVIEW_DAYS and PIPEVIEW_DAYS.isdigit():
+        start_date = dt.datetime.utcnow().date() - dt.timedelta(days=int(PIPEVIEW_DAYS))
 
     # apply filters
     if source_id is not None:
