@@ -135,7 +135,7 @@ class Pruner(App):
                 s = select(func.count(1)).where(
                     Crumb.date == odfc.date, Crumb.feed_id == odfc.feed_id
                 )
-                print(session.execute(s).one()[0], "rows")
+                print(session.execute(s).scalar_one(), "rows")
                 assert old_date_feed_count == len(df)
                 # test days == len(dates)??
 
