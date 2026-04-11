@@ -383,10 +383,13 @@ services:
 
   ################ stats reporters
 
+  # get docker stats (container counts etc)
   # almost certainly needs to run on a swarm manager
   docker-stats:
     <<: *worker-service-settings
-    deploy: &worker-deploy-settings
+    # was deploy: &worker-deploy-settings ???!!!
+    deploy:
+      <<: *worker-deploy-settings
       placement:
         constraints:
           - node.role == manager
@@ -451,6 +454,7 @@ services:
     environment:
       <<: *base-environment-vars
       PGPORT: {{pipeview_pgport}}
+      # for initialization:
       POSTGRES_DB: {{pipeview_postgres_db}}
       POSTGRES_PASSWORD: {{pipeview_postgres_password}}
       POSTGRES_USER: {{pipeview_postgres_user}}
@@ -460,7 +464,7 @@ services:
     volumes:
       - pipeview_db:/var/lib/postgresql
 
-  # a QApp; needs RABBITMQ_URL, STATSD_{REALM,URL}:
+  # a QApp (needs STATSD_{REALM,URL}); needs RABBITMQ_URL, DATABASE_URL
   pipeview-collector:
     <<: *worker-service-settings
     deploy:
@@ -470,7 +474,7 @@ services:
       RUN: pipeview-collector
       DATABASE_URL: {{pipeview_database_url}}
 
-  # doesn't need RABBITMQ_URL
+  # an App (needs STATSD_{REALM,URL}); needs DATABASE_URL, but not RABBITMQ_URL
   pipeview-api:
     <<: *worker-service-settings
     deploy:
@@ -480,8 +484,26 @@ services:
       RUN: pipeview-api
       DATABASE_URL: {{pipeview_database_url}}
       PIPEVIEW_API_PORT: {{pipeview_api_port}}
+      PIPEVIEW_DAYS: {{pipeview_days}}
     ports:
       - "{{pipeview_api_port_exported}}:{{pipeview_api_port}}"
+
+  # an App (needs STATSD_{REALM,URL}); needs DATABASE_URL, but not RABBITMQ_URL
+  pipeview-pruner:
+    <<: *worker-service-settings
+    deploy:
+      <<: *worker-deploy-settings
+      labels:
+         swarm.cronjob.enable: "true"
+         swarm.cronjob.schedule: "0 23 0 * * *" # sec min hr DOM mon DOW
+         swarm.cronjob.replicas: 1
+         swarm.cronjob.skip-running: "true" {# don't restart if currently running #}
+      replicas: 0 {# only run once an hour #}
+    environment:
+      <<: *worker-environment-vars
+      RUN: pipeview-pruner
+      DATABASE_URL: {{pipeview_database_url}}
+      PIPEVIEW_DAYS: {{pipeview_days}}
 {% endif %}
 
 {% macro define_volume(prefix, suffix='') %}
