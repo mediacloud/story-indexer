@@ -175,7 +175,7 @@ class RSSPuller(ShufflingStoryProducer):
         return self.make_crumb(
             feed_id=sj.get("feed_id"),
             source_id=sj.get("sources_id"),
-            domain=None,  # FINAL domain
+            domain=sj.get("domain"),
             status=status,
         )
 

@@ -90,7 +90,7 @@ class StoryMixin(AppProtocol):
         *,
         feed_id: int | None,
         source_id: int | None,
-        domain: str | None,  # canonical_domain from parser
+        domain: str | None,  # canonical_domain from parser, or from rss
         status: str,
     ) -> BreadCrumb:
         """
@@ -115,7 +115,7 @@ class StoryMixin(AppProtocol):
         crumb = self.make_crumb(
             feed_id=rss.source_feed_id,
             source_id=rss.source_source_id,
-            domain=cmd.canonical_domain,
+            domain=cmd.canonical_domain or rss.domain,
             status=status,
         )
         return crumb
