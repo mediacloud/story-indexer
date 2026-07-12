@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 from collections import Counter
 from typing import Any
-from xml.etree.ElementTree import XMLPullParser
+from xml.etree.ElementTree import Element, XMLPullParser
 
 # PyPI:
 import mcmetadata
@@ -193,11 +193,13 @@ class Parser(StoryWorker):
         if "<!doctype" in data[0:128].lower():
             return True
 
+        tag = ""
         try:
             pp = XMLPullParser(["start"])
             pp.feed(data)  # pass substring? (first 8K?)
-            event, element = next(pp.read_events())
-            tag = element.tag.lower()
+            event, element = next(pp.read_events())  # type: ignore[misc]
+            if isinstance(element, Element):
+                tag = element.tag.lower()
         except (SyntaxError, StopIteration):
             # xml.etree.ElementTree.ParseError is subclass of SyntaxError
             return True

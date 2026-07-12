@@ -8,14 +8,8 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.13.0
+anyio==4.14.1
     # via starlette
-attrs==26.1.0
-    # via
-    #   service-identity
-    #   twisted
-automat==25.4.16
-    # via twisted
 babel==2.18.0
     # via courlan
 beautifulsoup4==4.12.3
@@ -33,56 +27,45 @@ botocore==1.31.85
     # via
     #   boto3
     #   s3transfer
-certifi==2026.2.25
+certifi==2026.6.17
     # via
     #   elastic-transport
     #   requests
     #   sentry-sdk
     #   trafilatura
-cffi==2.0.0
-    # via cryptography
-chardet==7.4.0.post2
+chardet==7.4.3
     # via readability-lxml
-charset-normalizer==3.4.6
+charset-normalizer==3.4.9
     # via
     #   htmldate
     #   requests
     #   trafilatura
-click==8.3.1
+click==8.4.2
     # via
     #   nltk
     #   uvicorn
-constantly==23.10.4
-    # via twisted
-courlan==1.3.2
+courlan==1.4.0
     # via trafilatura
-cryptography==46.0.6
-    # via
-    #   pyopenssl
-    #   scrapy
-    #   service-identity
 cssselect==1.4.0
     # via
     #   goose3
     #   newspaper3k
-    #   parsel
     #   readability-lxml
-    #   scrapy
 dateparser==1.2.2
     # via
     #   htmldate
     #   mediacloud-metadata
 defusedxml==0.7.1
-    # via scrapy
+    # via nltk
 docker==7.1.0
     # via story-indexer (pyproject.toml)
-elastic-transport==8.17.1
+elastic-transport==8.19.0
     # via elasticsearch
 elasticsearch==8.17.2
     # via story-indexer (pyproject.toml)
 exceptiongroup==1.3.1
     # via anyio
-fastapi==0.135.2
+fastapi==0.135.4
     # via story-indexer (pyproject.toml)
 faust-cchardet==2.1.19
     # via mediacloud-metadata
@@ -90,13 +73,13 @@ feedfinder2==0.0.4
     # via newspaper3k
 feedparser==6.0.12
     # via newspaper3k
-filelock==3.25.2
+filelock==3.29.7
     # via tldextract
 furl==2.1.4
     # via mediacloud-metadata
 goose3==3.1.21
     # via mediacloud-metadata
-greenlet==3.3.2
+greenlet==3.5.3
     # via sqlalchemy
 h11==0.16.0
     # via uvicorn
@@ -104,30 +87,17 @@ htmldate==1.8.1
     # via
     #   mediacloud-metadata
     #   trafilatura
-hyperlink==21.0.0
-    # via twisted
-idna==3.11
+idna==3.18
     # via
     #   anyio
-    #   hyperlink
     #   requests
     #   tldextract
-incremental==24.11.0
-    # via twisted
-itemadapter==0.13.1
-    # via
-    #   itemloaders
-    #   scrapy
-itemloaders==1.4.0
-    # via scrapy
 jieba3k==0.35.1
     # via newspaper3k
 jmespath==1.1.0
     # via
     #   boto3
     #   botocore
-    #   itemloaders
-    #   parsel
 joblib==1.5.3
     # via nltk
 justext==3.0.2
@@ -141,63 +111,38 @@ lxml==5.1.1
     #   justext
     #   lxml-html-clean
     #   newspaper3k
-    #   parsel
     #   readability-lxml
-    #   scrapy
     #   trafilatura
 lxml-html-clean==0.4.4
     # via readability-lxml
-mediacloud-metadata==1.4.1
+mediacloud-metadata==1.4.3
     # via story-indexer (pyproject.toml)
 newspaper3k==0.2.8
     # via mediacloud-metadata
-nltk==3.9.4
+nltk==3.10.0
     # via newspaper3k
 numpy==2.2.6
     # via py3langid
 orderedmultidict==1.0.2
     # via furl
-packaging==26.0
-    # via
-    #   incremental
-    #   parsel
-    #   scrapy
-parsel==1.11.0
-    # via
-    #   itemloaders
-    #   scrapy
 pika==1.3.2
     # via story-indexer (pyproject.toml)
-pillow==12.1.1
+pillow==12.3.0
     # via
     #   goose3
     #   newspaper3k
-protego==0.6.0
-    # via scrapy
 psycopg==3.1.20
     # via story-indexer (pyproject.toml)
 psycopg-binary==3.1.20
     # via psycopg
 py3langid==0.2.2
     # via mediacloud-metadata
-pyahocorasick==2.3.0
+pyahocorasick==2.3.1
     # via goose3
-pyasn1==0.6.3
-    # via
-    #   pyasn1-modules
-    #   service-identity
-pyasn1-modules==0.4.2
-    # via service-identity
-pycparser==3.0
-    # via cffi
-pydantic==2.12.5
+pydantic==2.13.4
     # via fastapi
-pydantic-core==2.41.5
+pydantic-core==2.46.4
     # via pydantic
-pydispatcher==2.0.7
-    # via scrapy
-pyopenssl==26.0.0
-    # via scrapy
 python-dateutil==2.9.0.post0
     # via
     #   botocore
@@ -205,21 +150,19 @@ python-dateutil==2.9.0.post0
     #   goose3
     #   htmldate
     #   newspaper3k
-pytz==2026.1.post1
+pytz==2026.2
     # via dateparser
 pyyaml==6.0.3
     # via newspaper3k
-queuelib==1.9.0
-    # via scrapy
 rabbitmq-admin==0.2
     # via story-indexer (pyproject.toml)
 readability-lxml==0.8.4.1
     # via mediacloud-metadata
-regex==2026.3.32
+regex==2026.7.10
     # via
     #   dateparser
     #   nltk
-requests==2.33.1
+requests==2.34.2
     # via
     #   docker
     #   feedfinder2
@@ -233,12 +176,8 @@ requests-file==3.0.1
     # via tldextract
 s3transfer==0.7.0
     # via boto3
-scrapy==2.11.2
-    # via story-indexer (pyproject.toml)
 sentry-sdk==1.34.0
     # via story-indexer (pyproject.toml)
-service-identity==24.2.0
-    # via scrapy
 sgmllib3k==1.0.0
     # via feedparser
 six==1.17.0
@@ -252,15 +191,13 @@ six==1.17.0
     #   surt
     #   url-normalize
     #   warcio
-soupsieve==2.8.3
+soupsieve==2.8.4
     # via beautifulsoup4
-sqlalchemy==2.0.48
+sqlalchemy==2.0.51
     # via story-indexer (pyproject.toml)
-starlette==1.0.0
+starlette==1.3.1
     # via fastapi
 statsd-client==1.0.7
-    # via story-indexer (pyproject.toml)
-supervisor==4.2.5
     # via story-indexer (pyproject.toml)
 surt==0.3.1
     # via mediacloud-metadata
@@ -272,36 +209,28 @@ tldextract==5.1.3
     # via
     #   mediacloud-metadata
     #   newspaper3k
-    #   scrapy
     #   surt
-tomli==2.4.1
-    # via incremental
-tqdm==4.67.3
+tqdm==4.68.4
     # via nltk
 trafilatura==1.8.1
     # via mediacloud-metadata
-twisted==25.5.0
-    # via scrapy
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   anyio
-    #   cryptography
     #   exceptiongroup
     #   fastapi
     #   psycopg
     #   pydantic
     #   pydantic-core
-    #   pyopenssl
     #   sqlalchemy
     #   starlette
-    #   twisted
     #   typing-inspection
     #   uvicorn
 typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
-tzlocal==5.3.1
+tzlocal==5.4.4
     # via dateparser
 url-normalize==1.4.3
     # via mediacloud-metadata
@@ -317,19 +246,5 @@ urllib3==2.0.7
     #   trafilatura
 uvicorn==0.42.0
     # via story-indexer (pyproject.toml)
-w3lib==2.4.1
-    # via
-    #   parsel
-    #   scrapy
 warcio==1.7.5
     # via story-indexer (pyproject.toml)
-zope-interface==8.2
-    # via
-    #   scrapy
-    #   twisted
-
-# The following packages are considered to be unsafe in a requirements file:
-setuptools==82.0.1
-    # via
-    #   scrapy
-    #   supervisor

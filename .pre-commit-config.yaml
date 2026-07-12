@@ -19,7 +19,7 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
-        entry: bin/pre-commit-wrapper.py mypy
+        entry: ./.pre-commit-run.sh mypy
         additional_dependencies: ["pip==22.0.*"]
   - repo: http://github.com/pycqa/flake8
     rev: 7.3.0

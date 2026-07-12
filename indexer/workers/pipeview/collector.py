@@ -97,7 +97,7 @@ class Collector(Worker):  # NOT a StoryWorker!
             # XXX handle old version crumbs?
             if "count" not in j:
                 j["count"] = 1
-            app = j.get("app", version_app)
+            app = j.get("app", version_app) or app
             rows.append(j)
 
             # showing counts rcvd (not committed)

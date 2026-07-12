@@ -6,7 +6,7 @@ VENVDONE=$(VENVDIR)/.done
 VENVPY=$(VENVBIN)/python
 
 PIP=$(VENVPY) -m pip
-PIPTOOLS=$(VENVPY) -m piptools
+PIP_COMPILE=$(VENVBIN)/pip-compile
 PRE_COMMIT=$(VENVBIN)/pre-commit
 
 ## display this message
@@ -21,50 +21,62 @@ help:
 
 ## tidy up local dev environment
 clean:
-	rm -rf __pycache__ .mypy_cache
+	$(PRE_COMMIT) clean
+	rm -rf venv __pycache__ .mypy_cache indexer/__pycache__
 
-# generate and/or update requirement.txt
-upgrade-prod:
-	$(PIP) install --upgrade pip-tools pip
-	$(PIPTOOLS) compile \
+## update .pre-commit-config.yaml
+update:
+	$(PRE_COMMIT) autoupdate
+
+## re-create requirements*.txt files
+requirements: requirements.txt requirements-dev.txt requirements-pre.txt
+
+# WISH: switch to "uv"? hopefully faster than pip-compile
+#	avoid needing to install pip-tools!!
+
+# build requirements to run
+requirements.txt: $(PIP_COMPILE)
+	$(PIP_COMPILE) \
 		--strip-extras \
 		pyproject.toml
 
 # generate and/or update requirements-dev.txt (based on requirements.txt)
-upgrade-dev:
-	$(PRE_COMMIT) autoupdate
+requirements-dev.txt: $(PIP_COMPILE) requirements.txt pyproject.toml
 	echo "--constraint $(ROOT_DIR)/requirements.txt" | \
-		$(PIPTOOLS) compile \
+		$(PIP_COMPILE) \
 		  	--strip-extras \
 			--extra dev \
+			--extra deploy \
 			--output-file requirements-dev.txt \
 			pyproject.toml
 
-## generate and/or update requirement.txt and requirements-dev.txt files
-upgrade: upgrade-prod upgrade-dev
+# generate and/or update requirements-pre.txt (based on requirements.txt)
+requirements-pre.txt: $(PIP_COMPILE) requirements.txt pyproject.toml
+	echo "--constraint $(ROOT_DIR)/requirements.txt" | \
+		$(PIP_COMPILE) \
+			--strip-extras \
+			--extra pre-commit \
+			--extra deploy \
+			--output-file requirements-pre.txt \
+			pyproject.toml
 
-# install requirement.txt dependencies
-install-deps-prod:
-	$(PIP) install -r requirements.txt
-
-# install requirement-dev.txt dependencies
-install-deps-dev:
-	$(PIP) install -r requirements-dev.txt
-
-# install this app with dev extras
-install-app-dev:
-# --no-deps so that we don't reinstall un-pinned dependencies from pyproject
-	$(PIP) install --no-deps --editable ".[dev]"
+# avoids:
+# circular dependency for building requirements-dev.txt,
+# always installing pip-tools
+$(VENVBIN)/pip-compile:
+	$(PIP) install --upgrade pip-tools pip
 
 ## install all required dependencies for development
-install: $(VENVPY) install-deps-dev install-app-dev
+install: $(VENVDONE)
+
+# .pre-commit-run.sh will reinstall from requirements-pre.txt when it changes
+$(VENVDONE): $(VENVPY) requirements-dev.txt requirements-pre.txt
+	$(PIP) install -r requirements-dev.txt
 	$(PRE_COMMIT) install
 	touch $(VENVDONE)
 
-$(VENVDONE): requirements.txt requirements-dev.txt
-	$(MAKE) install
-
-# not depending on VENVDIR, which "changes" when VENVDONE created
+# create venv if not present:
+# don't depend on VENVDIR: changes when VENVDONE created
 $(VENVPY):
 	python3 -m venv $(VENVDIR)
 

@@ -195,7 +195,7 @@ class LocalFileTracker(FileTracker):
         raise NotImplementedError("_db_close")
 
 
-if False:
+'''
     import dbm.gnu
     import errno
 
@@ -241,7 +241,7 @@ if False:
             if self._dbm:
                 self._dbm.close()
                 self._dbm = None
-
+'''
 
 _SQL3_CREATE_TABLE = (
     "CREATE TABLE IF NOT EXISTS "
