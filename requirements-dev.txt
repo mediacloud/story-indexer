@@ -8,7 +8,7 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.14.1
+anyio==4.14.2
     # via starlette
 babel==2.18.0
     # via courlan
@@ -136,7 +136,7 @@ lxml-html-clean==0.4.4
     # via readability-lxml
 markupsafe==3.0.3
     # via jinja2
-mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.5.1#subdirectory=deploy/mc-deploy
+mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.6.0#subdirectory=deploy/mc-deploy
     # via story-indexer (pyproject.toml)
 mc-manage @ git+https://github.com/mediacloud/mc-manage@v1.1.4
     # via story-indexer (pyproject.toml)

@@ -29,7 +29,7 @@ dependencies = [
 # installed in both development and pre-commit venvs
 # (come up with a better name if there's another case!)
 deploy = [
-  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.5.1#subdirectory=deploy/mc-deploy",
+  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.6.0#subdirectory=deploy/mc-deploy",
 ]
 
 # packages installed in development venv, but not pre-commit:
