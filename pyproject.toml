@@ -1,3 +1,6 @@
+# NOTE!  If you change requirements in this file, you *MUST* run "make
+# requirements" and commit the changed requirements*.txt files!
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -29,7 +32,8 @@ dependencies = [
 # installed in both development and pre-commit venvs
 # (come up with a better name if there's another case!)
 deploy = [
-  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.6.0#subdirectory=deploy/mc-deploy",
+  "jinja2 ~= 3.1.0",
+  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.7.1#subdirectory=deploy/mc-deploy",
 ]
 
 # packages installed in development venv, but not pre-commit:

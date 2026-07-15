@@ -98,6 +98,8 @@ idna==3.18
     #   tldextract
 jieba3k==0.35.1
     # via newspaper3k
+jinja2==3.1.6
+    # via story-indexer (pyproject.toml)
 jmespath==1.1.0
     # via
     #   boto3
@@ -121,7 +123,9 @@ lxml-html-clean==0.4.4
     # via readability-lxml
 lxml-stubs==0.5.1
     # via story-indexer (pyproject.toml)
-mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.6.0#subdirectory=deploy/mc-deploy
+markupsafe==3.0.3
+    # via jinja2
+mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.7.1#subdirectory=deploy/mc-deploy
     # via story-indexer (pyproject.toml)
 mediacloud-metadata==1.4.3
     # via story-indexer (pyproject.toml)
