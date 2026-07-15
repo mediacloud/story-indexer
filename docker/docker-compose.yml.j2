@@ -45,15 +45,17 @@
  # (declared inline under foo-service-settings)
  #}
 
-# context:
-# stack_name: {{stack_name}}
-# deployment_branch: {{deployment_branch}}
-# deployment_date_time: {{deployment_date_time}}
-# deployment_git_hash: {{deployment_git_hash}}
-# deployment_host: {{deployment_host}}
-# deployment_options: {{deployment_options}}
-# deployment_user: {{deployment_user}}
-# pipeline_type: {{pipeline_type}}
+################ context from deploy script
+
+x-context: &context
+  stack_name: {{stack_name}}
+  deployment_branch: {{deployment_branch}}
+  deployment_date_time: {{deployment_date_time}}
+  deployment_git_hash: {{deployment_git_hash}}
+  deployment_host: {{deployment_host}}
+  deployment_options: {{deployment_options}}
+  deployment_user: {{deployment_user}}
+  pipeline_type: {{pipeline_type}}
 
 ################ common settings for all services
 
