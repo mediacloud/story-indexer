@@ -6,7 +6,7 @@ report Elastic Search stats to statsd
 # with help from importer
 
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from logging import getLogger
 from typing import Any, Dict, NamedTuple, cast
 
@@ -104,12 +104,30 @@ class ElasticStats(ElasticMixin, IntervalMixin, App):
                 labels=node_labels,
             )
 
+            # flush this if/when the sums below deployed?
+            # it's hard to display and 3-D (nodes x pools x attrs)!
             for pool_name, pool_data in node_data["thread_pool"].items():
                 pool_label = node_labels + [("pool", pool_name)]
                 # these _look_ like they might be summable, but seems unlikely
                 for attr in ["queue", "active", "rejected", "completed"]:
                     self.g(
                         f"node.thread_pool.{attr}", pool_data[attr], labels=pool_label
+                    )
+
+            # from mediacloud/es-tools/es_top.py
+            # which started by cribbing a bit of this file
+            # (after I decided these ARE summable!)
+            pool_sums: dict[str, dict[str, int]] = defaultdict(Counter)
+            for node_id, node_data in stats["nodes"].items():
+                for pool_name, pool_data in node_data["thread_pool"].items():
+                    for attr, count in pool_data.items():
+                        pool_sums[pool_name][attr] += pool_data[attr]
+            for pool_name, counters in pool_sums.items():
+                for attr, value in counters.items():
+                    self.g(
+                        f"node.thread_pool_sums.{attr}",
+                        value,
+                        labels=[("pool", pool_name)],
                     )
 
             # description of "parent" breaker:
