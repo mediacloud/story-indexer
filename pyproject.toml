@@ -54,6 +54,7 @@ pre-commit = [
   "types-requests ~=2.31.0.2",
 ]
 
+
 [tool.isort]
 profile = "black"
 
@@ -70,9 +71,6 @@ show_error_codes = true
 
 # look for local stubs to PyPI packages in top level stubs directory
 mypy_path = "stubs"
-
-# phil 7/11/26: "safe-super" error appeared: just disable "for now"
-disable_error_code = ["safe-super"]
 
 [tool.pip-tools]
 allow-unsafe = true
