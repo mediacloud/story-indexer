@@ -12,7 +12,7 @@ import time
 import urllib.parse
 from logging.handlers import SysLogHandler
 from types import TracebackType
-from typing import Any, List, Optional, Protocol, Tuple, TypeAlias
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, TypeAlias
 
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
@@ -38,34 +38,6 @@ class AppException(RuntimeError):
     """
     App class Exceptions
     """
-
-
-class AppProtocol(Protocol):
-    """
-    base class for App mixins that declare & access command line args,
-    or want to report stats
-    """
-
-    args: Optional[argparse.Namespace]
-
-    process_name: str
-
-    def define_options(self, ap: argparse.ArgumentParser) -> None: ...
-
-    def process_args(self) -> None: ...
-
-    def incr(self, name: str, value: int = 1, labels: Labels = []) -> None: ...
-
-    def gauge(self, name: str, value: float, labels: Labels = []) -> None: ...
-
-    def timing(
-        self, name: str, ms: float | dt.date | dt.datetime, labels: Labels = []
-    ) -> None: ...
-
-    def timer(self, name: str) -> "_TimingContext": ...
-
-    def queue_breadcrumb(self, crumb: dict) -> None:
-        return
 
 
 # Dicts of log formats, indexed by App.LOG_FORMAT
@@ -135,7 +107,7 @@ class SendtoSocketWrapper:
         self.actual_socket.close()
 
 
-class App(AppProtocol):
+class App:
     """
     Base class for command line applications (ie; Worker)
     """
@@ -445,6 +417,17 @@ class App(AppProtocol):
         not necessarily a loop!
         """
         raise NotImplementedError(f"{self.__class__.__name__} must override main_loop!")
+
+
+# AppProtocol used to be based on typing.Protocol, but started getting
+# "safe-super" errors from mypy (from a new rev of mypy?).
+# This solution from:
+# https://stackoverflow.com/questions/56980077/how-to-type-python-mixin-with-superclass-calls
+# _could_ rename to AppMixinBase
+if TYPE_CHECKING:
+    AppProtocol = App
+else:
+    AppProtocol = object
 
 
 class _TimingContext:

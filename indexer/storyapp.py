@@ -17,14 +17,14 @@ import random
 import sys
 import threading
 import time
-from typing import Dict, List, Optional, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeAlias, TypedDict
 from urllib.parse import urlsplit
 
 from mcmetadata.urls import is_non_news_domain
 from pika import BasicProperties
 from pika.adapters.blocking_connection import BlockingChannel
 
-from indexer.app import AppProtocol, BreadCrumb, IntervalMixin
+from indexer.app import BreadCrumb, IntervalMixin
 from indexer.story import BaseStory
 from indexer.worker import (
     CONSUMER_TIMEOUT_SECONDS,
@@ -55,7 +55,13 @@ def url_fqdn(url: str) -> str:
     return hn.lower()
 
 
-class StoryMixin(AppProtocol):
+if TYPE_CHECKING:
+    StoryMixinBase = QApp
+else:
+    StoryMixinBase = object
+
+
+class StoryMixin(StoryMixinBase):
     """
     The place for Story-specific methods for both
     StoryProducers (output only) and Workers (in/out)
