@@ -14,12 +14,12 @@ from typing import Any
 
 from elasticsearch import Elasticsearch
 
-from indexer.app import AppProtocol
+from indexer.app import AppMixinBase
 
 logger = getLogger(__name__)
 
 
-class ElasticMixin(AppProtocol):
+class ElasticMixin(AppMixinBase):
     """
     mixin class for Apps that use Elastic Search API
     """

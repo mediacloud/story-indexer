@@ -419,15 +419,13 @@ class App:
         raise NotImplementedError(f"{self.__class__.__name__} must override main_loop!")
 
 
-# AppProtocol used to be based on typing.Protocol, but started getting
-# "safe-super" errors from mypy (from a new rev of mypy?).
-# This solution from:
+# used to be AppProtocol, based on typing.Protocol, but started getting
+# "safe-super" errors from mypy for subclassed mathods. This solution from:
 # https://stackoverflow.com/questions/56980077/how-to-type-python-mixin-with-superclass-calls
-# _could_ rename to AppMixinBase
 if TYPE_CHECKING:
-    AppProtocol = App
+    AppMixinBase = App  # base on concrete class when checking
 else:
-    AppProtocol = object
+    AppMixinBase = object  # bare mixin at runtime
 
 
 class _TimingContext:
@@ -459,7 +457,7 @@ class _TimingContext:
         self.t0 = -1.0
 
 
-class IntervalMixin(AppProtocol):
+class IntervalMixin(AppMixinBase):
     """
     Mixin for Apps that report stats at a fixed interval
     """
