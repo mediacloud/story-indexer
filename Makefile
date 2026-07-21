@@ -61,10 +61,11 @@ requirements-pre.txt: $(PIP_COMPILE) requirements.txt pyproject.toml
 			pyproject.toml
 
 # avoids:
-# circular dependency for building requirements-dev.txt,
-# always installing pip-tools
-$(VENVBIN)/pip-compile:
-	$(PIP) install --upgrade pip-tools pip
+# 1. circular dependency for building requirements-dev.txt
+# 2. always installing pip-tools
+# typing-extensions required on Python 3.10 for Self?
+$(VENVBIN)/pip-compile: $(VENVPY)
+	$(PIP) install typing-extensions pip-tools
 
 ## install all required dependencies for development
 install: $(VENVDONE)
