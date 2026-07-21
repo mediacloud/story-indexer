@@ -35,7 +35,7 @@ requirements: requirements.txt requirements-dev.txt requirements-pre.txt
 #	avoid needing to install pip-tools!!
 
 # build requirements to run
-requirements.txt: $(PIP_COMPILE)
+requirements.txt: $(PIP_COMPILE) pyproject.toml
 	$(PIP_COMPILE) \
 		--strip-extras \
 		pyproject.toml
