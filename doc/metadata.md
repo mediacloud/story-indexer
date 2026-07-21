@@ -107,7 +107,7 @@ that exit the pipeline before the story has been fetched and parsed).
 
 ##### pub_date (str)
 
-The Story publishing data (if any) in RFC2822 format, extracted from
+The Story publication date (if any) in RFC2822 format, extracted from
 original RSS or Sitemap page, MAY be used by importer if Parser
 cannot extract a publication date.
 
