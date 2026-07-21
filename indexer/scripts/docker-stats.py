@@ -10,8 +10,10 @@ import argparse
 from logging import getLogger
 from typing import Dict
 
+# MyPI:
 import docker.client  # mypy doesn't see from_env in top module
 
+# project:
 from indexer.app import App, IntervalMixin
 
 logger = getLogger("docker-stats")
