@@ -341,7 +341,7 @@ remove_crontab() {
     echo "Cron removal aborted."
     exit 1
   fi
-  
+
   # Remove any existing crontab entries for this script
   existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
   if [ -n "$existing_crontab" ]; then
@@ -355,15 +355,15 @@ remove_crontab() {
 update_crontab() {
   # Get the absolute path of the script
   script_path=$(realpath "$0")
-  
+
   # Get existing crontab entry
   existing_crontab=$(crontab -l 2>/dev/null | grep -F "$script_path")
-  
+
   if [ -z "$existing_crontab" ]; then
     echo "Error: No existing crontab entry found for $script_path"
     exit 1
   fi
-  
+
   # Extract parameters from existing crontab entry
   existing_source_remote_host=$(echo "$existing_crontab" | grep -o -- '-r [^ ]*' | cut -d' ' -f2)
   existing_dest_remote_host=$(echo "$existing_crontab" | grep -o -- '-l [^ ]*' | cut -d' ' -f2)
@@ -374,7 +374,7 @@ update_crontab() {
   existing_interval=$(echo "$existing_crontab" | grep -o -- '-i [^ ]*' | cut -d' ' -f2)
   existing_delay=$(echo "$existing_crontab" | grep -o -- '-w [^ ]*' | cut -d' ' -f2)
 
-  
+
   # Use new parameters if provided, otherwise keep existing ones
   source_remote_host=${source_remote_host:-$existing_source_remote_host}
   dest_remote_host=${dest_remote_host:-$existing_dest_remote_host}
