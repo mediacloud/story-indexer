@@ -1,15 +1,17 @@
 """
-mc-deploy script for story-indexer to replace deploy.sh (started
-9/2023 by phil, from (from rss-fetcher/dokku-scripts/push.sh 9/2022!)
+mc-deploy script for story-indexer
+started 7/11/2026
+from deploy.sh started 9/2023
+from rss-fetcher/dokku-scripts/push.sh 9/2022!
 
-The creattion of the mc-deploy module and the translation to Python
-was motivated by the increased number of different deploy scripts
-(using both Dokku and docker compose), their deviance/deviations, and
-the maintenance nightmare that imposed.
+The creation of the mc-deploy module and the translation from shell
+scripts to Python was motivated by the increased number of different
+deploy scripts (using both Dokku and docker compose), their
+deviance/deviations, and the maintenance nightmare that imposed.
 
 This is, as much as possible, a translation of the functionality of
 the script into the mc-deploy framework rather than taking the
-opportinity to completely restructure things.  As the first use of
+opportunity to completely restructure things.  As the first use of
 DockerDeploy (and probably the most complex), some fiddling with the
 framework was necessary.  All of this goes to say this isn't the
 cleanest, simplest thing, but rather an expedient to avoid the worser
@@ -22,28 +24,26 @@ flavors of pipeline and deployment (dev/staging/prod).
 
 The (unchanged) philosophy of the docker-compose.yml.j2 template is to
 do as much processing OUTSIDE the template as possible, trying to do
-only simple substitution, if's and in the case of dev/staging, a
-single loop to create ES containers.
+only simple substitution, if's and in the case of dev/staging, a loop
+to create ES containers.
 
-That history remains here: all settings are collected using mc-deploy
-settings_xxx calls into a dict (self.settings) of STRING VALUES,
-echoing the original "sourcing" config files into the shell
-environment.
+All settings are collected using mc-deploy settings_xxx calls into a
+dict (self.settings) of STRING VALUES, echoing the original "sourcing"
+config files into the shell environment.
 
-  NOTE!!! **MANY** things are in "settings" so that they can be
-  generated here and passed into the jinja template, to avoid having
-  the same/related value appear more than once in the template, or
-  just because they were shell variables in deploy.sh, NOT because
-  they are changed by any configuration file.  Pain has only been
-  taken to make sure things that matter (need to work to deploy
-  production) work as expected.
+  NOTE!!! **MANY** things are in "settings" and passed into the jinja
+  template, to avoid having the same/related value appear more than
+  once in the template, or just because they were shell variables in
+  deploy.sh, NOT because they are changed by ANY configuration file.
+  Pain has only been taken to make sure things that matter (need to
+  work to deploy production) work as expected.
 
 From those settings, values are EXPLICTLY transferred into lower case
 named variables in the jinja_vars dict.
 
   NOTE! The ordeal below *MIGHT* be made simpler by having a global list:
 
-  `SETTINGS [Var("NAME", "default", Check.XXX, ....)]`
+  `SETTINGS = [Var("NAME", "default", Check.XXX, ....), ...]`
 
   Than can be iterated over, rather than having code in multiple places
   for each variable.  Possible Var parameters:
@@ -64,13 +64,10 @@ FIRST, come up with a variable name.  It should be SPECIFIC to the
 part of the indexer pipeline, its use and the technology is applies
 to, for example PIPEVIEW_POSTGRES_IMAGE, ARCHIVER_B2_BUCKET
 
-If you're adding something it's the only thing you're thinking about,
-and it's OBVIOUS to you, but specificity helps clarify the use to the
-next poor soul who looks at this, AND allows room for the particulars
-to change at a later date (for example we switched from AWS S3 to
-Backblaze B2 and used BOTH for a period), and to be able to
+Specificity helps clarify the use (and avoid confusion), AND allows
+room for the particulars to change at a later date and to be able to
 select/configure the old and new ways in development, testing, and if
-need be, to fall back in production.  Having a generally named
+need be, to fall back in production.  Having a single generally named
 variable whose contents needs to change when new code is running in
 such a way that falling back to old code ALSO requires falling back to
 old configuration makes operations work harder.
@@ -90,14 +87,14 @@ into a config file that is not publicly legible.
     If you want to make the service visible outside docker, have a
     setting like PIPEVIEW_API_PORT_EXPORTED generated using a base
     value that _reminds_ you of the native port used by the service
-    (ie; add 40K) added to the "port_bias" for the stack instance.
+    (ie; add 40K, multiply by 10) added to the "port_bias" for the
+    stack instance.
 
-  Similarly, any setting constructed from other settings (ie; to make
-  a URL) remember to do heavy lifting, and creating common values HERE
-  and NOT in the .j2 file) and you need to override a component of the
-  constructed value, the construction needs to be done at the top of
-  `docker_compose_file_create()` after configuration/options have been
-  applied.
+  Similarly, with any setting constructed from other settings (ie; to
+  make a URL) remember to do heavy lifting, and creating common values
+  HERE and NOT in the .j2 file) and configuration needs to be able to
+  override a component of the constructed value, the construction
+  can be done at the bottom of 'settings_get_new()`
 
 THIRD; you need to transfer the value to jinja_vars using the
 `set` function in `deploy_default_settings`.  While it may seem
@@ -684,6 +681,9 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_load_private_files(f"{r}-config", [file])
         else:
             self.settings_load_file(os.path.join(self.deploy_dir, "dev.sh"))
+            user_file = os.path.join(self.deploy_dir, f"{self.inst_id}.sh")
+            if os.path.exists(user_file):
+                self.settings_load_file(user_file)
 
         # after loading settings:
         assert self._conf_loaded
@@ -750,7 +750,7 @@ class StoryIndexerDeploy(DockerDeploy):
         self.debug("queuer_args", queuer_args)
         self.settings_add("QUEUER_ARGS", queuer_args)
 
-        # XXX validate vars are set???
+        # will throw KeyError if vars not present
         self.settings_add(
             "PIPEVIEW_DATABASE_URL",
             "postgresql+psycopg://"
