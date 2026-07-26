@@ -33,7 +33,7 @@ dependencies = [
 # (come up with a better name if there's another case!)
 deploy = [
   "jinja2 ~= 3.1.0",
-  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.10.latest#subdirectory=deploy/mc-deploy",
+  "mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.11.latest#subdirectory=deploy/mc-deploy",
 ]
 
 # packages installed in development venv, but not pre-commit:

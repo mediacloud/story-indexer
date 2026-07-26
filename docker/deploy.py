@@ -139,7 +139,6 @@ constraints, and testing flavors vs deployment types!!
 # make sure all indexer args used!!
 
 import os
-import re
 import sys
 from enum import Enum
 
@@ -166,6 +165,10 @@ class Check(Enum):
 
 class StoryIndexerDeploy(DockerDeploy):
     INST_BASE = "indexer"  # app base name
+
+    # PLB: maybe just indexer, now that it's used for config & stats reporting?
+    IMAGE_NAME = "indexer-worker"
+    IMAGE_REPO = ""  # don't push to registry!
 
     # map command line names to inst_base prefix & port bias
     # ES uses ports 9200 & 9300, so bias values increase by 200
@@ -256,20 +259,8 @@ class StoryIndexerDeploy(DockerDeploy):
         # must be a valid hostname (no underscores!)
         self.settings_add("SYSLOG_SINK_CONTAINER", "syslog-sink")
 
-        # Pushing to a local registry for now
-        # (since we're not deploying on multi-node
-        # clusters we don't even NEED to push it?!)
-        # MUST have trailing slash unless empty
-        worker_image_registry = "localhost:5000/"
-        if self.is_dev():
-            # testing: disable registry push for development
-            # We always run on just one node.
-            # Images accumulate in registry volume.
-            worker_image_registry = ""
-        self.settings_add("WORKER_IMAGE_REGISTRY", worker_image_registry)
-
-        # PLB: maybe indexer-common, now that it's used for config & stats reporting?
-        self.settings_add("WORKER_IMAGE_NAME", "indexer-worker")
+        self.settings_add("WORKER_IMAGE_NAME", self.image_name)
+        self.settings_add("WORKER_IMAGE_FULL", self.image_full)
 
         # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
         # and to PIPELINE_TYPES (above the usage function)!
@@ -493,19 +484,6 @@ class StoryIndexerDeploy(DockerDeploy):
             "DEPLOYMENT_ID", f"mc-configuration-{self.date_time}-{self.inst_name}"
         )
 
-        # registry (if any, must end with slash) + image name
-        image_reg = self.settings["WORKER_IMAGE_REGISTRY"]
-        if image_reg and not image_reg.endswith("/"):
-            self.fatal(f"WORKER_IMAGE_REGISTRY must end with /: {image_reg}")
-        image_name = self.settings["WORKER_IMAGE_NAME"]
-
-        # use git tag for image tag.
-        # in development this means old tagged images will pile up until removed
-        # (used to allow "dirty" builds where tag was always "dirty").
-        image_tag = re.sub(r"[^a-zA-Z0-9_.-]", "_", self.tag)
-
-        self.settings_add("WORKER_IMAGE_FULL", f"{image_reg}{image_name}:{image_tag}")
-
         # allow multiple deploys on same swarm/cluster:
         self.settings_add("NETWORK_NAME", self.inst_name)
         self.settings_add("STACK_NAME", self.inst_name)
@@ -657,7 +635,7 @@ class StoryIndexerDeploy(DockerDeploy):
         if os.path.exists(output_file):
             os.unlink(output_file)  # in case owned by root
         with open(output_file, "w") as f:
-            self.fix_file_owner(f)
+            self.fix_file_owner(f, private=True)
             f.write(expanded)
 
         self.debug("wrote", output_file)
