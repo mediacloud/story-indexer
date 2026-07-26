@@ -673,12 +673,11 @@ class StoryIndexerDeploy(DockerDeploy):
         self.settings_add("STATSD_URL", self.statsd_url)
         self.settings_add("STATSD_REALM", self.inst_id)
         if self.is_prod_staging():
-            r = self.PROJECT_REPO
             if self.is_prod():
                 file = "prod.sh"
             else:
                 file = "staging.sh"  # stand-alone (not overrides to prod)
-            self.settings_load_private_files(f"{r}-config", [file])
+            self.settings_load_private_files(self.PROJECT_REPO, [file])
         else:
             self.settings_load_file(os.path.join(self.deploy_dir, "dev.sh"))
             user_file = os.path.join(self.deploy_dir, f"{self.inst_id}.sh")

@@ -127,7 +127,7 @@ lxml-stubs==0.5.1
     # via story-indexer (pyproject.toml)
 markupsafe==3.0.3
     # via jinja2
-mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.9.latest#subdirectory=deploy/mc-deploy
+mc-deploy @ git+https://github.com/mediacloud/system-dev-ops@mc-deploy-0.10.latest#subdirectory=deploy/mc-deploy
     # via story-indexer (pyproject.toml)
 mc-manage @ git+https://github.com/mediacloud/mc-manage@v1.1.4
     # via mc-deploy
