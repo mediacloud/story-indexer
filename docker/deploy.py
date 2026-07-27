@@ -140,27 +140,15 @@ constraints, and testing flavors vs deployment types!!
 
 import os
 import sys
-from enum import Enum
 
 # PyPI:
 import jinja2
 
 # mc-deploy package (in mediacloud/system-dev-ops repo):
 from mc_deploy.base import CmdArgs, CmdParser, Flavor, ParserArgs
-from mc_deploy.docker import DockerDeploy
+from mc_deploy.docker import Check, DockerDeploy
 
 SUPER_VERBOSE = False  # for debug
-
-
-class Check(Enum):
-    """
-    value checks for settings passed as jinja template vars
-    """
-
-    INT = "int"
-    BOOL = "bool"
-    STR = "str"
-    ALLOW_EMPTY = "allow-empty"
 
 
 class StoryIndexerDeploy(DockerDeploy):
