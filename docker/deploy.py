@@ -41,22 +41,6 @@ config files into the shell environment.
 From those settings, values are EXPLICTLY transferred into lower case
 named variables in the jinja_vars dict.
 
-  NOTE! The ordeal below *MIGHT* be made simpler by having a global list:
-
-  `SETTINGS = [Var("NAME", "default", Check.XXX, ....), ...]`
-
-  Than can be iterated over, rather than having code in multiple places
-  for each variable.  Possible Var parameters:
-
-  check=Check.NONE (do not pass to Jinja2)
-  check=Check.TMPL which generates a value (if nothing set)
-        by doing `default_value.format(options)`
-  cond="VARNAME" to make the output conditional
-        on the Truthiness of the referenced variable.
-
-  But the proof is in the pudding, and there are no doubt
-  additional cases that would need to be handled, and debugged!
-
 If you want to pass a new setting from configuration files to
 or command line options to docker-compose.yml.j2:
 
@@ -72,48 +56,17 @@ variable whose contents needs to change when new code is running in
 such a way that falling back to old code ALSO requires falling back to
 old configuration makes operations work harder.
 
-SECOND; If there is a rational default value that applies to both dev
-and staging/production you can set it in `deploy_default_settings()`.
+SECOND; create an XV (transfer var) entry (positioned alphabetically)
+in JINJA_SETTINGS; If there is a rational default value that applies
+to both dev and staging/production you can set it with default=
 
 If the configuration needs to be kept private, the value needs to go
 into a config file that is not publicly legible.
 
-  If you're adding a service with a network port:
-
-    please have a configuration variable (eg PIPEVIEW_API_PORT, or
-    ELASTICSEARCH_PORT_BASE if the number will be used to calculate
-    other ports) for use inside the container stack.
-
-    If you want to make the service visible outside docker, have a
-    setting like PIPEVIEW_API_PORT_EXPORTED generated using a base
-    value that _reminds_ you of the native port used by the service
-    (ie; add 40K, multiply by 10) added to the "port_bias" for the
-    stack instance.
-
-  Similarly, with any setting constructed from other settings (ie; to
-  make a URL) remember to do heavy lifting, and creating common values
-  HERE and NOT in the .j2 file) and configuration needs to be able to
-  override a component of the constructed value, the construction
-  can be done at the bottom of 'settings_get_new()`
-
-THIRD; you need to transfer the value to jinja_vars using the
-`set` function in `deploy_default_settings`.  While it may seem
-just annoying, this step checks the values:
-
-  1. The settings variable has been set.
-  2. The value conforms to expectations
-     (most are strings that must not be empty,
-     but some can be empty, especially to disable
-     a feature, and some are passed as integers
-     or bools)
-
 jinja is being used in "strict" mode, so ALL referenced variables
 should always be set unless the references happen to be inside in "if".
 
-FOURTH; You can now use lower cased variable name in
-the template file.
-
-FIFTH; Before submitting a PR to merge changes to this, please do
+THIRD; Before submitting a PR to merge changes to this, please do
 "dry-runs" to see that things run cleanly and as expected for dev,
 staging and production environments:
 
@@ -146,9 +99,136 @@ import jinja2
 
 # mc-deploy package (in mediacloud/system-dev-ops repo):
 from mc_deploy.base import CmdArgs, CmdParser, Flavor, ParserArgs
-from mc_deploy.docker import Check, DockerDeploy
+from mc_deploy.docker import DockerDeploy, TransferCheck, TransferVar
 
 SUPER_VERBOSE = False  # for debug
+
+
+def es_docker(settings: dict[str, str]) -> bool:
+    """
+    TransferVar.cond function for ES on Docker configuration
+    (avoids "allow-empty")
+    """
+    return int(settings.get("ELASTICSEARCH_CONTAINERS", "") or "0") > 0
+
+
+XV = TransferVar
+XC = TransferCheck
+JINJA_SETTINGS = [
+    # Entries in this list are BY DEFINITION transferred
+    # from "settings" to the jinja2 template engine to create
+    # the docker-compose.yaml file.
+    #
+    # keep in alphabetical order to avoid duplicates
+    #
+    # When adding a new variable, you almost certainly need to add an
+    # environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
+    # (best to add in a place where the value is only configured for
+    # the processes (or group of processes) that need it: make
+    # information available (leak) on a need-to-know basis)
+    #
+    # NOTE! COULD pass deploy_type, but would rather
+    # pass multiple variables that effect specific outcomes
+    # (keep decision making in this file, and not template;
+    #  don't ifdef C code based on platform name, but on features)
+    #
+    # * "private" means almost certainly came from a private/production configuration file,
+    # * "dynamic" means set at run time based on instance type and flavor
+    #
+    # Please don't set defaults for anything where the value depends on runtime
+    # variables: want to see errors for unset variables rather than wrong values!
+    XV("ARCHIVER_B2_BUCKET"),  # private
+    XV("ARCHIVER_B2_REGION", check=XC.ALLOW_EMPTY),  # private: empty to disable
+    XV("ARCHIVER_B2_SECRET_ACCESS_KEY"),  # private
+    XV("ARCHIVER_B2_ACCESS_KEY_ID"),  # private
+    XV("ARCHIVER_PREFIX"),  # dynamic
+    XV("ARCHIVER_REPLICAS", check=XC.INT, default="1"),
+    XV("ARCHIVER_S3_BUCKET"),  # private
+    XV("ARCHIVER_S3_REGION", check=XC.ALLOW_EMPTY),  # private: empty to disable
+    XV("ARCHIVER_S3_SECRET_ACCESS_KEY"),  # private
+    XV("ARCHIVER_S3_ACCESS_KEY_ID"),  # private
+    XV("BREADCRUMB_EXCHANGE", check=XC.ALLOW_EMPTY),  # empty to disable
+    XV("DEPLOYMENT_BRANCH"),  # dynamic, for context
+    XV("DEPLOYMENT_DATE_TIME"),  # dynamic, for context
+    XV("DEPLOYMENT_GIT_HASH"),  # dynamic, for context
+    XV("DEPLOYMENT_HOST"),  # dynamic, for context
+    XV("DEPLOYMENT_ID"),  # dynamic, for RabbitMQ sentinal
+    XV("DEPLOYMENT_OPTIONS", check=XC.ALLOW_EMPTY),  # dynamic, for context
+    XV("DEPLOYMENT_USER"),  # dynamic, for context
+    # for ES containers (dev and staging)
+    XV("ELASTICSEARCH_CLUSTER", default="mc_elasticsearch"),
+    XV("ELASTICSEARCH_CONTAINERS", check=XC.INT),
+    XV(
+        "ELASTICSEARCH_IMAGE",
+        default="docker.elastic.co/elasticsearch/elasticsearch:8.17.4",
+        cond=es_docker,
+    ),
+    XV("ELASTICSEARCH_NODES", cond=es_docker),
+    XV("ELASTICSEARCH_PLACEMENT_CONSTRAINT", cond=es_docker),
+    XV("ELASTICSEARCH_PORT_BASE", check=XC.INT, cond=es_docker, default="9200"),
+    XV("ELASTICSEARCH_PORT_BASE_EXPORTED", check=XC.INT, cond=es_docker),
+    # for all deployment types:
+    XV("ELASTICSEARCH_CONFIG_DIR", default="./conf/elasticsearch/templates"),
+    XV("ELASTICSEARCH_HOSTS"),  # dynamic
+    XV("ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
+    XV(
+        "ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE", default="false"
+    ),  # NOT bool! NEVER ENABLED??
+    XV("ELASTICSEARCH_SNAPSHOT_REPO"),
+    XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET", check=XC.ALLOW_EMPTY),  # private
+    XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT", check=XC.ALLOW_EMPTY),
+    XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", check=XC.ALLOW_EMPTY),
+    XV("ELASTICSEARCH_SNAPSHOT_REPO_TYPE"),
+    XV("ELASTICSEARCH_SHARD_COUNT", check=XC.INT),
+    XV("ELASTICSEARCH_SHARD_REPLICAS", check=XC.INT),
+    XV("FETCHER_CRONJOB_ENABLE"),  # batch-fetcher: NOT bool!
+    XV("FETCHER_NUM_BATCHES", check=XC.INT),  # batch-fetcher
+    XV("FETCHER_OPTIONS"),  # batch-fetcher (see QUEUER_ARGS),
+    XV("HIST_FETCHER_REPLICAS", check=XC.INT, default="0"),
+    XV("IMPORTER_ARGS", check=XC.ALLOW_EMPTY),  # dynamic
+    XV("IMPORTER_REPLICAS", check=XC.INT),
+    XV("NETWORK_NAME"),  # dynamic
+    XV("PARSER_REPLICAS", check=XC.INT),
+    XV("PIPELINE_TYPE"),  # dynamic
+    XV("PIPEVIEW_API_PORT", default="8000"),
+    XV("PIPEVIEW_API_PORT_EXPORTED"),  # dynamic
+    XV("PIPEVIEW_DATABASE_URL"),  # dynamic
+    XV("PIPEVIEW_DAYS", check=XC.INT, default="90"),
+    XV("PIPEVIEW_PGPORT", default="5432"),
+    XV("PIPEVIEW_POSTGRES_CONTAINER", default="pipeview-db"),
+    XV("PIPEVIEW_POSTGRES_DB", default="pipeview"),
+    XV("PIPEVIEW_POSTGRES_IMAGE", default="postgres:18-alpine"),
+    XV("PIPEVIEW_POSTGRES_PASSWORD"),  # private
+    XV("PIPEVIEW_POSTGRES_PORT_EXPORTED"),  # dynamic
+    XV("PIPEVIEW_POSTGRES_USER", default="postgres"),
+    XV("QUEUER_ARGS"),  # dynamic
+    XV("QUEUER_CRONJOB_ENABLE"),  # dynamic (true/false) NOT bool!
+    XV("QUEUER_CRONJOB_MINUTES"),  # dynamic: *, int or range with optional /minutes
+    XV("QUEUER_CRONJOB_REPLICAS", check=XC.INT),  # dynamic (0/1)
+    XV("QUEUER_INITIAL_REPLICAS", check=XC.INT),  # dynamic (0/1)
+    XV("QUEUER_S3_ACCESS_KEY_ID"),  # private
+    XV("QUEUER_S3_REGION", check=XC.ALLOW_EMPTY),  # private
+    XV("QUEUER_S3_SECRET_ACCESS_KEY"),  # private
+    XV("QUEUER_TYPE", check=XC.ALLOW_EMPTY),  # empty for batch-fetcher
+    XV("RABBITMQ_CONTAINERS", check=XC.INT, default="1"),
+    XV("RABBITMQ_PORT", check=XC.INT, default="5672"),  # native port
+    XV("RABBITMQ_PORT_EXPORTED", check=XC.INT),
+    XV("RABBITMQ_URL"),  # dynamic
+    XV("RSS_FETCHER_PASS", check=XC.ALLOW_EMPTY),  # private
+    XV("RSS_FETCHER_URL", check=XC.ALLOW_EMPTY),  # private
+    XV("RSS_FETCHER_USER", check=XC.ALLOW_EMPTY),  # private
+    XV("SENTRY_DSN", check=XC.ALLOW_EMPTY),  # private: empty to disable
+    XV("SENTRY_ENVIRONMENT"),  # private
+    XV("STACK_NAME"),  # dynamic
+    XV("STATSD_REALM"),  # dynamic
+    XV("STATSD_URL"),  # dynamic
+    # must be a valid hostname (no underscores!):
+    XV("SYSLOG_SINK_CONTAINER", default="syslog-sink"),
+    XV("VOLUME_DEVICE_PREFIX", check=XC.ALLOW_EMPTY),  # dynamic
+    XV("WORKER_IMAGE_FULL"),  # dynamic
+    XV("WORKER_IMAGE_NAME"),  # dynamic
+    XV("WORKER_PLACEMENT_CONSTRAINT"),
+]
 
 
 class StoryIndexerDeploy(DockerDeploy):
@@ -175,80 +255,61 @@ class StoryIndexerDeploy(DockerDeploy):
     def deploy_default_settings(self, args: CmdArgs) -> None:  # noqa: C901
         """
         called before deploy_cmd_helper to set defaults
-        before settings files loaded
+        before settings files loaded.
+
+        Things set here because they are "dynamic" (change depending
+        on deployment type, flavor, or other command line options).
+
+        WISH: avoid setting things at the top that get overwritten
+        below?
         """
 
         assert not self._conf_loaded
-        self.settings_add("PIPELINE_TYPE", args.flavor)
 
-        # copied more or less slavishly from deploy.sh
-
-        # defaults for template variables that might change based on BRANCH/DEPLOY_TYPE
+        # defaults for settings that might change based on BRANCH/DEPLOY_TYPE
         # (in alphabetical order):
+
+        self.settings_defaults(JINJA_SETTINGS)
 
         multi_node_deployment = False
         fetcher_options = []
         importer_args = []
 
-        self.settings_add("ARCHIVER_REPLICAS", "1")  # seems to scale 1:1 with importers
-        # configuration for Elastic Search Containers
-        self.settings_add("ELASTICSEARCH_CLUSTER", "mc_elasticsearch")
-        self.settings_add("ELASTICSEARCH_CONFIG_DIR", "./conf/elasticsearch/templates")
-        self.settings_add(
-            "ELASTICSEARCH_IMAGE",
-            "docker.elastic.co/elasticsearch/elasticsearch:8.17.4",
-        )
-        elasticsearch_port_base = 9200  # native port
-        self.settings_add("ELASTICSEARCH_PORT_BASE", str(elasticsearch_port_base))
-        self.settings_add(
+        # bias applied to unmodified ES base port:
+        self.settings_biased(
             "ELASTICSEARCH_PORT_BASE_EXPORTED",
-            str(elasticsearch_port_base + self.port_bias),
+            int(self.settings["ELASTICSEARCH_PORT_BASE"]),
         )
-
-        self.settings_add("ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE", "false")
-        self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "fs")
 
         self.settings_add("FETCHER_CRONJOB_ENABLE", "true")  # batch fetcher
         self.settings_add("FETCHER_NUM_BATCHES", "20")  # batch fetcher
         fetcher_options.append("--yesterday")  # batch fetcher
 
-        self.settings_add("IMPORTER_REPLICAS", "1")
-
-        self.settings_add("HIST_FETCHER_REPLICAS", "4")
+        if self.is_prod():
+            # try to keep up when ES is loaded:
+            self.settings_add("IMPORTER_REPLICAS", "3")
+        else:
+            self.settings_add("IMPORTER_REPLICAS", "1")
 
         self.settings_add("PARSER_REPLICAS", "4")
 
-        pipeview_native = 8000  # internal port
-        self.settings_add("PIPEVIEW_API_PORT", str(pipeview_native))
-        self.settings_add(
-            "PIPEVIEW_API_PORT_EXPORTED", str(40000 + pipeview_native + self.port_bias)
-        )
-        self.settings_add("PIPEVIEW_DAYS", "90")
-        self.settings_add("PIPEVIEW_PGPORT", "5432")  # native internal port
-        self.settings_add("PIPEVIEW_POSTGRES_CONTAINER", "pipeview-db")
-        self.settings_add("PIPEVIEW_POSTGRES_DB", "pipeview")
-        self.settings_add("PIPEVIEW_POSTGRES_IMAGE", "postgres:18-alpine")
-        self.settings_add(
-            "PIPEVIEW_POSTGRES_PORT_EXPORTED", str(54320 + self.port_bias)
-        )
-        self.settings_add("PIPEVIEW_POSTGRES_USER", "postgres")
+        self.settings_add("PIPELINE_TYPE", args.flavor)
+
+        self.settings_biased("PIPEVIEW_API_PORT_EXPORTED", 48000)  # +40k
+        self.settings_biased("PIPEVIEW_POSTGRES_PORT_EXPORTED", 54320)  # *10
 
         self.settings_add("QUEUER_CRONJOB_ENABLE", "true")
         self.settings_add("QUEUER_CRONJOB_MINUTES", "3-59/5")
         self.settings_add("QUEUER_CRONJOB_REPLICAS", "1")
         self.settings_add("QUEUER_INITIAL_REPLICAS", "0")
 
-        self.settings_add(
-            "RABBITMQ_CONTAINERS", "1"
-        )  # integer to allow cluster in staging??
-        rabbitmq_port = 5672  # native port
-        self.settings_add("RABBITMQ_PORT", str(rabbitmq_port))
-
-        # must be a valid hostname (no underscores!)
-        self.settings_add("SYSLOG_SINK_CONTAINER", "syslog-sink")
-
-        self.settings_add("WORKER_IMAGE_NAME", self.image_name)
-        self.settings_add("WORKER_IMAGE_FULL", self.image_full)
+        if multi_node_deployment:
+            self.fatal("multi node deployment not supported")
+        else:
+            # default to placement on manager for (single node) developement
+            placement = "node.role == manager"
+            self.settings_add("ELASTICSEARCH_PLACEMENT_CONSTRAINT", placement)
+            self.settings_add("WORKER_PLACEMENT_CONSTRAINT", placement)
 
         # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
         # and to PIPELINE_TYPES (above the usage function)!
@@ -258,13 +319,11 @@ class StoryIndexerDeploy(DockerDeploy):
             hist_year = args.hist_year
             if not hist_year:
                 self.fatal("need --hist-year")
-            self.settings_add("HIST_YEAR", hist_year)
 
             hist_file_prefix = args.hist_file_prefix
             if hist_file_prefix:
                 if hist_file_prefix[0] != "/":
                     self.fatal("--file-file-prefix must start with '/'")
-                self.settings_add("HIST_FILE_PREFIX", hist_file_prefix)
 
             # unless archives disabled, prefix will end with:
             arch_suffix = f"hist{hist_year}"
@@ -288,11 +347,15 @@ class StoryIndexerDeploy(DockerDeploy):
                 self.settings_add("PARSER_REPLICAS", "25")
                 self.settings_add("IMPORTER_REPLICAS", "7")
                 self.settings_add("ARCHIVER_REPLICAS", "2")
-            else:
+            elif self.is_staging():
                 # Aug 2024 fetching ~40 stories/sec w/ HIST_FETCHER_REPLICAS=4
-                # increased to 5 parsers(4 parsers wouldn't keep up even if
+                # increased to 5 parsers (4 parsers wouldn't keep up even if
                 # HIST_FETCHER_REPLICAS lowered to 3)
+                self.settings_add("HIST_FETCHER_REPLICAS", "4")
                 self.settings_add("PARSER_REPLICAS", "5")
+            else:
+                self.settings_add("HIST_FETCHER_REPLICAS", "1")
+
             self.settings_add(
                 "QUEUER_FILES",
                 f"s3://mediacloud-database-files/{hist_year}{hist_file_prefix}",
@@ -339,50 +402,59 @@ class StoryIndexerDeploy(DockerDeploy):
             arch_prefix = f"mc{arch_suffix}"
 
             self.settings_add("ELASTICSEARCH_CONTAINERS", "0")
-            # ES index settings are static, prod settings should not change
+            # ES index settings are static, prod settings should not change!!
+            self.settings_add("ELASTICSEARCH_HOSTS", "http://es.newsscribe.angwin:9209")
+            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "50gb")
             self.settings_add("ELASTICSEARCH_SHARD_COUNT", "12")
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
-            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "50gb")
-            self.settings_add("ELASTICSEARCH_HOSTS", "http://es.newsscribe.angwin:9209")
             self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "s3")
 
-            self.settings_add("SENTRY_ENVIRONMENT", "production")  # XXX
+            # SENTRY_ENVIRONMENT set in private config
 
-            self.settings_add(
-                "VOLUME_DEVICE_PREFIX",
-                f"/srv/data/docker/{self.inst_flavor_prefix}{self.INST_BASE}/",
-            )  # XXX CHECK RESULTS!!!
-
+            # put volume on RAID array: directory MUST exist!
+            volume_prefix = (
+                f"/srv/data/docker/{self.inst_flavor_prefix}{self.INST_BASE}/"
+            )
+            if not os.path.exists(volume_prefix):
+                self.fatal("volume prefix {volume_prefix} does not exist!")
+            self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
         elif self.is_staging():
             arch_prefix = f"staging{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "3")
+            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "5gb")
             self.settings_add("ELASTICSEARCH_SHARD_COUNT", "5")
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
-            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "5gb")
+            self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "fs")
             self.settings_add(
                 "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", "mc_story_indexer"
             )
 
-            self.story_limit = 50000
-
             # don't run daily, fetch 10x more than dev:
-            self.settings_add("FETCHER_CRONJOB_ENABLE", "false")
+            self.story_limit = 50000
+            self.settings_add("FETCHER_CRONJOB_ENABLE", "false")  # not batch
             fetcher_options.append(f"--sample-size={self.story_limit}")
-            self.settings_add("FETCHER_NUM_BATCHES", "10")  # betch fetcher
+            self.settings_add("FETCHER_NUM_BATCHES", "10")  # batch fetcher
 
             self.settings_add("QUEUER_CRONJOB_ENABLE", "false")
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
-            self.settings_add(
-                "VOLUME_DEVICE_PREFIX",
-                f"/srv/data/docker/staging-{self.inst_flavor_prefix}{self.INST_BASE}/",
+
+            # SENTRY_ENVIRONMENT set in private config
+
+            # put volume on RAID array: directory MUST exist!
+            volume_prefix = (
+                f"/srv/data/docker/staging-{self.inst_flavor_prefix}{self.INST_BASE}/"
             )
-        else:
+            if not os.path.exists(volume_prefix):
+                self.fatal("volume prefix {volume_prefix} does not exist!")
+            self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
+        else:  # development
             arch_prefix = f"{self.login_user}{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "1")
+            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "100mb")
             self.settings_add("ELASTICSEARCH_SHARD_COUNT", "2")
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
-            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "100mb")
+            self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "fs")
             self.settings_add(
                 "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", "mc_story_indexer"
             )
@@ -395,10 +467,12 @@ class StoryIndexerDeploy(DockerDeploy):
             fetcher_options.append(f"--sample-size={self.story_limit}")
             self.settings_add("FETCHER_NUM_BATCHES", "10")
 
+            # start queuer on startup, don't run via cron:
             self.settings_add("QUEUER_CRONJOB_ENABLE", "false")
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
-            self.settings_add("VOLUME_DEVICE_PREFIX", "")
+
+            self.settings_add("VOLUME_DEVICE_PREFIX", "")  # default volume location
 
         self.settings_add("FETCHER_OPTIONS", " ".join(fetcher_options))
         self.settings_add("IMPORTER_ARGS", " ".join(importer_args))
@@ -424,6 +498,7 @@ class StoryIndexerDeploy(DockerDeploy):
             rabbitmq_host = "rabbitmq"  # container name
             rabbitmq_vhost = ""
 
+        rabbitmq_port = self.settings["RABBITMQ_PORT"]
         self.settings_add(
             "RABBITMQ_URL",
             f"amqp://{rabbitmq_host}:{rabbitmq_port}{rabbitmq_vhost}/?connection_attempts=10&retry_delay=5",
@@ -433,6 +508,7 @@ class StoryIndexerDeploy(DockerDeploy):
         if es_containers > 0:
             es_hosts = []
             es_nodes = []
+            elasticsearch_port_base = self.settings["ELASTICSEARCH_PORT_BASE"]
             for i in range(1, es_containers + 1):
                 node = f"elasticsearch{i}"
                 es_hosts.append(f"http://{node}:{elasticsearch_port_base}")
@@ -447,8 +523,7 @@ class StoryIndexerDeploy(DockerDeploy):
                 "ELASTICSEARCH_PLACEMENT_CONSTRAINT", "node.role == manager"
             )
 
-        assert not multi_node_deployment
-        self.settings_add("WORKER_PLACEMENT_CONSTRAINT", "node.role == manager")
+        assert not multi_node_deployment  # for WORKER_PLACEMENT_CONSTRAINT
 
         # these appear at top of generated docker-compose.yml
         self.settings_add("DEPLOYMENT_BRANCH", self.branch)
@@ -460,13 +535,14 @@ class StoryIndexerDeploy(DockerDeploy):
         # the stack in the docker-compose.yaml.TAG file:
         self.settings_add("DEPLOYMENT_OPTIONS", " ".join(sys.argv))
 
-        self.settings_add("RABBITMQ_PORT_EXPORTED", str(rabbitmq_port + self.port_bias))
+        self.settings_biased("RABBITMQ_PORT_EXPORTED", int(rabbitmq_port))
 
     def docker_compose_file_create(self) -> None:
-        self.jinja_vars: dict[str, str | int] = {}
+        self.settings_add("WORKER_IMAGE_NAME", self.image_name)
+        self.settings_add("WORKER_IMAGE_FULL", self.image_full)
 
         # identification unique to this deployment
-        # used as an exchange name to signal pipeline config complete
+        # used as an RabbitMQ exchange name to signal pipeline config complete
         # MUST start with mc-configuration- and be less than 256 bytes:
         self.settings_add(
             "DEPLOYMENT_ID", f"mc-configuration-{self.date_time}-{self.inst_name}"
@@ -484,132 +560,11 @@ class StoryIndexerDeploy(DockerDeploy):
             "pipeview_api_port_exported", self.settings["PIPEVIEW_API_PORT_EXPORTED"]
         )
 
-        def add(var: str, check: Check = Check.ALLOW_EMPTY) -> None:
-            if var not in self.settings:
-                self.fatal(f"{var} not set")
-            val = self.settings.get(var, "NOVALUE")  # dry-run
-            jname = var.lower()
-            if check == Check.BOOL:
-                if val in ("true", "false"):
-                    self.jinja_vars[jname] = val == "true"
-                else:
-                    self.fatal(f"{var} bad bool: '{val}'")
-            elif check == Check.INT:
-                if val is not None and val.isdigit():
-                    self.jinja_vars[jname] = int(val)
-                else:
-                    self.fatal(f"{var} bad int: '{val}'")
-            elif check == Check.STR:
-                if val:
-                    self.jinja_vars[jname] = val
-                else:
-                    self.fatal(f"{var} is empty")
-            elif check == Check.ALLOW_EMPTY:
-                self.jinja_vars[jname] = val or ""
-            else:
-                self.fatal(f"{var} bad check {check}")
-
-        # NOTE! COULD pass deploy_type, but would rather
-        # pass multiple variables that effect specific outcomes
-        # (keep decision making in this file, and not template;
-        #  don't ifdef C code based on platform name, but on features)
-
-        # keep in alphabetical order to avoid duplicates
-
-        # When adding a new variable, you almost certainly need to add an
-        # environment: "FOO: {{foo}}" line in docker-compose.yaml.j2!
-
-        # "private" means almost certainly came from a private/production configuration file
-
-        add("ARCHIVER_B2_BUCKET")  # private
-        add("ARCHIVER_B2_REGION", Check.ALLOW_EMPTY)  # private: empty to disable
-        add("ARCHIVER_B2_SECRET_ACCESS_KEY")  # private
-        add("ARCHIVER_B2_ACCESS_KEY_ID")  # private
-        add("ARCHIVER_PREFIX")
-        add("ARCHIVER_REPLICAS", Check.INT)
-        add("ARCHIVER_S3_BUCKET")  # private
-        add("ARCHIVER_S3_REGION", Check.ALLOW_EMPTY)  # private: empty to disable
-        add("ARCHIVER_S3_SECRET_ACCESS_KEY")  # private
-        add("ARCHIVER_S3_ACCESS_KEY_ID")  # private
-        add("BREADCRUMB_EXCHANGE", Check.ALLOW_EMPTY)  # empty to disable
-        add("DEPLOYMENT_BRANCH")  # for context
-        add("DEPLOYMENT_DATE_TIME")  # for context
-        add("DEPLOYMENT_GIT_HASH")  # for context
-        add("DEPLOYMENT_HOST")  # for context
-        add("DEPLOYMENT_ID")  # for RabbitMQ sentinal
-        add("DEPLOYMENT_OPTIONS", Check.ALLOW_EMPTY)  # for context
-        add("DEPLOYMENT_USER")  # for context
-        add("ELASTICSEARCH_CLUSTER")
-        add("ELASTICSEARCH_CONFIG_DIR")
-        add("ELASTICSEARCH_CONTAINERS", Check.INT)
-        add("ELASTICSEARCH_HOSTS")
-        add("ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE")  # NOT bool!
-        add("ELASTICSEARCH_SNAPSHOT_REPO")
-        add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE")
-        add("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", Check.ALLOW_EMPTY)
-        add("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET", Check.ALLOW_EMPTY)  # private
-        add("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT", Check.ALLOW_EMPTY)
-        add("ELASTICSEARCH_SHARD_COUNT", Check.INT)
-        add("ELASTICSEARCH_SHARD_REPLICAS", Check.INT)
-        add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE")
-        if int(self.settings["ELASTICSEARCH_CONTAINERS"] or "0") > 0:
-            # make these conditional rather than allow-empty
-            add("ELASTICSEARCH_IMAGE")
-            add("ELASTICSEARCH_PLACEMENT_CONSTRAINT")
-            add("ELASTICSEARCH_PORT_BASE", Check.INT)
-            add("ELASTICSEARCH_PORT_BASE_EXPORTED", Check.INT)
-            add("ELASTICSEARCH_NODES")
-
-        add("FETCHER_CRONJOB_ENABLE")  # batch-fetcher: NOT bool!
-        add("FETCHER_NUM_BATCHES", Check.INT)  # batch-fetcher
-        add("FETCHER_OPTIONS")  # batch-fetcher (see QUEUER_ARGS)
-        add("HIST_FETCHER_REPLICAS", Check.INT)
-        add("IMPORTER_ARGS", Check.ALLOW_EMPTY)
-        add("IMPORTER_REPLICAS", Check.INT)
-        add("NETWORK_NAME")
-        add("PIPELINE_TYPE")
-        add("PIPEVIEW_API_PORT")
-        add("PIPEVIEW_API_PORT_EXPORTED")
-        add("PIPEVIEW_DATABASE_URL")
-        add("PIPEVIEW_DAYS", Check.INT)
-        add("PIPEVIEW_PGPORT")
-        add("PIPEVIEW_POSTGRES_CONTAINER")
-        add("PIPEVIEW_POSTGRES_DB")
-        add("PIPEVIEW_POSTGRES_IMAGE")
-        add("PIPEVIEW_POSTGRES_PASSWORD")
-        add("PIPEVIEW_POSTGRES_PORT_EXPORTED")
-        add("PIPEVIEW_POSTGRES_USER")
-        add("QUEUER_ARGS")
-        add("QUEUER_CRONJOB_ENABLE")  # NOT bool!
-        add("QUEUER_CRONJOB_MINUTES")  # can be *, int or range with optional /minutes
-        add("QUEUER_CRONJOB_REPLICAS", Check.INT)
-        add("QUEUER_INITIAL_REPLICAS", Check.INT)
-        add("QUEUER_S3_ACCESS_KEY_ID")  # private
-        add("QUEUER_S3_REGION", Check.ALLOW_EMPTY)  # private
-        add("QUEUER_S3_SECRET_ACCESS_KEY")  # private
-        add("QUEUER_TYPE", Check.ALLOW_EMPTY)  # empty for batch-fetcher
-        add("PARSER_REPLICAS", Check.INT)
-        add("RABBITMQ_CONTAINERS", Check.INT)
-        add("RABBITMQ_PORT", Check.INT)
-        add("RABBITMQ_PORT_EXPORTED", Check.INT)
-        add("RABBITMQ_URL")
-        add("RSS_FETCHER_PASS", Check.ALLOW_EMPTY)  # private
-        add("RSS_FETCHER_URL", Check.ALLOW_EMPTY)  # private
-        add("RSS_FETCHER_USER", Check.ALLOW_EMPTY)  # private
-        add("SENTRY_DSN", Check.ALLOW_EMPTY)  # private: empty to disable
-        add("SENTRY_ENVIRONMENT")  # private
-        add("STACK_NAME")
-        add("STATSD_REALM")
-        add("STATSD_URL")
-        add("SYSLOG_SINK_CONTAINER")
-        add("VOLUME_DEVICE_PREFIX", Check.ALLOW_EMPTY)
-        add("WORKER_IMAGE_FULL")
-        add("WORKER_IMAGE_NAME")
-        add("WORKER_PLACEMENT_CONSTRAINT")
+        jinja_vars = self.settings_jinja(JINJA_SETTINGS)
 
         if SUPER_VERBOSE:
             print("======== jinja_vars")
-            for key, val in self.jinja_vars.items():
+            for key, val in jinja_vars.items():
                 print(key, val)
 
         jenv = jinja2.Environment(
@@ -618,7 +573,7 @@ class StoryIndexerDeploy(DockerDeploy):
         )
 
         jtemplate = jenv.get_template(f"{self.COMPOSE_FILE}.j2")
-        expanded = jtemplate.render(self.jinja_vars)
+        expanded = jtemplate.render(jinja_vars)
         output_file = os.path.join(self.deploy_dir, self.COMPOSE_FILE)
         if os.path.exists(output_file):
             os.unlink(output_file)  # in case owned by root
@@ -646,7 +601,7 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_load_private_files(self.PROJECT_REPO, [file])
         else:
             self.settings_load_file(os.path.join(self.deploy_dir, "dev.sh"))
-            user_file = os.path.join(self.deploy_dir, f"{self.inst_id}.sh")
+            user_file = os.path.join(self.deploy_dir, f"{self.inst_id}.sh")  # USER.sh
             if os.path.exists(user_file):
                 self.settings_load_file(user_file)
 
@@ -715,7 +670,8 @@ class StoryIndexerDeploy(DockerDeploy):
         self.debug("queuer_args", queuer_args)
         self.settings_add("QUEUER_ARGS", queuer_args)
 
-        # will throw KeyError if vars not present
+        # will throw KeyError if vars not present,
+        # but not if empty.
         self.settings_add(
             "PIPEVIEW_DATABASE_URL",
             "postgresql+psycopg://"
