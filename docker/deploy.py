@@ -11,11 +11,12 @@ deviance/deviations, and the maintenance nightmare that imposed.
 
 This is, as much as possible, a translation of the functionality of
 the script into the mc-deploy framework rather than taking the
-opportunity to completely restructure things.  As the first use of
-DockerDeploy (and probably the most complex), some fiddling with the
-framework was necessary.  All of this goes to say this isn't the
+opportunity to completely restructure things, so this isn't the
 cleanest, simplest thing, but rather an expedient to avoid the worser
-fate of many similar-ish scripts.
+fate of many similar-ish shell scripts scripts.
+
+  In particular, methods like deploy_cmd_helper and settings_get_new
+  could be more clearly named!
 
 In the original shell script all configuration was collected as
 environment variables which were selectively put in a JSON file which
@@ -33,38 +34,36 @@ config files into the shell environment.
 
   NOTE!!! **MANY** things are in "settings" and passed into the jinja
   template, to avoid having the same/related value appear more than
-  once in the template, or just because they were shell variables in
-  deploy.sh, NOT because they are changed by ANY configuration file.
-  Pain has only been taken to make sure things that matter (need to
-  work to deploy production) work as expected.
+  once in the template, NOT because they are changed by ANY
+  configuration file.  Pain has only been taken to make sure things
+  that matter (need to work to deploy production) work as expected.
 
-From those settings, values are EXPLICTLY transferred into lower case
+From "settings", values are EXPLICTLY transferred into lower case
 named variables in the jinja_vars dict.
 
 If you want to pass a new setting from configuration files to
 or command line options to docker-compose.yml.j2:
 
-FIRST, come up with a variable name.  It should be SPECIFIC to the
+FIRST, come up with a variable name.  It should be *specific* to the
 part of the indexer pipeline, its use and the technology is applies
 to, for example PIPEVIEW_POSTGRES_IMAGE, ARCHIVER_B2_BUCKET
 
 Specificity helps clarify the use (and avoid confusion), AND allows
 room for the particulars to change at a later date and to be able to
-select/configure the old and new ways in development, testing, and if
-need be, to fall back in production.  Having a single generally named
-variable whose contents needs to change when new code is running in
-such a way that falling back to old code ALSO requires falling back to
-old configuration makes operations work harder.
+select/configure both old and new ways in development and transition.
+Having a single variable whose value needs to change means any private
+config changes can ONLY be made when rolling out the new code, and
+must be rolled back if problems are encountered.
 
 SECOND; create an XV (transfer var) entry (positioned alphabetically)
 in JINJA_SETTINGS; If there is a rational default value that applies
-to both dev and staging/production you can set it with default=
+to both dev and staging/production you can set it with "default="
 
-If the configuration needs to be kept private, the value needs to go
-into a config file that is not publicly legible.
+If the configuration needs to be kept private, the value MUST go into
+a private config file.
 
-jinja is being used in "strict" mode, so ALL referenced variables
-should always be set unless the references happen to be inside in "if".
+jinja is being used in "strict" mode, so ALL referenced variables must
+be set unless the references are inside in "if".
 
 THIRD; Before submitting a PR to merge changes to this, please do
 "dry-runs" to see that things run cleanly and as expected for dev,
@@ -78,7 +77,7 @@ staging and production environments:
   stack helps ensure you avoid unpopularity when the NEXT developer,
   who does use a dev stack tries to deploy their code after your PR is
   merged, or even greater unpopularity when someone tries to move
-  code into staging and something is broken.
+  code into staging without testing main after THEIR merge.
 
   AND if, you've made changes that depend on the stack "flavor",
   do dry runs with OTHER flavors using --flavor top level option.
@@ -273,7 +272,7 @@ class StoryIndexerDeploy(DockerDeploy):
 
         multi_node_deployment = False
         fetcher_options = []
-        importer_args = []
+        importer_args: list[str] = []
 
         # bias applied to unmodified ES base port:
         self.settings_biased(
@@ -315,66 +314,7 @@ class StoryIndexerDeploy(DockerDeploy):
         # and to PIPELINE_TYPES (above the usage function)!
 
         arch_suffix = ""
-        if self.inst_flavor == "historical":
-            hist_year = args.hist_year
-            if not hist_year:
-                self.fatal("need --hist-year")
-
-            hist_file_prefix = args.hist_file_prefix
-            if hist_file_prefix:
-                if hist_file_prefix[0] != "/":
-                    self.fatal("--file-file-prefix must start with '/'")
-
-            # unless archives disabled, prefix will end with:
-            arch_suffix = f"hist{hist_year}"
-            # uncomment to disable archives:
-            # importer_args.append("--no-output")
-            if self.is_prod():
-                # In Feb 2024, on bernstein (Xeon Gold 6134@3.2GHz, 32 cores, 6400 bogomips):
-                # 12 fetchers, 18 parsers, 2 importers: ~100 stories/second w/ load avg 24
-                # 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
-                # 12 fetchers, 21 parsers, 4 importers: ~100 stories/second w/ load avg 22
-                # (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
-                # Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 7 importers.
-                # Nov 2024: calculated that 100 stories/sec eats 30Mbit/s of bandwidth
-                #    dropped to 6 fetchers, to run at 50 stories/sec
-                # July 2025, on ramos (Xeon Gold 6246R@3.40GHz, 64 cores, 6800 bogomips)
-                # while also running production:
-                # 6 fetchers, 21 parsers, 7 importers: ~50 stories/second w/ load avg 8?
-                # 14 fetchers, 25 parsers, 7 importers: ~130 stories/second w/ load avg <= 25
-                #
-                self.settings_add("HIST_FETCHER_REPLICAS", "14")
-                self.settings_add("PARSER_REPLICAS", "25")
-                self.settings_add("IMPORTER_REPLICAS", "7")
-                self.settings_add("ARCHIVER_REPLICAS", "2")
-            elif self.is_staging():
-                # Aug 2024 fetching ~40 stories/sec w/ HIST_FETCHER_REPLICAS=4
-                # increased to 5 parsers (4 parsers wouldn't keep up even if
-                # HIST_FETCHER_REPLICAS lowered to 3)
-                self.settings_add("HIST_FETCHER_REPLICAS", "4")
-                self.settings_add("PARSER_REPLICAS", "5")
-            else:
-                self.settings_add("HIST_FETCHER_REPLICAS", "1")
-
-            self.settings_add(
-                "QUEUER_FILES",
-                f"s3://mediacloud-database-files/{hist_year}{hist_file_prefix}",
-            )
-            self.settings_add("QUEUER_TYPE", "hist-queuer")  # name of run- script
-        elif self.inst_flavor == "archive":
-            self.settings_add("ARCHIVER_REPLICAS", "0")  # no archivers
-            importer_args.append("--no-output")  # no archives!!!
-            if self.is_prod():
-                # In Feb 2024, on ramos (Xeon Gold 6246R@3.4GHz 6800 bogomips)
-                # 8 importers could write output of one arch-queuer (>500 stories/sec):
-                self.settings_add("IMPORTER_REPLICAS", "8")
-                assert args.input_files
-                self.settings_add("QUEUER_FILES", args.input_files)
-            self.settings_add("PARSER_REPLICAS", "0")  # no parsing required!
-            # maybe require command line option to select file(s)?
-            self.settings_add("QUEUER_FILES", "/app/data/archives")
-            self.settings_add("QUEUER_TYPE", "arch-queuer")  # name of run- script
-        elif self.inst_flavor == "queue-fetcher":
+        if self.inst_flavor == "queue-fetcher":
             # Using --days 2 will fetch both days (the older day first).  After N days,
             # this can be switched to "--days N" so that if a day (or more) has been
             # missed due to downtime, any holes will be filled on restart.  The code
@@ -383,14 +323,8 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_add("QUEUER_TYPE", "rss-queuer")  # name of run- script
             if args.input_files:
                 arch_suffix = "rss"
-        elif self.inst_flavor == "csv":
-            arch_suffix = "csv"
-            self.settings_add("QUEUER_TYPE", "csv-queuer")  # name of run- script
-            self.settings_add(
-                "QUEUER_FILES", "s3://mediacloud-database-e-files/csv_files/"
-            )
         else:
-            self.fatal(f"Unknown pipeline flavor {self.inst_flavor}")
+            arch_suffix = self.deploy_default_settings_flavors(args, importer_args)
 
         assert "QUEUER_TYPE" in self.settings
 
@@ -398,6 +332,7 @@ class StoryIndexerDeploy(DockerDeploy):
             importer_args.append("--no-import")
 
         self.story_limit = 0
+        volume_prefix = ""
         if self.is_prod():
             arch_prefix = f"mc{arch_suffix}"
 
@@ -409,16 +344,15 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
             self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "s3")
 
-            # SENTRY_ENVIRONMENT set in private config
-
             # put volume on RAID array: directory MUST exist!
             volume_prefix = (
                 f"/srv/data/docker/{self.inst_flavor_prefix}{self.INST_BASE}/"
             )
-            if not os.path.exists(volume_prefix):
-                self.fatal("volume prefix {volume_prefix} does not exist!")
-            self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
         elif self.is_staging():
+            # don't run daily, fetch 10x more than dev:
+            self.story_limit = 50000
+            fetcher_options.append(f"--sample-size={self.story_limit}")
+
             arch_prefix = f"staging{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "3")
             self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "5gb")
@@ -429,25 +363,17 @@ class StoryIndexerDeploy(DockerDeploy):
                 "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", "mc_story_indexer"
             )
 
-            # don't run daily, fetch 10x more than dev:
-            self.story_limit = 50000
             self.settings_add("FETCHER_CRONJOB_ENABLE", "false")  # not batch
-            fetcher_options.append(f"--sample-size={self.story_limit}")
             self.settings_add("FETCHER_NUM_BATCHES", "10")  # batch fetcher
 
             self.settings_add("QUEUER_CRONJOB_ENABLE", "false")
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
 
-            # SENTRY_ENVIRONMENT set in private config
-
             # put volume on RAID array: directory MUST exist!
             volume_prefix = (
                 f"/srv/data/docker/staging-{self.inst_flavor_prefix}{self.INST_BASE}/"
             )
-            if not os.path.exists(volume_prefix):
-                self.fatal("volume prefix {volume_prefix} does not exist!")
-            self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
         else:  # development
             arch_prefix = f"{self.login_user}{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "1")
@@ -472,7 +398,12 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
 
-            self.settings_add("VOLUME_DEVICE_PREFIX", "")  # default volume location
+            # default volume location
+            volume_prefix = ""
+
+        if volume_prefix and not os.path.exists(volume_prefix):
+            self.fatal("volume prefix {volume_prefix} does not exist!")
+        self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
 
         self.settings_add("FETCHER_OPTIONS", " ".join(fetcher_options))
         self.settings_add("IMPORTER_ARGS", " ".join(importer_args))
@@ -537,6 +468,83 @@ class StoryIndexerDeploy(DockerDeploy):
 
         self.settings_biased("RABBITMQ_PORT_EXPORTED", int(rabbitmq_port))
 
+    def deploy_default_settings_flavors(
+        self, args: CmdArgs, importer_args: list[str]
+    ) -> str:
+        """
+        here to handle settings for seldom used deployment flavors
+        """
+        if self.inst_flavor == "historical":
+            hist_year = args.hist_year
+            if not hist_year:
+                self.fatal("need --hist-year")
+
+            hist_file_prefix = args.hist_file_prefix
+            if hist_file_prefix:
+                if hist_file_prefix[0] != "/":
+                    self.fatal("--file-file-prefix must start with '/'")
+
+            # unless archives disabled, prefix will end with:
+            arch_suffix = f"hist{hist_year}"
+            # uncomment to disable archives:
+            # importer_args.append("--no-output")
+            if self.is_prod():
+                # In Feb 2024, on bernstein (Xeon Gold 6134@3.2GHz, 32 cores, 6400 bogomips):
+                # 12 fetchers, 18 parsers, 2 importers: ~100 stories/second w/ load avg 24
+                # 14 fetchers, 21 parsers, 2 importers: ~125 stories/second w/ load avg 27
+                # 12 fetchers, 21 parsers, 4 importers: ~100 stories/second w/ load avg 22
+                # (mean fetch: ~109ms, parse: ~150ms, import: ~11ms)
+                # Aug 2024, fetching ~120 stories/sec (12 fetchers, mean 100ms), incr. to 7 importers.
+                # Nov 2024: calculated that 100 stories/sec eats 30Mbit/s of bandwidth
+                #    dropped to 6 fetchers, to run at 50 stories/sec
+                # July 2025, on ramos (Xeon Gold 6246R@3.40GHz, 64 cores, 6800 bogomips)
+                # while also running production:
+                # 6 fetchers, 21 parsers, 7 importers: ~50 stories/second w/ load avg 8?
+                # 14 fetchers, 25 parsers, 7 importers: ~130 stories/second w/ load avg <= 25
+                #
+                self.settings_add("HIST_FETCHER_REPLICAS", "14")
+                self.settings_add("PARSER_REPLICAS", "25")
+                self.settings_add("IMPORTER_REPLICAS", "7")
+                self.settings_add("ARCHIVER_REPLICAS", "2")
+            elif self.is_staging():
+                # Aug 2024 fetching ~40 stories/sec w/ HIST_FETCHER_REPLICAS=4
+                # increased to 5 parsers (4 parsers wouldn't keep up even if
+                # HIST_FETCHER_REPLICAS lowered to 3)
+                self.settings_add("HIST_FETCHER_REPLICAS", "4")
+                self.settings_add("PARSER_REPLICAS", "5")
+            else:
+                self.settings_add("HIST_FETCHER_REPLICAS", "1")
+
+            self.settings_add(
+                "QUEUER_FILES",
+                f"s3://mediacloud-database-files/{hist_year}{hist_file_prefix}",
+            )
+            self.settings_add("QUEUER_TYPE", "hist-queuer")  # name of run- script
+        elif self.inst_flavor == "archive":
+            self.settings_add("ARCHIVER_REPLICAS", "0")  # no archivers
+            importer_args.append("--no-output")  # no archives!!!
+            if self.is_prod():
+                # In Feb 2024, on ramos (Xeon Gold 6246R@3.4GHz 6800 bogomips)
+                # 8 importers could write output of one arch-queuer (>500 stories/sec):
+                self.settings_add("IMPORTER_REPLICAS", "8")
+                assert args.input_files
+                self.settings_add("QUEUER_FILES", args.input_files)
+            self.settings_add("PARSER_REPLICAS", "0")  # no parsing required!
+            # maybe require command line option to select file(s)?
+            self.settings_add("QUEUER_FILES", "/app/data/archives")
+            self.settings_add("QUEUER_TYPE", "arch-queuer")  # name of run- script
+        elif self.inst_flavor == "csv":
+            arch_suffix = "csv"
+            self.settings_add("QUEUER_TYPE", "csv-queuer")  # name of run- script
+            self.settings_add(
+                "QUEUER_FILES", "s3://mediacloud-database-e-files/csv_files/"
+            )
+        else:
+            self.fatal(f"Unknown pipeline flavor {self.inst_flavor}")
+
+        assert arch_suffix
+        return arch_suffix
+
     def docker_compose_file_create(self) -> None:
         self.settings_add("WORKER_IMAGE_NAME", self.image_name)
         self.settings_add("WORKER_IMAGE_FULL", self.image_full)
@@ -592,7 +600,8 @@ class StoryIndexerDeploy(DockerDeploy):
         self.deploy_default_settings(args)  # before loading files
 
         self.settings_add("STATSD_URL", self.statsd_url)
-        self.settings_add("STATSD_REALM", self.inst_id)
+        self.settings_add("STATSD_REALM", self.inst_id)  # prod/staging/USER
+
         if self.is_prod_staging():
             if self.is_prod():
                 file = "prod.sh"
@@ -605,7 +614,9 @@ class StoryIndexerDeploy(DockerDeploy):
             if os.path.exists(user_file):
                 self.settings_load_file(user_file)
 
-        # after loading settings:
+        # after loading settings, but before setting instance name
+        # (queuer type can change, which will effect instance name!)
+
         assert self._conf_loaded
         self.before_inst_name()
         queuer_type = self.settings["QUEUER_TYPE"]
@@ -689,7 +700,8 @@ class StoryIndexerDeploy(DockerDeploy):
 
     def deploy_cmd_init(self, cp: CmdParser) -> None:
         super().deploy_cmd_init(cp)
-        # indexer specific options:
+        # indexer specific options
+        # UC single letters take args, lc single letters do not.
         cp.add_argument(
             "-H", "--hist-file-prefix", help="must start with /", default=""
         )
