@@ -181,7 +181,7 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock"
 
 {% if rabbitmq_containers > 0 %}
-  rabbitmq:
+  {{rabbitmq_container}}:
     <<: *base-service-settings
     deploy:
       <<: *worker-deploy-settings
@@ -243,8 +243,7 @@ services:
       RUN: configure-pipeline
       ARGS: "--type {{pipeline_type}} configure_and_loop"
 
-{% if queuer_type != '' %}
-{# hist-queuer, arch-queuer, rss-queuer
+{# hist-queuer, arch-queuer, rss-queuer, rss-puller
  # started every 5 minutes to check for low output queue (<100K stories)
  # If queue is consumed faster than 333 stories/second, queue can run dry.
 
@@ -254,17 +253,6 @@ services:
  # 2023, average queue rate was about 630 stories/second, logging and
  # counting every story so a 400K to 600K story one-day CSV file took
  # over 10 minutes.
-
- # The Queuer base class used by {arch,hist,rss}-queuer scripts has a
- # --loop option to run continuously (sleeping one minute between
- # checks), which would work for arch- and hist- queuers (since the
- # list of input files is static), but not for rss-queuer, which
- # needs to check for newly written files.  BUT it was too much
- # bother to have different policies/options for the different
- # queuers, AND my hope is to replace rss-queuer with a process that
- # polls the rss-fetcher via its' API for batches of N (1000?)
- # stories, queuing them and then saving a bookmark for the next
- # query.
  #}
 
   {{queuer_type}}:
@@ -292,23 +280,7 @@ services:
       RSS_FETCHER_URL: {{rss_fetcher_url}}
       RSS_FETCHER_USER: {{rss_fetcher_user}}
 
-{% endif %}
-{% if pipeline_type == 'batch-fetcher' %}
-  # scrapy batch-based fetcher:
-  fetcher-worker:
-    <<: *worker-service-settings
-    deploy:
-      <<: *worker-deploy-settings
-      labels:
-         swarm.cronjob.enable: "{{fetcher_cronjob_enable}}"
-         swarm.cronjob.schedule: "0 0 * * *"
-         swarm.cronjob.replicas: {{fetcher_num_batches}}
-      replicas: {{fetcher_num_batches}}
-    environment:
-      <<: *worker-environment-vars
-      RUN: fetcher
-      ARGS: "{{fetcher_options}} --num-batches={{fetcher_num_batches}} --batch-index={{ '{{.Task.Slot}}' }}"
-{% elif pipeline_type == 'historical' %}
+{% if pipeline_type == 'historical' %}
   # fetches historical articles from S3, using Stories queued by hist-queuer:
   hist-fetcher:
     <<: *worker-service-settings

@@ -154,8 +154,8 @@ JINJA_SETTINGS = [
     XV("DEPLOYMENT_ID"),  # dynamic, for RabbitMQ sentinal
     XV("DEPLOYMENT_OPTIONS", check=XC.ALLOW_EMPTY),  # dynamic, for context
     XV("DEPLOYMENT_USER"),  # dynamic, for context
-    # for ES containers (dev and staging)
     XV("ELASTICSEARCH_CLUSTER", default="mc_elasticsearch"),
+    XV("ELASTICSEARCH_CONFIG_DIR", default="./conf/elasticsearch/templates"),
     XV("ELASTICSEARCH_CONTAINERS", check=XC.INT),
     XV(
         "ELASTICSEARCH_IMAGE",
@@ -166,23 +166,24 @@ JINJA_SETTINGS = [
     XV("ELASTICSEARCH_PLACEMENT_CONSTRAINT", cond=es_docker),
     XV("ELASTICSEARCH_PORT_BASE", check=XC.INT, cond=es_docker, default="9200"),
     XV("ELASTICSEARCH_PORT_BASE_EXPORTED", check=XC.INT, cond=es_docker),
-    # for all deployment types:
-    XV("ELASTICSEARCH_CONFIG_DIR", default="./conf/elasticsearch/templates"),
     XV("ELASTICSEARCH_HOSTS"),  # dynamic
     XV("ELASTICSEARCH_ILM_MAX_SHARD_SIZE"),
     XV(
-        "ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE", default="false"
-    ),  # NOT bool! NEVER ENABLED??
-    XV("ELASTICSEARCH_SNAPSHOT_REPO"),
+        # NOT bool! NEVER ENABLED: remove from template & here??
+        "ELASTICSEARCH_SNAPSHOT_CRONJOB_ENABLE",
+        default="false",
+    ),
+    XV("ELASTICSEARCH_SNAPSHOT_REPO"),  # private
     XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_BUCKET", check=XC.ALLOW_EMPTY),  # private
-    XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT", check=XC.ALLOW_EMPTY),
-    XV("ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", check=XC.ALLOW_EMPTY),
+    XV(
+        "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_ENDPOINT", check=XC.ALLOW_EMPTY
+    ),  # private
+    XV(
+        "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", check=XC.ALLOW_EMPTY
+    ),  # private
     XV("ELASTICSEARCH_SNAPSHOT_REPO_TYPE"),
     XV("ELASTICSEARCH_SHARD_COUNT", check=XC.INT),
     XV("ELASTICSEARCH_SHARD_REPLICAS", check=XC.INT),
-    XV("FETCHER_CRONJOB_ENABLE"),  # batch-fetcher: NOT bool!
-    XV("FETCHER_NUM_BATCHES", check=XC.INT),  # batch-fetcher
-    XV("FETCHER_OPTIONS"),  # batch-fetcher (see QUEUER_ARGS),
     XV("HIST_FETCHER_REPLICAS", check=XC.INT, default="0"),
     XV("IMPORTER_ARGS", check=XC.ALLOW_EMPTY),  # dynamic
     XV("IMPORTER_REPLICAS", check=XC.INT),
@@ -208,7 +209,8 @@ JINJA_SETTINGS = [
     XV("QUEUER_S3_ACCESS_KEY_ID"),  # private
     XV("QUEUER_S3_REGION", check=XC.ALLOW_EMPTY),  # private
     XV("QUEUER_S3_SECRET_ACCESS_KEY"),  # private
-    XV("QUEUER_TYPE", check=XC.ALLOW_EMPTY),  # empty for batch-fetcher
+    XV("QUEUER_TYPE"),  # container and run- script name
+    XV("RABBITMQ_CONTAINER", default="rabbitmq"),  # docker container/host
     XV("RABBITMQ_CONTAINERS", check=XC.INT, default="1"),
     XV("RABBITMQ_PORT", check=XC.INT, default="5672"),  # native port
     XV("RABBITMQ_PORT_EXPORTED", check=XC.INT),
@@ -232,16 +234,14 @@ JINJA_SETTINGS = [
 
 class StoryIndexerDeploy(DockerDeploy):
     INST_BASE = "indexer"  # app base name
-
-    # PLB: maybe just indexer, now that it's used for config & stats reporting?
-    IMAGE_NAME = "indexer-worker"
+    IMAGE_NAME = "indexer-worker"  # maybe just "indexer"??
     IMAGE_REPO = ""  # don't push to registry!
 
     # map command line names to inst_base prefix & port bias
-    # ES uses ports 9200 & 9300, so bias values increase by 200
+    # ES uses ports 9200 & 9300, so bias values increase by 200.
+    # if adding a flavor also add to indexer.pipeline.MyPipeline.pipe_layer method.
     INST_FLAVORS = {
         "queue-fetcher": Flavor("", 0),
-        # "batch-fetcher": Flavor("", 0), # scrapy removed from requirements
         "historical": Flavor("hist-", 200),
         "archive": Flavor("arch-", 400),
         "csv": Flavor("csv-", 600),
@@ -271,18 +271,7 @@ class StoryIndexerDeploy(DockerDeploy):
         self.settings_defaults(JINJA_SETTINGS)
 
         multi_node_deployment = False
-        fetcher_options = []
         importer_args: list[str] = []
-
-        # bias applied to unmodified ES base port:
-        self.settings_biased(
-            "ELASTICSEARCH_PORT_BASE_EXPORTED",
-            int(self.settings["ELASTICSEARCH_PORT_BASE"]),
-        )
-
-        self.settings_add("FETCHER_CRONJOB_ENABLE", "true")  # batch fetcher
-        self.settings_add("FETCHER_NUM_BATCHES", "20")  # batch fetcher
-        fetcher_options.append("--yesterday")  # batch fetcher
 
         if self.is_prod():
             # try to keep up when ES is loaded:
@@ -293,9 +282,6 @@ class StoryIndexerDeploy(DockerDeploy):
         self.settings_add("PARSER_REPLICAS", "4")
 
         self.settings_add("PIPELINE_TYPE", args.flavor)
-
-        self.settings_biased("PIPEVIEW_API_PORT_EXPORTED", 48000)  # +40k
-        self.settings_biased("PIPEVIEW_POSTGRES_PORT_EXPORTED", 54320)  # *10
 
         self.settings_add("QUEUER_CRONJOB_ENABLE", "true")
         self.settings_add("QUEUER_CRONJOB_MINUTES", "3-59/5")
@@ -310,9 +296,6 @@ class StoryIndexerDeploy(DockerDeploy):
             self.settings_add("ELASTICSEARCH_PLACEMENT_CONSTRAINT", placement)
             self.settings_add("WORKER_PLACEMENT_CONSTRAINT", placement)
 
-        # if adding anything here also add to indexer.pipeline.MyPipeline.pipe_layer method,
-        # and to PIPELINE_TYPES (above the usage function)!
-
         arch_suffix = ""
         if self.inst_flavor == "queue-fetcher":
             # Using --days 2 will fetch both days (the older day first).  After N days,
@@ -324,6 +307,7 @@ class StoryIndexerDeploy(DockerDeploy):
             if args.input_files:
                 arch_suffix = "rss"
         else:
+            # moved infrequently used code out of the way:
             arch_suffix = self.deploy_default_settings_flavors(args, importer_args)
 
         assert "QUEUER_TYPE" in self.settings
@@ -336,22 +320,20 @@ class StoryIndexerDeploy(DockerDeploy):
         if self.is_prod():
             arch_prefix = f"mc{arch_suffix}"
 
+            # external ES cluster: settings should not change!!
             self.settings_add("ELASTICSEARCH_CONTAINERS", "0")
-            # ES index settings are static, prod settings should not change!!
             self.settings_add("ELASTICSEARCH_HOSTS", "http://es.newsscribe.angwin:9209")
             self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "50gb")
             self.settings_add("ELASTICSEARCH_SHARD_COUNT", "12")
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
             self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "s3")
 
-            # put volume on RAID array: directory MUST exist!
+            # put volume on RAID array
             volume_prefix = (
                 f"/srv/data/docker/{self.inst_flavor_prefix}{self.INST_BASE}/"
             )
         elif self.is_staging():
-            # don't run daily, fetch 10x more than dev:
-            self.story_limit = 50000
-            fetcher_options.append(f"--sample-size={self.story_limit}")
+            self.story_limit = 50000  # 10x more than dev
 
             arch_prefix = f"staging{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "3")
@@ -363,18 +345,18 @@ class StoryIndexerDeploy(DockerDeploy):
                 "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", "mc_story_indexer"
             )
 
-            self.settings_add("FETCHER_CRONJOB_ENABLE", "false")  # not batch
-            self.settings_add("FETCHER_NUM_BATCHES", "10")  # batch fetcher
-
+            # start queuer on startup, don't run again:
             self.settings_add("QUEUER_CRONJOB_ENABLE", "false")
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
 
-            # put volume on RAID array: directory MUST exist!
+            # put volume on RAID array
             volume_prefix = (
                 f"/srv/data/docker/staging-{self.inst_flavor_prefix}{self.INST_BASE}/"
             )
         else:  # development
+            self.story_limit = 5000
+
             arch_prefix = f"{self.login_user}{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "1")
             self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "100mb")
@@ -385,15 +367,7 @@ class StoryIndexerDeploy(DockerDeploy):
                 "ELASTICSEARCH_SNAPSHOT_REPO_SETTINGS_LOCATION", "mc_story_indexer"
             )
 
-            self.story_limit = 5000
-
-            # batch fetcher:
-            # fetch limited articles under development, don't run daily:
-            self.settings_add("FETCHER_CRONJOB_ENABLE", "false")
-            fetcher_options.append(f"--sample-size={self.story_limit}")
-            self.settings_add("FETCHER_NUM_BATCHES", "10")
-
-            # start queuer on startup, don't run via cron:
+            # start queuer on startup, don't run again:
             self.settings_add("QUEUER_CRONJOB_ENABLE", "false")
             self.settings_add("QUEUER_CRONJOB_REPLICAS", "0")
             self.settings_add("QUEUER_INITIAL_REPLICAS", "1")
@@ -405,31 +379,28 @@ class StoryIndexerDeploy(DockerDeploy):
             self.fatal("volume prefix {volume_prefix} does not exist!")
         self.settings_add("VOLUME_DEVICE_PREFIX", volume_prefix)
 
-        self.settings_add("FETCHER_OPTIONS", " ".join(fetcher_options))
         self.settings_add("IMPORTER_ARGS", " ".join(importer_args))
         self.settings_add("ARCHIVER_PREFIX", arch_prefix)
 
-        if self.inst_flavor in ("queue-fetcher", "batch-fetcher"):
+        if self.inst_flavor in "queue-fetcher":
             breadcrumb_exchange = "breadcrumb"
         else:
             breadcrumb_exchange = ""
         self.settings_add("BREADCRUMB_EXCHANGE", breadcrumb_exchange)
 
-        # NOTE! in-network containers see native (unmapped) ports,
-        # so set environment variable values BEFORE applying PORT_BIAS!!
         if self.settings["RABBITMQ_CONTAINERS"] == "0":
-            # if production switches to using an external (non-docker)
-            # RabbitMQ cluster, set RABBITMQ_VHOST (to "/${PIPELINE_TYPE}" for
-            # anything but batch-fetcher) to give each pipe-type it's own
-            # queue namespace (would want to clear PIPE_TYPE_BIAS for
-            # rabbitmq_port!), and have index.pipeline "configure" make sure
-            # vhost exists.
+            # if production ever moves to using an external (non-docker)
+            # RabbitMQ cluster, set rabbitmq_vhost (to "/${FLAVOR}?") to give
+            # each flavor it's own queue namespace (would want to clear
+            # PIPE_TYPE_BIAS for rabbitmq_port!), and have index.pipeline
+            # "configure" make sure vhost exists.
             self.fatal("RABBITMQ_CONTAINERS is zero: need rabbitmq_(v)host!!!")
         else:
-            rabbitmq_host = "rabbitmq"  # container name
+            rabbitmq_host = self.settings["RABBITMQ_CONTAINER"]
+            assert rabbitmq_host
             rabbitmq_vhost = ""
 
-        rabbitmq_port = self.settings["RABBITMQ_PORT"]
+        rabbitmq_port = self.settings["RABBITMQ_PORT"]  # unbiased
         self.settings_add(
             "RABBITMQ_URL",
             f"amqp://{rabbitmq_host}:{rabbitmq_port}{rabbitmq_vhost}/?connection_attempts=10&retry_delay=5",
@@ -465,8 +436,6 @@ class StoryIndexerDeploy(DockerDeploy):
         # this memorializes the command line settings used to start
         # the stack in the docker-compose.yaml.TAG file:
         self.settings_add("DEPLOYMENT_OPTIONS", " ".join(sys.argv))
-
-        self.settings_biased("RABBITMQ_PORT_EXPORTED", int(rabbitmq_port))
 
     def deploy_default_settings_flavors(
         self, args: CmdArgs, importer_args: list[str]
@@ -567,7 +536,6 @@ class StoryIndexerDeploy(DockerDeploy):
         self.debug(
             "pipeview_api_port_exported", self.settings["PIPEVIEW_API_PORT_EXPORTED"]
         )
-
         jinja_vars = self.settings_jinja(JINJA_SETTINGS)
 
         if SUPER_VERBOSE:
@@ -588,14 +556,19 @@ class StoryIndexerDeploy(DockerDeploy):
         with open(output_file, "w") as f:
             self.fix_file_owner(f, private=True)
             f.write(expanded)
+            # make read-only to discourage editing! unlinked above
+            os.chmod(f.fileno(), 0o400)
 
         self.debug("wrote", output_file)
 
     def settings_get_new(self, args: ParserArgs) -> None:
         """
         load project settings; called from deploy_cmd_helper
+        self.inst_{id,type} are set,
+        self.tag and self.inst_name are not yet set
         """
         super().settings_get_new(args)
+        self.before_inst_name()
         assert not self._conf_loaded
         self.deploy_default_settings(args)  # before loading files
 
@@ -618,22 +591,8 @@ class StoryIndexerDeploy(DockerDeploy):
         # (queuer type can change, which will effect instance name!)
 
         assert self._conf_loaded
-        self.before_inst_name()
         queuer_type = self.settings["QUEUER_TYPE"]
-        if queuer_type == "arch-queuer":
-            # borrow (r/w) key from archiver config for reading archive files
-            self.settings_add(
-                "QUEUER_S3_ACCESS_KEY_ID",
-                self.settings["ARCHIVER_S3_ACCESS_KEY_ID"] or "",
-            )
-            self.settings_add(
-                "QUEUER_S3_REGION", self.settings["ARCHIVER_S3_REGION"] or ""
-            )
-            self.settings_add(
-                "QUEUER_S3_SECRET_ACCESS_KEY",
-                self.settings["ARCHIVER_S3_SECRET_ACCESS_KEY"] or "",
-            )
-        elif queuer_type == "rss-queuer":
+        if queuer_type == "rss-queuer":
             # If explicit input files supplied for "normal" (RSS/puller) pipeline,
             # change stack/stats prefix from empty to "rss-" to distinguish from
             # regular/prod stack.  NOTE: rss-puller only run if input_files is
@@ -641,6 +600,7 @@ class StoryIndexerDeploy(DockerDeploy):
             if args.input_files:
                 self.before_inst_name()
                 self.inst_flavor_prefix = "rss-"
+                # XXX port_bias would need to be adjusted to run in parallel!
             elif self.settings["RSS_FETCHER_URL"]:
                 # switch to rss-puller if rss-fetcher API URL supplied (and no -I)
                 self.settings_add("QUEUER_TYPE", queuer_type := "rss-puller")
@@ -653,6 +613,19 @@ class StoryIndexerDeploy(DockerDeploy):
                 # starting once an hour, can add /30 for twice an hour, etc
                 # 17 is MIT Random Hall "most random number"
                 self.settings_add("QUEUER_CRONTAB_MINUTES", "17")
+        elif queuer_type == "arch-queuer":
+            # borrow (r/w) key from archiver config for reading archive files
+            self.settings_add(
+                "QUEUER_S3_ACCESS_KEY_ID",
+                self.settings["ARCHIVER_S3_ACCESS_KEY_ID"] or "",
+            )
+            self.settings_add(
+                "QUEUER_S3_REGION", self.settings["ARCHIVER_S3_REGION"] or ""
+            )
+            self.settings_add(
+                "QUEUER_S3_SECRET_ACCESS_KEY",
+                self.settings["ARCHIVER_S3_SECRET_ACCESS_KEY"] or "",
+            )
 
         # construct QUEUER_ARGS for {arch,hist,rss}-queuers
         if queuer_type:
@@ -689,6 +662,19 @@ class StoryIndexerDeploy(DockerDeploy):
             "{PIPEVIEW_POSTGRES_USER}:{PIPEVIEW_POSTGRES_PASSWORD}"
             "@{PIPEVIEW_POSTGRES_CONTAINER}:{PIPEVIEW_PGPORT}"
             "/{PIPEVIEW_POSTGRES_DB}".format_map(self.settings),
+        )
+
+        # apply port_bias after possible dink-age above
+
+        # bias applied to unmodified ES base port:
+        self.settings_biased(
+            "ELASTICSEARCH_PORT_BASE_EXPORTED",
+            int(self.settings["ELASTICSEARCH_PORT_BASE"]),
+        )
+        self.settings_biased("PIPEVIEW_API_PORT_EXPORTED", 48000)  # +40k
+        self.settings_biased("PIPEVIEW_POSTGRES_PORT_EXPORTED", 54320)  # *10
+        self.settings_biased(
+            "RABBITMQ_PORT_EXPORTED", int(self.settings["RABBITMQ_PORT"])
         )
 
     def tag_prod(self) -> str:
