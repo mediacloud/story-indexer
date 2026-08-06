@@ -260,40 +260,55 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
         url_hash = unique_url_hash(url)
 
         try:
-            # Check if the document already exists by ID in the alias.
-            # We want to avoid indexing duplicates on ILM index rollover
-            search_response = self.elasticsearch_client().search(
-                index=INDEX_NAME_ALIAS,
-                body={
-                    "query": {"bool": {"filter": {"term": {"_id": url_hash}}}},
-                    "size": 0,
-                },
-            )
-            if search_response["hits"]["total"]["value"] > 0:
-                self.incr_stories("ilm-dups", url, story=story)
-                return None  # mypy explicit return
-            # logs HTTP op with index name and ID str.
-            # create: raises exception if a duplicate.
-            response = self.elasticsearch_client().create(
-                index=INDEX_NAME_ALIAS, id=url_hash, document=data
-            )
+            with self.elasticsearch_client() as es:  # avoid dangling connection
 
-            # ES is restful; python library turns HTTP errors into exceptions, and no
-            # exception was thrown, so should only be here if HTTP returned 200.
-            # PARANOIA! create() call always returns ObjectApiResponse.
-            if not response:
-                self.incr_stories("noresp", url, story=story)
-                raise QuarantineException(f"response {response!r}")
+                # Check if the document already exists by ID in each index to
+                # avoid creating duplicate entries ("get" won't take an alias
+                # with multiple index names).  Was using "search" which:
+                # (1) scanned ALL shards (2) didn't use "id" index!!
 
-            # Always count, and be explicit about what we saw.  Only documented result
-            # values are "created" and "updated". The existing code was only counting
-            # "success" on the expected ("created") result, but returning happy
-            # regardless.  If there is ever an "indexer metadata" sub-object, save id
-            # and response there?!  One could argue that the undesired "updated" result
-            # (that should never be seen) should be returned as False (do not archive).
-            result = response.get("result", "noresult") or "emptyres"
-            self.incr_stories(result, url, story=story)  # count, logs result, URL
-            return url_hash  # i.e. response.get("_id")
+                # get_alias call so cheap (less than 1ms on a busy cluster)
+                # that it doesn't seem worth trying to optimize!  Old code
+                # created a new client for create which took 2.5ms!
+                docs = [
+                    {"_index": idx, "_id": url_hash}
+                    for idx in es.indices.get_alias(index=INDEX_NAME_ALIAS)
+                ]
+
+                response = es.mget(docs=docs, source=False)
+                if not response:
+                    self.incr_stories("noresp2", url, story=story)
+                    raise QuarantineException(f"mget response {response!r}")
+
+                # sort thru responses for each index
+                for d in response["docs"]:
+                    if d["found"]:
+                        logger.debug("found %s in %s", url, d.get("_index"))
+                        self.incr_stories("ilm-dups", url, story=story)
+                        return None  # mypy explicit return
+
+                # create raises exception if duplicate in current index.
+                # logs HTTP op with index name and ID str.
+                response = es.create(index=INDEX_NAME_ALIAS, id=url_hash, document=data)
+
+                # ES is restful; python library turns HTTP errors into
+                # exceptions, and no exception was thrown, so should only be
+                # here if HTTP returned 200.  PARANOIA! create() call always
+                # returns ObjectApiResponse.
+                if not response:
+                    self.incr_stories("noresp", url, story=story)
+                    raise QuarantineException(f"create response {response!r}")
+
+                # Always count, and be explicit about what we saw.  Only
+                # documented result values are "created" and "updated".  If
+                # there is ever an "indexer metadata" sub-object, save id and
+                # response there?
+                result = response.get("result", "noresult") or "emptyres"
+                self.incr_stories(result, url, story=story)  # count, logs result, URL
+                if result == "created":
+                    return url_hash  # i.e. response.get("_id")
+                return None
+            # end with es....
         except ConflictError:
             self.incr_stories("dups", url)
             return None
