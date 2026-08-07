@@ -22,7 +22,12 @@ Run `make` (or `make help`) to see the list of other useful targets
 
 Required Python libraries are specified in `pyproject.toml`.
 `requirements.txt` and `requirements-dev.txt` can be regenerated using
-`make upgrade`
+`make requirements`
+
+### Update pre-commit config
+
+`make update` runs `pre-commit update` -- CAUTION! May change linting
+complaints (making commit of other changes impossible)!!
 
 ## More documentation
 
