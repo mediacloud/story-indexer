@@ -283,7 +283,8 @@ class ElasticsearchImporter(ElasticConfMixin, StoryWorker):
                 # sort thru responses for each index
                 for d in response["docs"]:
                     if d["found"]:
-                        logger.debug("found %s in %s", url, d.get("_index"))
+                        # TEMP: lower to debug
+                        logger.info("found %s in %s", url, d.get("_index"))
                         self.incr_stories("ilm-dups", url, story=story)
                         return None  # mypy explicit return
 
