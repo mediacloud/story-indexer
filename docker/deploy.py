@@ -334,11 +334,12 @@ class StoryIndexerDeploy(DockerDeploy):
             )
         elif self.is_staging():
             self.story_limit = 50000  # 10x more than dev
-
+            shard_count = 5
+            shard_size = self.shard_size(shard_count)
             arch_prefix = f"staging{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "3")
-            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "5gb")
-            self.settings_add("ELASTICSEARCH_SHARD_COUNT", "5")
+            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", shard_size)
+            self.settings_add("ELASTICSEARCH_SHARD_COUNT", str(shard_count))
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
             self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "fs")
             self.settings_add(
@@ -356,11 +357,13 @@ class StoryIndexerDeploy(DockerDeploy):
             )
         else:  # development
             self.story_limit = 5000
+            shard_count = 2
+            shard_size = self.shard_size(shard_count)
 
             arch_prefix = f"{self.login_user}{arch_suffix}"
             self.settings_add("ELASTICSEARCH_CONTAINERS", "1")
-            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", "100mb")
-            self.settings_add("ELASTICSEARCH_SHARD_COUNT", "2")
+            self.settings_add("ELASTICSEARCH_ILM_MAX_SHARD_SIZE", shard_size)
+            self.settings_add("ELASTICSEARCH_SHARD_COUNT", str(shard_count))
             self.settings_add("ELASTICSEARCH_SHARD_REPLICAS", "1")
             self.settings_add("ELASTICSEARCH_SNAPSHOT_REPO_TYPE", "fs")
             self.settings_add(
@@ -681,6 +684,23 @@ class StoryIndexerDeploy(DockerDeploy):
         # pyproject version not used/updated.
         prefix = self.inst_flavor_prefix
         return f"{self.date_time}-{prefix}prod"
+
+    ################ helpers
+
+    def shard_size(self, shard_count: int) -> str:
+        """
+        return rollover max_primary_shard_size value string
+        int followed by k, m, g
+
+        goal is rollover during/after each dev/staging run
+        based on number of stories, number of shards
+        """
+        assert self.story_limit > 0
+        # avg indexed story is around 5000 bytes, pick 4k as lower
+        # estimate to encourage rollover.
+        story_kb = 4
+        shard_kb = (story_kb * self.story_limit) // shard_count  # must be int
+        return f"{shard_kb}kb"
 
     ################ commands
 
