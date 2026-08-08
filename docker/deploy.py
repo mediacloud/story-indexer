@@ -579,6 +579,7 @@ class StoryIndexerDeploy(DockerDeploy):
         self.settings_add("STATSD_REALM", self.inst_id)  # prod/staging/USER
 
         if self.is_prod_staging():
+            self.settings_load_private_files("management", ["env.sh"])  # AIRTABLE vars
             if self.is_prod():
                 file = "prod.sh"
             else:
