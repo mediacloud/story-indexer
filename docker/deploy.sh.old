@@ -1,5 +1,8 @@
 #!/bin/sh
 
+echo "for reference only: use deploy.py!!"
+exit 1
+
 # Deploy story-indexer
 # Phil Budne, 9/2023
 # (from rss-fetcher/dokku-scripts/push.sh 9/2022!)

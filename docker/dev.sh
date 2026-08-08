@@ -1,9 +1,9 @@
-# sourced by deploy.sh to set private, deployment-specific values
-# "export" is NOT NEEDED!
+# read by deploy.py to set private, deployment-specific values
+# as a "dot env" file
 #
 # If you're adding variable VARIABLE here, you MUST:
 # 1. add it to staging & prod configs too!!!
-# 2. add an "add VARIABLE # private" line to deploy.sh
+# 2. add an XV("VARIABLE"), # private" line to deploy.py
 # 3. expand {{variable}} in docker-compose.yml.j2
 #	(typically as VARIABLE: {{variable}})
 #
