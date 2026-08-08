@@ -614,8 +614,8 @@ class StoryIndexerDeploy(DockerDeploy):
                 # the urls from a few sources).
 
                 # starting once an hour, can add /30 for twice an hour, etc
-                # 17 is MIT Random Hall "most random number"
-                self.settings_add("QUEUER_CRONTAB_MINUTES", "17")
+                # 17 is MIT Random Hall's "most random number"
+                self.settings_add("QUEUER_CRONJOB_MINUTES", "17")
         elif queuer_type == "arch-queuer":
             # borrow (r/w) key from archiver config for reading archive files
             self.settings_add(
