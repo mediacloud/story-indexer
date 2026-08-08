@@ -26,18 +26,14 @@ Or:
 
 ### Development
 
-With any branch OTHER than staging or prod checked out, run (as root)
+With any branch OTHER than staging or prod checked out, run (as root,
+or a user in the docker group):
 
-    ./docker/deploy.sh
+    venv/bin/python docker/deploy.py deploy
 
-By default `deploy.sh` expects the branch to be clean (checked in)
+`deploy.py` expects the branch to be clean (checked in)
 and pushed to `origin`.  It will tag the git repository and the
 Docker image with a tag like: `YYYY-MM-DD-HH-MM-SS-HOSTNAME-BRANCH`
-
-For easy development, a "dirty" deploy can be done with the `-a`
-option, resulting in an image tag of `<USERNAME>-dirty` (and no git
-tag).  *BUT* you should make sure you can run a checked-in/clean
-deploy before opening a PR.
 
 Your stack will be named <USERNAME>-indexer.
 
@@ -108,7 +104,7 @@ should be merged into staging.
 
 And to deploy:
 
-    ./docker/deploy.sh
+    venv/bin/python deploy.py deploy
 
 The staging stack will be named `staging-indexer`.
 
@@ -138,7 +134,7 @@ To merge run:
 
 And to deploy run:
 
-    ./docker/deploy.sh
+    venv/bin/python deploy.py deploy
 
 You will be asked to confirm twice.
 
@@ -146,31 +142,52 @@ Since the fetcher starts new batches for yesterday after midnight GMT,
 and runs for many hours, code should be deployed to the production
 stack named `indexer` shortly after midnight GMT.
 
-### deploy.sh options
+### deploy.py options
 
 ```
-$ ./docker/deploy.sh  -h
-Usage: ./deploy.sh [options]
+~/story-indexer$ venv/bin/python docker/deploy.py -h
+usage: deploy [-h] [-d] [--ignore-no-changes]
+              [-F {archive,csv,historical,queue-fetcher}] [-n] [-T {prod,staging}]
+              {deploy,version} ...
+
+positional arguments:
+  {deploy,version}      command
+    deploy              Deploy code to docker stack
+    version             Display deployment package version
+
 options:
-  -a      allow-dirty; no dirty/push checks; no tags applied (for dev)
-  -b      build image but do not deploy
-  -B BR   dry run for specific branch BR (ie; staging or prod, for testing)
-  -d      enable debug output (for template parameters)
-  -h      output this help and exit
-  -H /HIST_FILE_PREFIX
-          prefix for historical pipeline files (must start with /)
-  -I INPUTS
-          queuer input files/options
-  -O OPTS override queuer sampling options
-  -T TYPE select pipeline type: batch-fetcher, historical, archive, queue-fetcher
-  -n      dry-run: creates docker-compose.yml but does not invoke docker (implies -a -u)
-  -u      allow running as non-root user
-  -Y HIST_YEAR
-          select year for historical pipeline
+  -h, --help            show this help message and exit
+  -d, --debug           debug deployment code
+  --ignore-no-changes   continue dry-run if no code or config changes
+  -F {archive,csv,historical,queue-fetcher}, --flavor {archive,csv,historical,queue-fetcher}
+                        instance flavor (default queue-fetcher)
+  -n, --no-action       dry run: take no actions
+  -T {prod,staging}, --test {prod,staging}
+                        test deployment code (impl. --dry-run)
+
+
+~/story-indexer$ venv/bin/python docker/deploy.py deploy -h
+usage: deploy deploy [-h] [-u] [-b] [-H HIST_FILE_PREFIX] [-I INPUT_FILES]
+                     [-O QUEUER_OPTS] [-Y HIST_YEAR] [-z NO_IMPORT]
+
+options:
+  -h, --help            show this help message and exit
+  -u, --unpushed        allow deployment of unpushed dev repo
+  -b, --build-only      build docker image then quit
+  -H HIST_FILE_PREFIX, --hist-file-prefix HIST_FILE_PREFIX
+                        must start with /
+  -I INPUT_FILES, --input-files INPUT_FILES
+                        override default input files
+  -O QUEUER_OPTS, --queuer-opts QUEUER_OPTS
+                        override queuer sampling options
+  -Y HIST_YEAR, --hist-year HIST_YEAR
+                        select year for 'historical' pipeline
+  -z, --no-import
+                        do not run ES importer in pipeline
 ```
 
-The `-I` and `-O` options apply to "queuer" programs (ie; not the
-batch fetcher), both options can be passed multiple command line
+The `-I` and `-O` options apply to "queuer" programs,
+both options can be passed multiple command line
 arguments (by quoting the option argument).
 
 `-I` overrides only the default input file(s), but leaves any sampling
@@ -194,32 +211,31 @@ Keep complexity out of the template
 to use it to just substitute values, and "ifdef"
 parts in and out.)
 
-Keep policy decisions in deploy.sh, and supply
+Keep policy decisions in deploy.py, and supply
 values and feature-based booleans to the template
 
-See https://github.com/mediacloud/story-indexer/issues/115
-for Phil's thoughts on how a deploy.py might be nice.
-
-## Testing changes to deploy.sh and docker-compose.yaml.j2
+## Testing changes to deploy.py and docker-compose.yaml.j2
 
 The following test should be run before opening a PR with changes to
 deploy.sh and docker-compose.yaml.j2 to ensure all template variables
 are supplied in all environments:
 
-    ./docker/deploy.sh -B dev
-    ./docker/deploy.sh -B staging
-    ./docker/deploy.sh -B prod
+```
+    venv/bin/python deploy.py -n deploy
+    venv/bin/python deploy.py -T staging deploy
+    venv/bin/python deploy.py -T prod deploy
+```
 
 _PLB: (maybe make this part of the pre-commit checks? how??)_
 
 ## Historical (S3 CSV & HTML) story processing
 
 An independent stack for processing historical data can be launched
-with `deploy.sh -T historical`, and the stack will be prefixed with
-`hist-`.
+with `deploy.py --flavor historical deploy`, and the stack will be
+prefixed with `hist-`.
 
 ## Archive (WARC file) story processing
 
-An independent stack for processing historical data can be launched
-with `deploy.sh -T archive`, and the stack will be prefixed with
-`arch-`.
+An independent stack for processing WARC files can be launched with
+`deploy.py --flavor archive deploy`, and the stack will be prefixed
+with `arch-`.
