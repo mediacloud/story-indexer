@@ -717,7 +717,12 @@ class StoryIndexerDeploy(DockerDeploy):
         cp.add_argument(
             "-Y", "--hist-year", help="select year for 'historical' pipeline"
         )
-        cp.add_argument("-z", "--no-import", help="do not run ES importer in pipeline")
+        cp.add_argument(
+            "-z",
+            "--no-import",
+            action="store_true",
+            help="do not run ES importer in pipeline",
+        )
 
     def deploy_cmd_helper(self, args: CmdArgs) -> None:
         super().deploy_cmd_helper(args)  # load config
