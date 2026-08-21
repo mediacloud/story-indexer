@@ -2,4 +2,5 @@
 
 . bin/func.sh
 
-run_python indexer.scripts.syslog-sink "$@"
+# honors LOG_DIR and SYSLOG_PORT:
+run_python mc_logging.sink "$@"

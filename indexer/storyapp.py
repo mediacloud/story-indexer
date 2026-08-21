@@ -839,7 +839,7 @@ class BatchStoryWorker(StoryWorker):
 
 class MultiThreadStoryWorker(IntervalMixin, StoryWorker):
     # include thread name in log message format
-    LOG_FORMAT = "thread"
+    LOG_THREAD_ID = True
     CPU_COUNT = multiprocessing.cpu_count()
     WORKER_THREADS_DEFAULT = CPU_COUNT
 

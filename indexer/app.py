@@ -6,17 +6,19 @@ import argparse
 import datetime as dt
 import logging
 import os
-import socket
 import sys
 import time
 import urllib.parse
-from logging.handlers import SysLogHandler
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, TypeAlias
 
 # PyPI
 import statsd  # depends on stubs/statsd.pyi
 
+# from mediacloud/system-dev-ops:
+from mc_logging.logger import SendtoSocketWrapper, log_to_sink
+
+# story-indexer:
 from indexer import sentry
 
 Labels: TypeAlias = List[
@@ -45,66 +47,13 @@ class AppException(RuntimeError):
 # see https://docs.python.org/3/library/logging.html#logrecord-attributes
 # for options in log formats.
 
-# formats for stderr
-STDERR_FORMATS = {
-    "normal": "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    "thread": "%(asctime)s | %(levelname)s | %(name)s | %(threadName)s | %(message)s",
+# formats for stderr; indexed by App.LOG_THREAD_ID
+STDERR_FORMATS: dict[bool, str] = {
+    False: "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    True: "%(asctime)s | %(levelname)s | %(name)s | %(threadName)s | %(message)s",
 }
 
-# look like syslog messages (except date format),
-# adds levelname; does NOT include logger name, or pid:
-SYSLOG_FORMATS = {
-    "normal": "%(asctime)s %(hostname)s %(app)s %(levelname)s: %(message)s",
-    # include thread, formatted as if syslog pid
-    "thread": "%(asctime)s %(hostname)s %(app)s[%(threadName)s] %(levelname)s: %(message)s",
-}
-
-
-class SendtoSocketWrapper:
-    """
-    Wrapper for UDP sockets used in logging.handlers.SysLogHandler and
-    statsd.StatsdClient, so that socket.sendto doesn't do a DNS lookup
-    on EVERY call (OR use the address resolved at startup forever,
-    since it might be a container, and could be replaced at any time).
-    """
-
-    def __init__(self, actual_socket: socket.socket, cache_sec: int = 60):
-        """
-        defaults to caching for 60 seconds, so if address changes,
-        will lose at most one minute of traffic
-        """
-        assert actual_socket.family == socket.AF_INET
-        assert actual_socket.type == socket.SOCK_DGRAM
-        self.actual_socket = actual_socket
-        self.last_host = ""
-        self.last_addr = ""
-        self.last_lookup = 0.0
-        self.cache_sec = cache_sec
-
-    def sendto(self, data: bytes, to: Tuple[str, int]) -> int:
-        """
-        both SysLogHandler and Statsd only call with two args
-        """
-        # uses VDSO (no context switch) on x86-64 systems (at least)
-        # if it's a problem, only check every N calls
-        now = time.monotonic()
-        if now - self.last_lookup > self.cache_sec:
-            self.last_addr = ""  # invalidate cache
-
-        to_host = to[0]
-        if to_host != self.last_host or not self.last_addr:
-            self.last_host = to_host
-            # IPv4 only, returns single addr (round robin):
-            self.last_addr = socket.gethostbyname(to_host)
-            self.last_lookup = now
-
-        return self.actual_socket.sendto(data, (self.last_addr, to[1]))
-
-    def close(self) -> None:
-        """
-        called on app shutdown?
-        """
-        self.actual_socket.close()
+# syslog format now configured in mc_logging.logger
 
 
 class App:
@@ -112,7 +61,7 @@ class App:
     Base class for command line applications (ie; Worker)
     """
 
-    LOG_FORMAT = "normal"
+    LOG_THREAD_ID: bool = False
 
     def __init__(self, process_name: str, descr: str):
         # override of process_name allow alternate versions of pipeline
@@ -200,11 +149,13 @@ class App:
         else:
             level = level.upper()
 
+        log_thread_id = self.LOG_THREAD_ID
+
         # NOTE! Levels applied to root logger, so effect
         # both stderr handler created by basicConfig.
         # _COULD_ apply to just stderr *handler* and
         # send everything to syslog handler.
-        logging.basicConfig(format=STDERR_FORMATS[self.LOG_FORMAT], level=level)
+        logging.basicConfig(format=STDERR_FORMATS[log_thread_id], level=level)
 
         if self.args.logger_level:
             for ll in self.args.logger_level:
@@ -213,35 +164,7 @@ class App:
                 # XXX check level.upper() in LEVELS?
                 logging.getLogger(logger_name).setLevel(level.upper())
 
-        syslog_host = os.environ.get("SYSLOG_HOST", None)
-        syslog_port = os.environ.get("SYSLOG_PORT", None)
-        if syslog_host and syslog_port:
-            # NOTE!! Using unreliable UDP because TCP connection backlog
-            # can cause sends to socket to block!!
-
-            # Could use a different LOCALn facility for different programs
-            # (see note in syslog-sink.py about routing via facility).
-            handler = SysLogHandler(
-                address=(syslog_host, int(syslog_port)),
-                facility=SysLogHandler.LOG_LOCAL0,
-            )
-            handler.socket = SendtoSocketWrapper(handler.socket)  # type: ignore[attr-defined]
-
-            # additional items available to format string:
-            defaults = {
-                "hostname": socket.gethostname(),  # without domain
-                "app": self.process_name,
-            }
-            fmt = SYSLOG_FORMATS[self.LOG_FORMAT]
-
-            # Might like default datefmt includes milliseconds
-            # (which aren't otherwise available)
-            formatter = logging.Formatter(fmt=fmt, defaults=defaults)
-            handler.setFormatter(formatter)
-
-            # add handler to root logger
-            root_logger = logging.getLogger()
-            root_logger.addHandler(handler)
+        log_to_sink(self.process_name, log_thread_id=log_thread_id)
 
         ################ logging now enabled
 
