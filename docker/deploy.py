@@ -273,11 +273,7 @@ class StoryIndexerDeploy(DockerDeploy):
         multi_node_deployment = False
         importer_args: list[str] = []
 
-        if self.is_prod():
-            # try to keep up when ES is loaded:
-            self.settings_add("IMPORTER_REPLICAS", "3")
-        else:
-            self.settings_add("IMPORTER_REPLICAS", "1")
+        self.settings_add("IMPORTER_REPLICAS", "1")
 
         self.settings_add("PARSER_REPLICAS", "4")
 
