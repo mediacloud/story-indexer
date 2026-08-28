@@ -85,7 +85,12 @@ $(VENVPY):
 lint:	$(VENVDONE)
 	$(PRE_COMMIT) run --all-files
 
-## run pytests
-test:
+## deploy using mc-deploy script
+deploy:	$(VENVDONE)
+	$(VENVBIN)/python docker/deploy.py deploy
+
+## run pytests (not tested!)
+test:	$(VENVDONE)
+	$(VENVBIN)/pytest
 
 .PHONY: all clean help install install-app-dev install-deps-dev install-deps-prod lint test upgrade upgrade-dev upgrade-prod
