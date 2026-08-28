@@ -39,9 +39,7 @@ deploy = [
 
 # packages installed in development venv, but not pre-commit:
 dev = [
-  "jinja2-cli ~= 0.8.2",
   "pre-commit ~= 3.4.0",
-  "pyairtable ~= 2.3.3",
   "pytest ~= 7.4.2",
 ]
 
